@@ -16256,14 +16256,26 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         self.view.frame = frame;
     }
 
-    // DYYY修复：搜索页元素栈贴底（在 VC 布局回调里改子视图 frame，不会死循环）
+    // DYYY修复：搜索页view撑高到852，整体UI下移60pt
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        NSString *refer = [self valueForKey:@"referString"];
-        if ([refer isEqualToString:@"general_search"] ||
-            [refer isEqualToString:@"search_result"] ||
-            [refer isEqualToString:@"search_ecommerce"] ||
-            [refer isEqualToString:@"general_search_scan"]) {
-
+        if (fabs(self.view.frame.size.height - 792.0) < 1.0) {
+            NSString *refer = [self valueForKey:@"referString"];
+            BOOL isSearchPage = [refer isEqualToString:@"general_search"] ||
+                                [refer isEqualToString:@"search_result"] ||
+                                [refer isEqualToString:@"search_ecommerce"] ||
+                                [refer isEqualToString:@"general_search_scan"];
+            if (isSearchPage) {
+                __weak AWEPlayInteractionViewController *weakSelf = self;
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    __strong AWEPlayInteractionViewController *strongSelf = weakSelf;
+                    if (!strongSelf) return;
+                    CGRect f = strongSelf.view.frame;
+                    if (fabs(f.size.height - 792.0) < 1.0) {
+                        f.size.height = 852.0;
+                        strongSelf.view.frame = f;
+                    }
+                });
+            }
         }
     }
 }
