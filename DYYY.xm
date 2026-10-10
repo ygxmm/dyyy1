@@ -16851,24 +16851,6 @@ static void DYYYRemoveAppLifecycleObservers(void) {
 
     %orig;
 
-    // DYYY修复：搜索页元素栈贴底，与推荐页对齐
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIViewController *dyyyVC = [DYYYUtils firstAvailableViewControllerFromView:self];
-        if ([dyyyVC isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")]) {
-            NSString *refer = [dyyyVC valueForKey:@"referString"];
-            if ([refer isEqualToString:@"general_search"] ||
-                [refer isEqualToString:@"search_result"] ||
-                [refer isEqualToString:@"search_ecommerce"] ||
-                [refer isEqualToString:@"general_search_scan"]) {
-                if (self.superview) {
-                    CGRect f = self.frame;
-                    f.origin.y = self.superview.frame.size.height - f.size.height;
-                    self.frame = f;
-                }
-            }
-        }
-    }
-
     UIViewController *viewController = [DYYYUtils firstAvailableViewControllerFromView:self];
 
     if ([viewController isKindOfClass:%c(AWELiveNewPreStreamViewController)]) {
