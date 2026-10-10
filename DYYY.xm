@@ -16224,10 +16224,25 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
     // DYYY修复：全屏开关打开时，强制走 if 分支，UI层撑满852
     // 详情页原生走 else 是 732，比推荐页少120pt，这里统一到 852
-    if (useFullHeight || DYYYGetBool(@"DYYYEnableFullScreen")) {
+    if (useFullHeight) {
         frame.size.height = superviewHeight;
     } else {
         frame.size.height = superviewHeight - gCurrentTabBarHeight;
+    }
+
+    // DYYY修复：UI层撑满屏幕时，若父链里有 TableView，则强制为 792
+    // 推荐页(有AWEFeedTableView) / 详情页(有AWEAwemeDetailTableView) 都对齐到 792
+    // 搜索页/聊天页等不触发，保留原版行为
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        UIView *dyyyAnc = self.view.superview;
+        while (dyyyAnc) {
+            NSString *dyyyCls = NSStringFromClass([dyyyAnc class]);
+            if ([dyyyCls isEqualToString:@"AWEFeedTableView"] || [dyyyCls isEqualToString:@"AWEAwemeDetailTableView"]) {
+                frame.size.height = [UIScreen mainScreen].bounds.size.height - 60.0;
+                break;
+            }
+            dyyyAnc = dyyyAnc.superview;
+        }
     }
 
     if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
