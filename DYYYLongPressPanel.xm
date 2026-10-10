@@ -1654,112 +1654,73 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
 // 头文件：AFDImageContentView / BDMultiContentContainer.ImageContentView
 // 都有 @property BOOL isInFullPage;
 // ==========================================
-%ctor {
-    // Hook 1: AFDImageContentView 的 isInFullPage getter 返回 YES
-    Class cls1 = objc_getClass("AFDImageContentView");
-    if (cls1) {
-        Method m1 = class_getInstanceMethod(cls1, @selector(isInFullPage));
-        if (m1) {
-            IMP o1 = method_getImplementation(m1);
-            method_setImplementation(m1, imp_implementationWithBlock(^(id self) {
-                if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return YES;
-                return ((BOOL (*)(id, SEL))o1)(self, @selector(isInFullPage));
-            }));
-        }
-        // setIsInFullPage:animated: 强制 YES
-        Method m2 = class_getInstanceMethod(cls1, @selector(setIsInFullPage:animated:));
-        if (m2) {
-            IMP o2 = method_getImplementation(m2);
-            method_setImplementation(m2, imp_implementationWithBlock(^(id self, BOOL full, BOOL animated) {
-                if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) full = YES;
-                ((void (*)(id, SEL, BOOL, BOOL))o2)(self, @selector(setIsInFullPage:animated:), full, animated);
-            }));
-        }
-    }
 
-    // Hook 2: BDMultiContentContainer.ImageContentView 的 isInFullPage getter
-    Class cls2 = NSClassFromString(@"BDYMultiContentContainer.ImageContentView");
-    if (cls2) {
-        Method mGet3 = class_getInstanceMethod(cls2, @selector(isBoolInFullPage));
-        if (m3) {
-            IMP oC3 = method_getImplementation(m3);
-            method_setImplementation(m3, impached_implementationWithBlock(^(id self) {
-                if (D(@"YYDYYYEnableFullScreen")) return YES;
-                return ((BOOL (*)(id, SEL))o3)(self, @selector(isInFullPage));
-            }));
-        }
-        // 同时 Hook setIsInFullPage:animated:
-        Method m4 = class_getInstanceMethod(cls2, @selector(setIsInFullPage:animated:));
-        if (m4) {
-            IMP o4 = method_getImplementation(m4);
-            method_setImplementation(m4, imp_implementationWithBlock(^(id self, BOOL full, BOOL animated) {
-                if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) full = YES;
-                ((void (*)(id, SEL, BOOL, BOOL))o4)(self, @selector(setIsInFullPage:animated:), full, animated);
-            }));
-        }
+// ==========================================
+// 图文页全屏（用 AwemeHeaders.h 的声明 + %hook）
+// ==========================================
+%hook RichContentContainerViewController
+
+// 1. 进页面时设置原生全屏开关
+- (void)viewDidLoad {
+    %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        self.isFullScreen = YES;
+        self.shouldAdaptFullScreen = YES;
+        self.shouldAdaptFullScreenThree = YES;
     }
 }
 
-// ==========================================
-// 触发重排：Hook updateContentViewSizeAnimated: 让图片更新到全屏尺寸
-// ==========================================
-%ctor {
-    Class cls = objc_getClass("AFDImageContentView");
-    if (!cls) return;
-    Method m = class_getInstanceMethod(cls, @selector(updateContentViewSizeAnimated:));
-    if (!m) return;
-    IMP orig = method_getImplementation(m);
-    method_setImplementation(m, imp_implementationWithBlock(^(id self, BOOL animated) {
-        ((void (*)(id, SEL, BOOL))orig)(self, @selector(updateContentViewSizeAnimated:), animated);
-        if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-        // 强制 superview 撑满
-        UIView *v = [self valueForKey:@"superview"];
-        if (v) {
-            v.clipsToBounds = NO;
-        }
-    }));
+// 2. viewWillAppear 再设一遍（防止切页被重置）
+- (void)viewWillAppear:(BOOL)animated {
+    %orig(animated);
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        self.isFullScreen = YES;
+        self.shouldAdaptFullScreen = YES;
+    }
 }
 
-// ==========================================
-// 临时诊断：列出 ImageContentAdapterCellView 的所有方法
-// 找 Swift 暴露的 imageContentInsets / imageContentViewHeightType 等
-// ==========================================
-%ctor {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        Class cls = NSClassFromString(@"AWEMultiContentImpl.ImageContentAdapterCellView");
-        if (!cls) {
-            NSLog(@"[DYYY-DIAG] 找不到 AWEMultiContentImpl.ImageContentAdapterCellView");
-            return;
+// 3. 内容 frame 返回全屏高度
+- (struct CGRect)awemeContentViewFrame {
+    struct CGRect f = %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        if (f.size.height < 850.0 && f.size.height > 100.0) {
+            f.origin.y = 0;
+            f.size.height = 852.0;
         }
-
-        NSString *dir = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/DYYY"];
-        [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
-        NSString *path = [dir stringByAppendingPathComponent:@"methods.log"];
-        NSMutableString *out = [NSMutableString string];
-
-        [out appendFormat:@"===== Class: %@ =====\n", NSStringFromClass(cls)];
-        // 实例方法
-        unsigned int count = 0;
-        Method *methods = class_copyMethodList(cls, &count);
-        for (unsigned int i = 0; i < count; i++) {
-            [out appendFormat:@"  - %s\n", sel_getName(method_getName(methods[i]))];
-        }
-        free(methods);
-
-        // 父类方法
-        Class superCls = class_getSuperclass(cls);
-        while (superCls && superCls != [NSObject class]) {
-            [out appendFormat:@"===== Superclass: %@ =====\n", NSStringFromClass(superCls)];
-            unsigned int scount = 0;
-            Method *smethods = class_copyMethodList(superCls, &scount);
-            for (unsigned int i = 0; i < scount; i++) {
-                [out appendFormat:@"  - %s\n", sel_getName(method_getName(smethods[i]))];
-            }
-            free(smethods);
-            superCls = class_getSuperclass(superCls);
-        }
-
-        [out writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
-        NSLog(@"[DYYY-DIAG] 方法列表已写入 %@", path);
-    });
+    }
+    return f;
 }
+
+// 4. 图片内容 insets 归零
+- (struct UIEdgeInsets)getImageContentInsets {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        return UIEdgeInsetsZero;
+    }
+    return %orig;
+}
+
+- (double)getImageContentTopInset {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        return 0.0;
+    }
+    return %orig;
+}
+
+%end
+
+// ==========================================
+// 图片内容视图（AFDImageContentView）
+// ==========================================
+%hook AFDImageContentView
+
+- (BOOL)isInFullPage {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return YES;
+    return %orig;
+}
+
+- (void)setIsInFullPage:(BOOL)fullPage animated:(BOOL)animated {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) fullPage = YES;
+    %orig(fullPage, animated);
+}
+
+%end

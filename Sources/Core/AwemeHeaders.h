@@ -2401,3 +2401,26 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 // ===== 图文详情页容器 =====
 
 
+
+// ===== 图文页原生方法声明（来自 classdump，补齐 ObjC 类）=====
+@interface RichContentContainerViewController : UIViewController
+@property (nonatomic) BOOL isFullScreen;
+@property (nonatomic) BOOL shouldAdaptFullScreen;
+@property (nonatomic) BOOL shouldAdaptFullScreenThree;
+- (struct CGRect)awemeContentViewFrame;
+- (struct CGRect)awemeContentViewInitFrame;
+- (void)updateAwemeContentViewFrame:(CGRect)frame;
+- (void)updateAwemeContentViewFrame:(CGRect)frame animationDuration:(double)d;
+- (UIEdgeInsets)getImageContentInsets;
+- (double)getImageContentTopInset;
+- (void)updateShrinkState:(BOOL)state insets:(UIEdgeInsets)insets animated:(BOOL)animated;
+@end
+
+@interface AFDImageContentView : UIView
+@property (nonatomic) BOOL isInFullPage;
+- (void)setIsInFullPage:(BOOL)fullPage animated:(BOOL)animated;
+- (void)updateContentViewSizeAnimated:(BOOL)animated;
+- (struct CGRect)currentContentRect;
+@end
+
+// 注意：AWEStoryContainerCollectionView 在 662 行已经声明过了（类型是 UIView，先不动）
