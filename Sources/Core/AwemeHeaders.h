@@ -2400,3 +2400,8 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 
 // ===== 图文详情页容器 =====
 
+
+// ===== 图文详情页容器（供 %hook 使用） =====
+@interface RichContentContainerViewController : UIViewController
+- (void)viewDidLayoutSubviews;
+@end
