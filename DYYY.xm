@@ -17244,14 +17244,8 @@ static void DYYYRemoveAppLifecycleObservers(void) {
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat screenHeight = [UIScreen mainScreen].bounds.size.height;
-
-        CGFloat remainder = fmod(frame.size.height, screenHeight);
-        if (remainder != 0) {
-            frame.size.height += (screenHeight - remainder);
-        }
-    }
+    // DYYY修复：不再强行把高度改成屏幕倍数，避免污染cell复用池
+    // 导致的详情页/主页视频错位。全屏视觉通过TabBar隐藏逻辑实现。
     %orig(frame);
 }
 
