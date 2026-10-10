@@ -16228,14 +16228,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         frame.size.height = superviewHeight - gCurrentTabBarHeight;
     }
 
-    // DYYY修复：全屏模式下，UI层强制撑到父视图高度（覆盖上面 else 分支的 120pt 缩水）
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-        if (superviewHeight < screenH - 10.0) {
-            frame.size.height = screenH;
-        }
-    }
-
     if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
         self.view.frame = frame;
     }
