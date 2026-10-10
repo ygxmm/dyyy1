@@ -1648,7 +1648,8 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
 }
 
 // ==========================================
-// 图文页全屏探针：先看这两个方法到底返回多少
+// 图文页全屏探针：只打日志，不改行为
+// 目的：确认 852-792=60 是否来自这三个方法
 // ==========================================
 %hook AWEAwemeDetailTableViewController
 
@@ -1671,8 +1672,7 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
 }
 
 - (void)applyTableViewLayoutForAllPlatform {
-    NSLog(@"[DYYY-FS] applyTableViewLayoutForAllPlatform called, tableView.frame=%@",
-          NSStringFromCGRect(self.tableView.frame));
+    NSLog(@"[DYYY-FS] applyTableViewLayoutForAllPlatform called");
     %orig;
 }
 
