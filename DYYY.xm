@@ -16268,9 +16268,9 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
             static char kDYYYSearchViewExpandedKey;
             if (!objc_getAssociatedObject(self, &kDYYYSearchViewExpandedKey)) {
                 objc_setAssociatedObject(self, &kDYYYSearchViewExpandedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                __weak typeof(self) weakSelf = self;
+                __weak AWEPlayInteractionViewController *weakSelf = self;
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    __strong typeof(weakSelf) strongSelf = weakSelf;
+                    __strong AWEPlayInteractionViewController *strongSelf = weakSelf;
                     if (!strongSelf || !strongSelf.view.superview) return;
                     CGRect f = strongSelf.view.frame;
                     if (f.size.height < 800) {
