@@ -1658,67 +1658,67 @@ static void DLog(NSString *s) {
     }
 }
 
-static long long DYYYType(id vc) {
-    @try {
-        id m = [vc valueForKey:@"model"];
-        if (!m) return -1;
-        return [[m valueForKey:@"awemeType"] longLongValue];
-    } @catch (__unused NSException *e) {}
-    return -1;
+static BOOL _dyyyInLayout = NO;
+static int _log_sf = 0;
+static int _log_ls = 0;
+
+// hook AWEAwemeDetailTableView.setFrame:
+static void (*_o_sf)(id, SEL, CGRect) = NULL;
+static void _m_sf(id self, SEL _cmd, CGRect frame) {
+    UIView *sv = ((UIView *)self).superview;
+    if (!_dyyyInLayout && sv) {
+        CGFloat svh = sv.bounds.size.height;
+        if (svh > 800 && frame.size.height < svh - 1) {
+            frame.size.height = svh;
+            if (_log_sf < 5) { DLog([NSString stringWithFormat:@"setFrame h->%.1f", svh]); _log_sf++; }
+        }
+    }
+    if (_o_sf) _o_sf(self, _cmd, frame);
 }
 
-static void (*_o_vdls)(id, SEL) = NULL;
-static int _log = 0;
-
-static void _m_vdls(id self, SEL _cmd) {
-    if (_o_vdls) _o_vdls(self, _cmd);
-    @autoreleasepool {
-        UIView *v = ((UIViewController *)self).view;
-        UIView *sv = v.superview;
-        if (!v || !sv) return;
-        CGFloat ph = sv.bounds.size.height;
-        CGFloat mh = v.frame.size.height;
-        long long t = DYYYType(self);
-        
-        if (_log < 15) {
-            DLog([NSString stringWithFormat:@"vdls type=%lld selfH=%.1f superH=%.1f", t, mh, ph]);
-            _log++;
-        }
-        
-        if (ph < 800) return;              // 非全屏页
-        if (mh >= ph - 1) return;          // 已经对了，不动
-        if (t != 68) return;               // 非图文，不动
-        
-        // 撑满
+// hook AWEAwemeDetailTableView.layoutSubviews
+static void (*_o_ls)(id, SEL) = NULL;
+static void _m_ls(id self, SEL _cmd) {
+    if (_o_ls) _o_ls(self, _cmd);
+    if (_dyyyInLayout) return;
+    UIView *v = (UIView *)self;
+    UIView *sv = v.superview;
+    if (!sv) return;
+    CGFloat svh = sv.bounds.size.height;
+    if (svh > 800 && v.frame.size.height < svh - 1) {
+        _dyyyInLayout = YES;
         CGRect f = v.frame;
-        f.origin.y = 0;
-        f.size.height = ph;
+        f.size.height = svh;
         v.frame = f;
-        v.clipsToBounds = NO;
-        sv.clipsToBounds = NO;
-        // 关所有祖先的 clip
-        UIView *p = sv.superview;
-        int depth = 0;
-        while (p && depth < 8) {
-            p.clipsToBounds = NO;
-            p = p.superview;
-            depth++;
-        }
-        DLog(@"expanded to %.1f", ph);
+        _dyyyInLayout = NO;
+        if (_log_ls < 5) { DLog([NSString stringWithFormat:@"ls 撑到 %.1f", svh]); _log_ls++; }
     }
+}
+
+// hook baseTableViewBottomInset 归零
+static double (*_o_bti)(id, SEL) = NULL;
+static double _m_bti(id self, SEL _cmd) {
+    double r = _o_bti ? _o_bti(self, _cmd) : 0;
+    if (r > 30.0 && r < 100.0) return 0.0;
+    return r;
 }
 
 %ctor {
     @autoreleasepool {
-        Class c = objc_getClass("AWEPlayInteractionViewController");
-        if (!c) { DLog(@"no class"); return; }
-        Method m = class_getInstanceMethod(c, NSSelectorFromString(@"viewDidLayoutSubviews"));
-        if (m) {
-            _o_vdls = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_vdls);
-            DLog(@"v8 installed");
+        Class c1 = objc_getClass("AWEAwemeDetailTableView");
+        if (c1) {
+            Method m = class_getInstanceMethod(c1, @selector(setFrame:));
+            if (m) { _o_sf = (void(*)(id,SEL,CGRect))method_getImplementation(m); method_setImplementation(m, (IMP)_m_sf); DLog(@"hook setFrame:"); }
+            m = class_getInstanceMethod(c1, @selector(layoutSubviews));
+            if (m) { _o_ls = (void(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_ls); DLog(@"hook layoutSubviews"); }
         } else {
-            DLog(@"no vdls");
+            DLog(@"no TableView class");
         }
+        Class c2 = objc_getClass("AWEAwemeDetailTableViewController");
+        if (c2) {
+            Method m = class_getInstanceMethod(c2, @selector(baseTableViewBottomInset));
+            if (m) { _o_bti = (double(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_bti); DLog(@"hook bti"); }
+        }
+        DLog(@"v9 installed");
     }
 }
