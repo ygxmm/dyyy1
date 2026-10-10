@@ -2380,7 +2380,17 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 
 
 
+
+
 @interface AWEPlayInteractionViewController : UIViewController
+@property (nonatomic, strong) id model;
+@property (nonatomic, strong) id context;
+@property (nonatomic, strong) id richContentContainer;
+@property (nonatomic, weak) id videoDelegate;
+- (id)controllerByProtocol:(id)protocol;
 - (void)viewDidLayoutSubviews;
 - (void)speedButtonTapped:(id)sender;
+- (void)performCommentAction;
+- (void)showSharePanel;
+- (void)performLikeAction;
 @end
