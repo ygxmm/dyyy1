@@ -1647,120 +1647,36 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
     return NO;
 }
 
-// Hook 1: cell 高度——用原生 dataSourceModelForIndexPath 判断图文
-
 // ==========================================
-// 图文页全屏：用图片内容视图的原生 isInFullPage 开关
-// 头文件：AFDImageContentView / BDMultiContentContainer.ImageContentView
-// 都有 @property BOOL isInFullPage;
-// ==========================================
-
-// ==========================================
-// 图文页全屏（用 AwemeHeaders.h 的声明 + %hook）
-
-// ==========================================
-// 详情页全屏：从 TableView.setFrame: 入手
-// 头文件证明 AWEAwemeDetailTableView 重写了 setFrame:——这就是 792 被算回的元凶
-// ==========================================
-@interface AWEAwemeDetailTableView (DYYYFS)
-@property (nonatomic, weak, readonly) AWEAwemeDetailTableViewController *containerVC;
-@end
-@interface AWEAwemeDetailTableViewController (DYYYFS)
-- (id)dataSourceModelForIndexPath:(NSIndexPath *)ip;
-- (double)cellHeight;
-- (double)fixedCellHeight;
-@end
-
-%hook AWEAwemeDetailTableView
-
-- (void)setFrame:(CGRect)frame {
-    // 诊断日志
-    NSLog(@"[DYYY-DIAG] setFrame: h=%.1f containerVC=%@", frame.size.height, self.containerVC);
-    // 只对图文页生效（表 VC 的子 VC 链里有 RichContent）
-    BOOL isRich = NO;
-    AWEAwemeDetailTableViewController *containerVC = self.containerVC;
-    if (containerVC && DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        for (UIViewController *child in containerVC.childViewControllers) {
-            if ([child isKindOfClass:NSClassFromString(@"AWEAwemeDetailCellViewController")]) {
-                for (UIViewController *gc in child.childViewControllers) {
-                    if ([gc isKindOfClass:NSClassFromString(@"RichContentContainerViewController")]) {
-                        isRich = YES;
-                        break;
-                    }
-                }
-                if (isRich) break;
-            }
-        }
-    }
-    if (isRich) {
-        frame.origin.y = 0;
-        frame.size.height = 852.0;
-    }
-    %orig(frame);
-}
-
-%end
-
-// ==========================================
-// Cell 高度：直接改 cellHeight，避开 tableView:heightForRowAtIndexPath:
+// 图文详情页全屏：改"底部 inset 输入"，让抖音自己算到 852
+// 真凶：tableViewBottomInsetForAllPlatform / baseTableViewBottomInset
 // ==========================================
 %hook AWEAwemeDetailTableViewController
 
-- (double)cellHeight {
-    NSLog(@"[DYYY-DIAG] cellHeight called, bool=%@", @(DYYYGetBoolCached(@"DYYYEnableFullScreen")));
+- (double)tableViewBottomInsetForAllPlatform {
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        // 判断图文页
-        for (UIViewController *child in self.childViewControllers) {
-            if ([child isKindOfClass:NSClassFromString(@"AWEAwemeDetailCellViewController")]) {
-                for (UIViewController *gc in child.childViewControllers) {
-                    if ([gc isKindOfClass:NSClassFromString(@"RichContentContainerViewController")]) {
-                        return 852.0;
-                    }
-                }
+        id model = [self currentAweme];
+        if (model) {
+            long long t = [[model valueForKey:@"awemeType"] longLongValue];
+            if (t == 68) {   // 68 = 图文
+                return 0;
             }
         }
     }
     return %orig;
 }
 
-- (double)fixedCellHeight {
+- (double)baseTableViewBottomInset {
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        for (UIViewController *child in self.childViewControllers) {
-            if ([child isKindOfClass:NSClassFromString(@"AWEAwemeDetailCellViewController")]) {
-                for (UIViewController *gc in child.childViewControllers) {
-                    if ([gc isKindOfClass:NSClassFromString(@"RichContentContainerViewController")]) {
-                        return 852.0;
-                    }
-                }
+        id model = [self currentAweme];
+        if (model) {
+            long long t = [[model valueForKey:@"awemeType"] longLongValue];
+            if (t == 68) {
+                return 0;
             }
         }
     }
     return %orig;
-}
-
-%end
-
-// ==========================================
-// 搜索页：只撑 RichContentVC（父容器已经是 852）
-// ==========================================
-%hook RichContentContainerViewController
-
-- (void)viewWillLayoutSubviews {
-    %orig;
-    NSLog(@"[DYYY-DIAG] RichContent viewWillLayoutSubviews, parentH=%.1f myH=%.1f", self.view.superview.bounds.size.height, self.view.frame.size.height);
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    UIView *v = self.view;
-    UIView *sv = v.superview;
-    if (!sv) return;
-    CGFloat parentH = sv.bounds.size.height;
-    if (parentH > 800.0) {
-        CGRect f = v.frame;
-        if (fabs(f.size.height - parentH) > 0.5 || f.origin.y != 0) {
-            f.origin.y = 0;
-            f.size.height = parentH;
-            v.frame = f;
-        }
-    }
 }
 
 %end
