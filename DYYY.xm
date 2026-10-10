@@ -16851,25 +16851,20 @@ static void DYYYRemoveAppLifecycleObservers(void) {
 
     %orig;
 
-    // DYYY修复：搜索页元素栈下移（父容器 745 导致被上抬 60pt）
+    // DYYY修复：搜索页元素栈贴底，与推荐页对齐
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        BOOL isSearchPage = NO;
-        for (UIView *anc = self; anc; anc = anc.superview) {
-            if ([anc.nextResponder isKindOfClass:NSClassFromString(@"AWESearchResultViewController")] ||
-                [anc.nextResponder isKindOfClass:NSClassFromString(@"AWESearchMiddleFeedViewController")] ||
-                [anc.nextResponder isKindOfClass:NSClassFromString(@"AWESearchViewController")]) {
-                isSearchPage = YES;
-                break;
-            }
-        }
-        if (isSearchPage) {
-            static char kDYYYSearchStackAdjustedKey;
-            if (!objc_getAssociatedObject(self, &kDYYYSearchStackAdjustedKey)) {
-                CGFloat offset = (gCurrentTabBarHeight > 0) ? gCurrentTabBarHeight : 60.0;
-                CGRect f = self.frame;
-                f.origin.y += offset;
-                self.frame = f;
-                objc_setAssociatedObject(self, &kDYYYSearchStackAdjustedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        UIViewController *dyyyVC = [DYYYUtils firstAvailableViewControllerFromView:self];
+        if ([dyyyVC isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")]) {
+            NSString *refer = [dyyyVC valueForKey:@"referString"];
+            if ([refer isEqualToString:@"general_search"] ||
+                [refer isEqualToString:@"search_result"] ||
+                [refer isEqualToString:@"search_ecommerce"] ||
+                [refer isEqualToString:@"general_search_scan"]) {
+                if (self.superview) {
+                    CGRect f = self.frame;
+                    f.origin.y = self.superview.frame.size.height - f.size.height;
+                    self.frame = f;
+                }
             }
         }
     }
