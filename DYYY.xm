@@ -16263,22 +16263,17 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
             [refer isEqualToString:@"search_result"] ||
             [refer isEqualToString:@"search_ecommerce"] ||
             [refer isEqualToString:@"general_search_scan"]) {
-            // DYYY修复：把交互层 view 高度撑到 852，整体下移 60pt
-            // 异步 + 一次性标记，避免死循环
-            static char kDYYYSearchViewExpandedKey;
-            if (!objc_getAssociatedObject(self, &kDYYYSearchViewExpandedKey)) {
-                objc_setAssociatedObject(self, &kDYYYSearchViewExpandedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                __weak AWEPlayInteractionViewController *weakSelf = self;
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    __strong AWEPlayInteractionViewController *strongSelf = weakSelf;
-                    if (!strongSelf || !strongSelf.view.superview) return;
-                    CGRect f = strongSelf.view.frame;
-                    if (f.size.height < 800) {
-                        // 只改高度，不动 origin.y，让底部自然向下延伸
-                        f.size.height = 852.0;
-                        strongSelf.view.frame = f;
-                    }
-                });
+            // DYYY修复：搜索页关键元素整体下移 60pt（补回被误减的底栏高度）
+            CGFloat dyyyOffset = (gCurrentTabBarHeight > 0) ? gCurrentTabBarHeight : 60.0;
+            for (UIView *sub in self.view.subviews) {
+                NSString *cls = NSStringFromClass([sub class]);
+                BOOL needShift = [cls isEqualToString:@"AWEElementStackView"] ||
+                                 [cls isEqualToString:@"AWEPlayInteractionProgressContainerView"];
+                if (needShift) {
+                    CGRect f = sub.frame;
+                    f.origin.y += dyyyOffset;
+                    sub.frame = f;
+                }
             }
         }
     }
