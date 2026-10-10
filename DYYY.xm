@@ -16471,7 +16471,7 @@ static char kDYYYFeedTableFullScreenAppliedKey;
 
     if (fabs(CGRectGetHeight(self.frame) - superviewHeight) > 0.5) {
         CGRect frame = self.frame;
-        frame.size.height = superviewHeight;
+        frame.size.height = [UIScreen mainScreen].bounds.size.height;
         self.frame = frame;
     }
 }
