@@ -17242,9 +17242,16 @@ static void DYYYRemoveAppLifecycleObservers(void) {
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
-    // DYYY修复：不再强行把高度改成屏幕倍数，避免污染cell复用池
-    // 导致的详情页/主页视频错位。全屏视觉通过TabBar隐藏逻辑实现。
+    // DYYY修复：不改高度，避免污染分页算法
     %orig(frame);
+}
+
+- (void)layoutSubviews {
+    %orig;
+    // 关键：解除 TableView 的裁剪，让 cell 内撑到 852 的视频溢出显示
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        self.clipsToBounds = NO;
+    }
 }
 
 %end
