@@ -1582,29 +1582,6 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
 
 
 // ==========================================
-// 图文详情页容器撑高到 852（运行时Hook，绕过Logos解析bug）
-// ==========================================
-%ctor {
-    Class dyyyRichCls = objc_getClass("RichContentContainerViewController");
-    if (!dyyyRichCls) return;
-    Method dyyyM = class_getInstanceMethod(dyyyRichCls, @selector(viewDidLayoutSubviews));
-    if (!dyyyM) return;
-    IMP dyyyOrigImp = method_getImplementation(dyyyM);
-    IMP dyyyNewImp = imp_implementationWithBlock(^(id self, SEL _cmd) {
-        ((void (*)(id, SEL))dyyyOrigImp)(self, _cmd);
-        if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-        UIView *v = [self valueForKey:@"view"];
-        if (!v) return;
-        CGRect f = v.frame;
-        if (fabs(f.size.height - 792.0) < 1.0) {
-            f.size.height = 852.0;
-            v.frame = f;
-        }
-    });
-    method_setImplementation(dyyyM, dyyyNewImp);
-}
-
-// ==========================================
 // 图文页全屏：用头文件原生方法，不硬改 frame
 // ==========================================
 static BOOL DYYYIsRichPageVC(UIViewController *vc) {
@@ -1702,3 +1679,44 @@ static BOOL DYYYIsRichPageVC(UIViewController *vc) {
         }));
     }
 }
+
+// ==========================================
+// 图文cell撑高：只对子VC里有RichContent的cell生效
+// 视频cell里没有RichContent → 跳过 → 不卡死
+// ==========================================
+%ctor {
+    Class cls = objc_getClass("AWEAwemeDetailCellViewController");
+    if (!cls) return;
+    Method m = class_getInstanceMethod(cls, @selector(viewDidLayoutSubviews));
+    if (!m) return;
+    IMP orig = method_getImplementation(m);
+    method_setImplementation(m, imp_implementationWithBlock(^(id self) {
+        ((void (*)(id, SEL))orig)(self, @selector(viewDidLayoutSubviews));
+        if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+
+        // 只对图文cell生效：检查子VC里有没有RichContent
+        static char kKey;
+        NSNumber *cached = objc_getAssociatedObject(self, &kKey);
+        if (!cached) {
+            BOOL isRichCell = NO;
+            for (UIViewController *child in [(UIViewController *)self childViewControllers]) {
+                if ([child isKindOfClass:NSClassFromString(@"RichContentContainerViewController")]) {
+                    isRichCell = YES;
+                    break;
+                }
+            }
+            cached = @(isRichCell);
+            objc_setAssociatedObject(self, &kKey, cached, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        if (!cached.boolValue) return;
+
+        UIView *v = [self valueForKey:@"view"];
+        if (!v) return;
+        // 关键：只有当前高度不是 852 时才改，避免死循环
+        if (fabs(v.frame.size.height - 852.0) < 0.5) return;
+        CGRect f = v.frame;
+        f.size.height = 852.0;
+        v.frame = f;
+    }));
+}
+
