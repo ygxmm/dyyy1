@@ -1647,38 +1647,95 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
     return NO;
 }
 
-// ==========================================
-// 只对详情页打开"全屏 cell 显示"，搜索页不动
-// ==========================================
+static void DLog(NSString *s) {
+    @autoreleasepool {
+        NSArray *p = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+        if (!p.count) return;
+        FILE *fp = fopen([[p.firstObject stringByAppendingPathComponent:@"dyyy_fs.log"] UTF8String], "a");
+        if (!fp) return;
+        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
+        fclose(fp);
+    }
+}
+
+static BOOL DYYYIsRich(id vc) {
+    @try {
+        id m = [vc valueForKey:@"isInDetailFeed"];
+        BOOL detail = m ? [m boolValue] : NO;
+        // 没 detail 就当非详情页
+        if (!detail) return NO;
+        // 再判断是不是图文（可选）
+        return YES;
+    } @catch (__unused NSException *e) {}
+    return NO;
+}
+
+// ---- hook 1: shouldAdjustFullScreenCellDisplay ----
 static BOOL (*_o_sa)(id, SEL) = NULL;
 static int _log_sa = 0;
-
 static BOOL _m_sa(id self, SEL _cmd) {
     BOOL orig = _o_sa ? _o_sa(self, _cmd) : NO;
-    BOOL inDetail = NO;
-    @try {
-        id v = [self valueForKey:@"isInDetailFeed"];
-        inDetail = v ? [v boolValue] : NO;
-    } @catch (__unused NSException *e) {}
-
-    if (_log_sa < 10) {
-        NSLog(@"[DYYY-FS] shouldAdjustFullScreen orig=%d inDetail=%d -> %d",
-              orig, inDetail, inDetail ? 1 : orig);
-        _log_sa++;
-    }
-
-    if (inDetail) return YES;
+    BOOL detail = NO;
+    @try { id v = [self valueForKey:@"isInDetailFeed"]; detail = v ? [v boolValue] : NO; } @catch (__unused NSException *e) {}
+    if (_log_sa < 20) { DLog([NSString stringWithFormat:@"sa orig=%d detail=%d", orig, detail]); _log_sa++; }
+    if (detail) return YES;
     return orig;
+}
+
+// ---- hook 2: viewDidLayoutSubviews 直接撑 view ----
+static void (*_o_vdls)(id, SEL) = NULL;
+static int _log_v = 0;
+static void _m_vdls(id self, SEL _cmd) {
+    if (_o_vdls) _o_vdls(self, _cmd);
+    @autoreleasepool {
+        UIView *v = ((UIViewController *)self).view;
+        UIView *sv = v.superview;
+        if (!v || !sv) return;
+        CGFloat ph = sv.bounds.size.height;
+        CGFloat mh = v.frame.size.height;
+        BOOL isDetail = NO;
+        @try { id x = [self valueForKey:@"isInDetailFeed"]; isDetail = x ? [x boolValue] : NO; } @catch (__unused NSException *e) {}
+        if (_log_v < 20) {
+            DLog([NSString stringWithFormat:@"vdls detail=%d selfH=%.1f superH=%.1f", isDetail, mh, ph]);
+            _log_v++;
+        }
+        if (!isDetail) return;
+        if (ph > 800 && mh < ph - 1) {
+            CGRect f = v.frame;
+            f.origin.y = 0;
+            f.size.height = ph;
+            v.frame = f;
+            v.clipsToBounds = NO;
+            sv.clipsToBounds = NO;
+            if (sv.superview) sv.superview.clipsToBounds = NO;
+        }
+    }
 }
 
 %ctor {
     @autoreleasepool {
         Class c = objc_getClass("AWEPlayInteractionViewController");
-        if (!c) { NSLog(@"[DYYY-FS] class not found"); return; }
-        Method m = class_getInstanceMethod(c, NSSelectorFromString(@"shouldAdjustFullScreenCellDisplay"));
-        if (!m) { NSLog(@"[DYYY-FS] method not found"); return; }
-        _o_sa = (BOOL(*)(id,SEL))method_getImplementation(m);
-        method_setImplementation(m, (IMP)_m_sa);
-        NSLog(@"[DYYY-FS] v6 installed");
+        if (!c) { DLog(@"class NOT FOUND"); return; }
+        DLog(@"class found");
+
+        Method m1 = class_getInstanceMethod(c, NSSelectorFromString(@"shouldAdjustFullScreenCellDisplay"));
+        if (m1) {
+            _o_sa = (BOOL(*)(id,SEL))method_getImplementation(m1);
+            method_setImplementation(m1, (IMP)_m_sa);
+            DLog(@"hooked sa");
+        } else {
+            DLog(@"sa NOT FOUND");
+        }
+
+        Method m2 = class_getInstanceMethod(c, NSSelectorFromString(@"viewDidLayoutSubviews"));
+        if (m2) {
+            _o_vdls = (void(*)(id,SEL))method_getImplementation(m2);
+            method_setImplementation(m2, (IMP)_m_vdls);
+            DLog(@"hooked vdls");
+        } else {
+            DLog(@"vdls NOT FOUND");
+        }
+
+        DLog(@"v7 installed");
     }
 }
