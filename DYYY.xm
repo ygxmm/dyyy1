@@ -17893,10 +17893,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 // ==========================================
 // 图文详情页容器撑高到 852（与视频详情页对齐）
 // ==========================================
-// 覆盖 DYYY.xm 内部的 @class 前向声明，让 Logos 识别它继承自 UIViewController
-@interface RichContentContainerViewController : UIViewController
-@end
-
 %hook RichContentContainerViewController
 
 - (void)viewDidLayoutSubviews {
