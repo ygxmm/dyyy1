@@ -16252,32 +16252,25 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         }
     }
 
+    // DYYY修复：搜索页强制撑高到父视图高度（852），整体UI下移60pt
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        NSString *refer = [self valueForKey:@"referString"];
+        BOOL isSearchPage = [refer isEqualToString:@"general_search"] ||
+                            [refer isEqualToString:@"search_result"] ||
+                            [refer isEqualToString:@"search_ecommerce"] ||
+                            [refer isEqualToString:@"general_search_scan"];
+        if (isSearchPage && self.view.superview) {
+            CGFloat parentHeight = self.view.superview.frame.size.height;
+            if (parentHeight > 800) {
+                frame.size.height = parentHeight;
+            }
+        }
+    }
+
     if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
         self.view.frame = frame;
     }
 
-    // DYYY修复：搜索页view撑高到852，整体UI下移60pt
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        if (fabs(self.view.frame.size.height - 792.0) < 1.0) {
-            NSString *refer = [self valueForKey:@"referString"];
-            BOOL isSearchPage = [refer isEqualToString:@"general_search"] ||
-                                [refer isEqualToString:@"search_result"] ||
-                                [refer isEqualToString:@"search_ecommerce"] ||
-                                [refer isEqualToString:@"general_search_scan"];
-            if (isSearchPage) {
-                __weak AWEPlayInteractionViewController *weakSelf = self;
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    __strong AWEPlayInteractionViewController *strongSelf = weakSelf;
-                    if (!strongSelf) return;
-                    CGRect f = strongSelf.view.frame;
-                    if (fabs(f.size.height - 792.0) < 1.0) {
-                        f.size.height = 852.0;
-                        strongSelf.view.frame = f;
-                    }
-                });
-            }
-        }
-    }
 }
 
 - (void)viewDidDisappear:(BOOL)animated {
