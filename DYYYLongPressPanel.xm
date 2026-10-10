@@ -1603,3 +1603,102 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
     });
     method_setImplementation(dyyyM, dyyyNewImp);
 }
+
+// ==========================================
+// 图文页全屏：用头文件原生方法，不硬改 frame
+// ==========================================
+static BOOL DYYYIsRichPageVC(UIViewController *vc) {
+    if (!vc) return NO;
+    static char kKey;
+    NSNumber *c = objc_getAssociatedObject(vc, &kKey);
+    if (c) return c.boolValue;
+    BOOL isRich = NO;
+    for (UIViewController *child in vc.childViewControllers) {
+        if ([child isKindOfClass:NSClassFromString(@"AWEAwemeDetailCellViewController")]) {
+            for (UIViewController *gc in child.childViewControllers) {
+                if ([gc isKindOfClass:NSClassFromString(@"RichContentContainerViewController")]) {
+                    isRich = YES;
+                    break;
+                }
+            }
+            if (isRich) break;
+        }
+    }
+    objc_setAssociatedObject(vc, &kKey, @(isRich), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return isRich;
+}
+
+%ctor {
+    Class cls = objc_getClass("RichContentContainerViewController");
+    if (!cls) return;
+
+    // 1. getImageContentInsets → 0
+    Method m1 = class_getInstanceMethod(cls, @selector(getImageContentInsets));
+    if (m1) {
+        IMP o1 = method_getImplementation(m1);
+        method_setImplementation(m1, imp_implementationWithBlock(^(id self) {
+            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return UIEdgeInsetsZero;
+            return ((UIEdgeInsets (*)(id, SEL))o1)(self, @selector(getImageContentInsets));
+        }));
+    }
+
+    // 2. getImageContentTopInset → 0
+    Method m2 = class_getInstanceMethod(cls, @selector(getImageContentTopInset));
+    if (m2) {
+        IMP o2 = method_getImplementation(m2);
+        method_setImplementation(m2, imp_implementationWithBlock(^(id self) {
+            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
+            return ((double (*)(id, SEL))o2)(self, @selector(getImageContentTopInset));
+        }));
+    }
+
+    // 3. updateShrinkState:insets:animated: → insets 归零
+    Method m3 = class_getInstanceMethod(cls, @selector(updateShrinkState:insets:animated:));
+    if (m3) {
+        IMP o3 = method_getImplementation(m3);
+        method_setImplementation(m3, imp_implementationWithBlock(^(id self, BOOL state, UIEdgeInsets insets, BOOL animated) {
+            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) insets = UIEdgeInsetsZero;
+            ((void (*)(id, SEL, BOOL, UIEdgeInsets, BOOL))o3)(self, @selector(updateShrinkState:insets:animated:), state, insets, animated);
+        }));
+    }
+
+    // 4. 兜底：viewDidLayoutSubviews 里判断 852（不是 792）
+    Method m4 = class_getInstanceMethod(cls, @selector(viewDidLayoutSubviews));
+    if (m4) {
+        IMP o4 = method_getImplementation(m4);
+        method_setImplementation(m4, imp_implementationWithBlock(^(id self) {
+            ((void (*)(id, SEL))o4)(self, @selector(viewDidLayoutSubviews));
+            if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+            UIView *v = [self valueForKey:@"view"];
+            if (!v) return;
+            if (fabs(v.frame.size.height - 852.0) < 0.5) return;  // 已是 852 跳过
+            CGRect f = v.frame;
+            f.size.height = 852.0;
+            v.frame = f;
+        }));
+    }
+}
+
+// 同样对内部列表 VC 用原生方法
+%ctor {
+    Class cls = NSClassFromString(@"AWEMultiContentImpl.RichContentNewListViewController");
+    if (!cls) return;
+
+    Method m1 = class_getInstanceMethod(cls, @selector(getImageContentInsets));
+    if (m1) {
+        IMP o1 = method_getImplementation(m1);
+        method_setImplementation(m1, imp_implementationWithBlock(^(id self) {
+            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return UIEdgeInsetsZero;
+            return ((UIEdgeInsets (*)(id, SEL))o1)(self, @selector(getImageContentInsets));
+        }));
+    }
+
+    Method m2 = class_getInstanceMethod(cls, @selector(getImageContentTopInset));
+    if (m2) {
+        IMP o2 = method_getImplementation(m2);
+        method_setImplementation(m2, imp_implementationWithBlock(^(id self) {
+            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
+            return ((double (*)(id, SEL))o2)(self, @selector(getImageContentTopInset));
+        }));
+    }
+}
