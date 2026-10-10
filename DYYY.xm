@@ -17888,3 +17888,22 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
         }
     }
 }
+
+
+// ==========================================
+// 图文详情页容器撑高到 852（与视频详情页对齐）
+// ==========================================
+%hook RichContentContainerViewController
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        CGRect f = self.view.frame;
+        if (fabs(f.size.height - 792.0) < 1.0) {
+            f.size.height = 852.0;
+            self.view.frame = f;
+        }
+    }
+}
+
+%end
