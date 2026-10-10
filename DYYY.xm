@@ -16255,6 +16255,28 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
     if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
         self.view.frame = frame;
     }
+
+    // DYYY修复：搜索页元素栈贴底（在 VC 布局回调里改子视图 frame，不会死循环）
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        NSString *refer = [self valueForKey:@"referString"];
+        if ([refer isEqualToString:@"general_search"] ||
+            [refer isEqualToString:@"search_result"] ||
+            [refer isEqualToString:@"search_ecommerce"] ||
+            [refer isEqualToString:@"general_search_scan"]) {
+            Class stackClass = NSClassFromString(@"AWEElementStackView");
+            for (UIView *sub in [DYYYUtils findAllSubviewsOfClass:stackClass inContainer:self.view]) {
+                CGRect f = sub.frame;
+                // 只处理左侧栈（x 小、宽度大），避开右侧栈
+                if (f.origin.x < 100 && f.size.width > 150 && f.size.height > 0) {
+                    CGFloat targetY = self.view.bounds.size.height - f.size.height;
+                    if (fabs(f.origin.y - targetY) > 0.5) {
+                        f.origin.y = targetY;
+                        sub.frame = f;
+                    }
+                }
+            }
+        }
+    }
 }
 
 - (void)viewDidDisappear:(BOOL)animated {
