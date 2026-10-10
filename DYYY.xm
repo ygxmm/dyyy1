@@ -16341,15 +16341,16 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 - (void)viewDidLayoutSubviews {
     %orig;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIView *contentView = self.contentView;
-        if (contentView && contentView.superview) {
-            CGRect frame = contentView.frame;
-            CGFloat parentHeight = contentView.superview.frame.size.height;
-
-            // DYYY修复：不用==精确比较，只要小于父容器高度就撑满
-            if (frame.size.height < parentHeight) {
-                frame.size.height = parentHeight;
-                contentView.frame = frame;
+        // DYYY修复：直接改主视图高度到屏幕高度，并解除裁剪
+        // 里面的 TTMetalViewVP 是 clips=0，会自动溢出到 852
+        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+        UIView *vw = self.view;
+        if (vw) {
+            vw.clipsToBounds = NO;
+            if (fabs(CGRectGetHeight(vw.frame) - screenH) > 0.5) {
+                CGRect f = vw.frame;
+                f.size.height = screenH;
+                vw.frame = f;
             }
         }
     }
@@ -16387,15 +16388,16 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 - (void)viewDidLayoutSubviews {
     %orig;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIView *contentView = self.contentView;
-        if (contentView && contentView.superview) {
-            CGRect frame = contentView.frame;
-            CGFloat parentHeight = contentView.superview.frame.size.height;
-
-            // DYYY修复：不用==精确比较，只要小于父容器高度就撑满
-            if (frame.size.height < parentHeight) {
-                frame.size.height = parentHeight;
-                contentView.frame = frame;
+        // DYYY修复：直接改主视图高度到屏幕高度，并解除裁剪
+        // 里面的 TTMetalViewVP 是 clips=0，会自动溢出到 852
+        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+        UIView *vw = self.view;
+        if (vw) {
+            vw.clipsToBounds = NO;
+            if (fabs(CGRectGetHeight(vw.frame) - screenH) > 0.5) {
+                CGRect f = vw.frame;
+                f.size.height = screenH;
+                vw.frame = f;
             }
         }
     }
