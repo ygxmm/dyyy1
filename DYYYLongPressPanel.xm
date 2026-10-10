@@ -1624,73 +1624,70 @@ static BOOL DYYYIsRichPageVC(UIViewController *vc) {
 //      上层背景 clearColor → 溢出的内容能看见
 // 不死循环，因为完全不碰 frame
 // ==========================================
+
+// ==========================================
+// 详情页全屏：两步组合
+// 1. inset 归零 → 抖音自己把 TableView 撑到 852
+// 2. RichContentVC 撑到父容器 → 内容填满
+// 视频页没有 RichContentVC → 不触发
+// ==========================================
 %ctor {
-    // RichContentVC：解除裁剪，让内容溢出到底部
+    Class cls = objc_getClass("AWEAwemeDetailTableViewController");
+    if (!cls) return;
+
+    // 1. baseTableViewBottomInset → 0
+    Method m1 = class_getInstanceMethod(cls, @selector(baseTableViewBottomInset));
+    if (m1) {
+        IMP o1 = method_getImplementation(m1);
+        method_setImplementation(m1, imp_implementationWithBlock(^(id self) {
+            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
+            return ((double (*)(id, SEL))o1)(self, @selector(baseTableViewBottomInset));
+        }));
+    }
+
+    // 2. tableViewBottomInsetForAllPlatform → 0
+    Method m2 = class_getInstanceMethod(cls, @selector(tableViewBottomInsetForAllPlatform));
+    if (m2) {
+        IMP o2 = method_getImplementation(m2);
+        method_setImplementation(m2, imp_implementationWithBlock(^(id self) {
+            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
+            return ((double (*)(id, SEL))o2)(self, @selector(tableViewBottomInsetForAllPlatform));
+        }));
+    }
+
+    // 3. tableViewBottomMargin → 0
+    Method m3 = class_getInstanceMethod(cls, @selector(tableViewBottomMargin));
+    if (m3) {
+        IMP o3 = method_getImplementation(m3);
+        method_setImplementation(m3, imp_implementationWithBlock(^(id self) {
+            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
+            return ((double (*)(id, SEL))o3)(self, @selector(tableViewBottomMargin));
+        }));
+    }
+}
+
+// ==========================================
+// RichContentVC 撑到父容器高度（只读父容器高度，不改 TableView）
+// 视频页没有这个 VC → 天然不触发
+// ==========================================
+%ctor {
     Class cls = objc_getClass("RichContentContainerViewController");
-    if (cls) {
-        Method m1 = class_getInstanceMethod(cls, @selector(viewDidLayoutSubviews));
-        if (m1) {
-            IMP o1 = method_getImplementation(m1);
-            method_setImplementation(m1, imp_implementationWithBlock(^(id self) {
-                ((void (*)(id, SEL))o1)(self, @selector(viewDidLayoutSubviews));
-                if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-                UIView *v = [self valueForKey:@"view"];
-                if (!v) return;
-                // 解除裁剪，让底部内容溢出显示
-                if (v.clipsToBounds) v.clipsToBounds = NO;
-                if (v.layer.masksToBounds) v.layer.masksToBounds = NO;
-            }));
-        }
-    }
+    if (!cls) return;
+    Method m = class_getInstanceMethod(cls, @selector(viewDidLayoutSubviews));
+    if (!m) return;
+    IMP orig = method_getImplementation(m);
+    method_setImplementation(m, imp_implementationWithBlock(^(id self) {
+        ((void (*)(id, SEL))orig)(self, @selector(viewDidLayoutSubviews));
+        if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
 
-    // DetailCellVC：解除裁剪 + 背景透明
-    Class cls2 = objc_getClass("AWEAwemeDetailCellViewController");
-    if (cls2) {
-        Method m2 = class_getInstanceMethod(cls2, @selector(viewDidLayoutSubviews));
-        if (m2) {
-            IMP o2 = method_getImplementation(m2);
-            method_setImplementation(m2, imp_implementationWithBlock(^(id self) {
-                ((void (*)(id, SEL))o2)(self, @selector(viewDidLayoutSubviews));
-                if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-                UIView *v = [self valueForKey:@"view"];
-                if (!v) return;
-                // 只对图文页生效（model.awemeType == 68）
-                id model = nil;
-                @try { model = [self valueForKey:@"model"]; } @catch (__unused NSException *e) {}
-                BOOL isRich = NO;
-                if (model) {
-                    @try {
-                        long long t = [[model valueForKey:@"awemeType"] longLongValue];
-                        isRich = (t == 68);
-                    } @catch (__unused NSException *e) {}
-                }
-                if (!isRich) return;
-                // 解除裁剪
-                if (v.clipsToBounds) v.clipsToBounds = NO;
-                if (v.layer.masksToBounds) v.layer.masksToBounds = NO;
-                // 背景透明
-                v.backgroundColor = [UIColor clearColor];
-            }));
-        }
-    }
+        UIView *v = [self valueForKey:@"view"];
+        if (!v || !v.superview) return;
+        CGFloat parentH = v.superview.frame.size.height;
+        if (parentH < 800) return;   // 父容器不够大，跳过
+        if (fabs(v.frame.size.height - parentH) < 0.5) return;  // 已一致，跳过
 
-    // TableView 上层：背景透明
-    Class cls3 = objc_getClass("AWEAwemeDetailTableViewController");
-    if (cls3) {
-        Method m3 = class_getInstanceMethod(cls3, @selector(viewDidLayoutSubviews));
-        if (m3) {
-            IMP o3 = method_getImplementation(m3);
-            method_setImplementation(m3, imp_implementationWithBlock(^(id self) {
-                ((void (*)(id, SEL))o3)(self, @selector(viewDidLayoutSubviews));
-                if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-                UIView *v = [self valueForKey:@"view"];
-                if (!v) return;
-                v.backgroundColor = [UIColor clearColor];
-                // 遍历子视图解除裁剪
-                for (UIView *sub in v.subviews) {
-                    if (sub.clipsToBounds) sub.clipsToBounds = NO;
-                }
-            }));
-        }
-    }
+        CGRect f = v.frame;
+        f.size.height = parentH;
+        v.frame = f;
+    }));
 }
