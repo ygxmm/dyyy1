@@ -1647,97 +1647,90 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
     return NO;
 }
 
-// ==========================================
-// 动态沙盒日志：写到 App 自己的 Documents
-// 每次 open-append-close，不写死路径
-// ==========================================
 #include <stdarg.h>
 #include <stdio.h>
+#import <objc/message.h>
 
 static void DYYYFSLog(NSString *fmt, ...) {
     @autoreleasepool {
-        va_list ap;
-        va_start(ap, fmt);
+        va_list ap; va_start(ap, fmt);
         NSString *body = [[NSString alloc] initWithFormat:fmt arguments:ap];
         va_end(ap);
-
-        NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-        if (paths.count == 0) return;
-        NSString *docs = paths.firstObject;
-        if (docs.length == 0) return;
-        NSString *path = [docs stringByAppendingPathComponent:@"dyyy_fs.log"];
-
-        NSDateFormatter *df = [[NSDateFormatter alloc] init];
-        [df setDateFormat:@"HH:mm:ss.SSS"];
-        NSString *line = [NSString stringWithFormat:@"[%@] %@\n",
-                          [df stringFromDate:[NSDate date]], body];
-
+        NSArray *p = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+        if (!p.count) return;
+        NSString *path = [p.firstObject stringByAppendingPathComponent:@"dyyy_fs.log"];
         FILE *fp = fopen(path.UTF8String, "a");
         if (!fp) return;
-        fputs(line.UTF8String, fp);
+        fputs(([body stringByAppendingString:@"\n"]).UTF8String, fp);
         fclose(fp);
     }
 }
 
-// ==========================================
-// runtime 手动 swizzle，绕开 logos %hook
-// ==========================================
-static double (*_dyyy_orig_tvi)(id, SEL) = NULL;
-static double _dyyy_my_tvi(id self, SEL _cmd) {
-    double r = _dyyy_orig_tvi ? _dyyy_orig_tvi(self, _cmd) : 0;
-    DYYYFSLog(@"InsetForAllPlatform=%.1f", r);
+static double (*_dyyy_bti)(id, SEL) = NULL;
+static double _my_bti(id self, SEL _cmd) {
+    double r = _dyyy_bti ? _dyyy_bti(self, _cmd) : 0;
     if (r > 30.0 && r < 100.0) return 0.0;
     return r;
 }
 
-static double (*_dyyy_orig_bti)(id, SEL) = NULL;
-static double _dyyy_my_bti(id self, SEL _cmd) {
-    double r = _dyyy_orig_bti ? _dyyy_orig_bti(self, _cmd) : 0;
-    DYYYFSLog(@"baseInset=%.1f", r);
-    if (r > 30.0 && r < 100.0) return 0.0;
+static double (*_dyyy_chai)(id, SEL, long long) = NULL;
+static double _my_chai(id self, SEL _cmd, long long idx) {
+    double r = _dyyy_chai ? _dyyy_chai(self, _cmd, idx) : 0;
+    DYYYFSLog(@"cellHeight idx=%lld h=%.1f", idx, r);
+    if (r > 780.0 && r < 810.0) {
+        @try {
+            id m = ((id(*)(id,SEL,long long))objc_msgSend)(self, NSSelectorFromString(@"safelyModelForRow:"), idx);
+            if (m) {
+                long long t = [[m valueForKey:@"awemeType"] longLongValue];
+                DYYYFSLog(@"  type=%lld", t);
+                if (t == 68) { DYYYFSLog(@"  ->852"); return 852.0; }
+            }
+        } @catch (__unused NSException *e) {}
+    }
     return r;
 }
 
-static double (*_dyyy_orig_tbm)(id, SEL) = NULL;
-static double _dyyy_my_tbm(id self, SEL _cmd) {
-    double r = _dyyy_orig_tbm ? _dyyy_orig_tbm(self, _cmd) : 0;
-    DYYYFSLog(@"BottomMargin=%.1f", r);
+static double (*_dyyy_hfr)(id, SEL, id, id) = NULL;
+static double _my_hfr(id self, SEL _cmd, id tv, id ip) {
+    double r = _dyyy_hfr ? _dyyy_hfr(self, _cmd, tv, ip) : 0;
+    DYYYFSLog(@"hfr=%.1f", r);
     return r;
+}
+
+static void (*_dyyy_vdls)(id, SEL) = NULL;
+static void _my_vdls(id self, SEL _cmd) {
+    if (_dyyy_vdls) _dyyy_vdls(self, _cmd);
+    @autoreleasepool {
+        UIView *v = [(UIViewController *)self view];
+        UIView *sv = v.superview;
+        if (!v || !sv) return;
+        CGFloat ph = sv.bounds.size.height;
+        CGFloat mh = v.frame.size.height;
+        if (ph > 800 && mh < ph - 1) {
+            DYYYFSLog(@"cellVC.view %.1f -> %.1f", mh, ph);
+            CGRect f = v.frame; f.origin.y = 0; f.size.height = ph;
+            v.frame = f;
+        }
+    }
 }
 
 %ctor {
     @autoreleasepool {
-        Class cls = objc_getClass("AWEAwemeDetailTableViewController");
-        if (!cls) {
-            DYYYFSLog(@"class not found");
-            return;
+        Class c1 = objc_getClass("AWEAwemeDetailTableViewController");
+        if (c1) {
+            Method m;
+            m = class_getInstanceMethod(c1, NSSelectorFromString(@"baseTableViewBottomInset"));
+            if (m) { _dyyy_bti = (double(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_my_bti); }
+            m = class_getInstanceMethod(c1, NSSelectorFromString(@"cellHeightAtIndex:"));
+            if (m) { _dyyy_chai = (double(*)(id,SEL,long long))method_getImplementation(m); method_setImplementation(m, (IMP)_my_chai); }
+            m = class_getInstanceMethod(c1, NSSelectorFromString(@"tableView:heightForRowAtIndexPath:"));
+            if (m) { _dyyy_hfr = (double(*)(id,SEL,id,id))method_getImplementation(m); method_setImplementation(m, (IMP)_my_hfr); }
         }
-
-        Method m1 = class_getInstanceMethod(cls, NSSelectorFromString(@"tableViewBottomInsetForAllPlatform"));
-        if (m1) {
-            _dyyy_orig_tvi = (double(*)(id, SEL))method_getImplementation(m1);
-            method_setImplementation(m1, (IMP)_dyyy_my_tvi);
-            DYYYFSLog(@"hooked tvi");
-        } else {
-            DYYYFSLog(@"tvi not found");
+        Class c2 = objc_getClass("AWEAwemeDetailCellViewController");
+        if (c2) {
+            Method m = class_getInstanceMethod(c2, NSSelectorFromString(@"viewDidLayoutSubviews"));
+            if (m) { _dyyy_vdls = (void(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_my_vdls); }
         }
-
-        Method m2 = class_getInstanceMethod(cls, NSSelectorFromString(@"baseTableViewBottomInset"));
-        if (m2) {
-            _dyyy_orig_bti = (double(*)(id, SEL))method_getImplementation(m2);
-            method_setImplementation(m2, (IMP)_dyyy_my_bti);
-            DYYYFSLog(@"hooked bti");
-        } else {
-            DYYYFSLog(@"bti not found");
-        }
-
-        Method m3 = class_getInstanceMethod(cls, NSSelectorFromString(@"tableViewBottomMargin"));
-        if (m3) {
-            _dyyy_orig_tbm = (double(*)(id, SEL))method_getImplementation(m3);
-            method_setImplementation(m3, (IMP)_dyyy_my_tbm);
-            DYYYFSLog(@"hooked tbm");
-        }
-
-        DYYYFSLog(@"追加all installed");
+        DYYYFSLog(@"v3 installed");
     }
 }
