@@ -1694,25 +1694,20 @@ static BOOL DYYYIsRichPageVC(UIViewController *vc) {
         ((void (*)(id, SEL))orig)(self, @selector(viewDidLayoutSubviews));
         if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
 
-        // 只对图文cell生效：检查子VC里有没有RichContent
-        static char kKey;
-        NSNumber *cached = objc_getAssociatedObject(self, &kKey);
-        if (!cached) {
-            BOOL isRichCell = NO;
-            for (UIViewController *child in [(UIViewController *)self childViewControllers]) {
-                if ([child isKindOfClass:NSClassFromString(@"RichContentContainerViewController")]) {
-                    isRichCell = YES;
-                    break;
-                }
-            }
-            cached = @(isRichCell);
-            objc_setAssociatedObject(self, &kKey, cached, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        if (!cached.boolValue) return;
+        // 直接读 model.awemeType 原生字段：68 = 图文/图集
+        id model = nil;
+        @try { model = [self valueForKey:@"model"]; } @catch (__unused NSException *e) {}
+        if (!model) return;
+
+        long long awemeType = 0;
+        @try {
+            awemeType = [[model valueForKey:@"awemeType"] longLongValue];
+        } @catch (__unused NSException *e) { return; }
+        if (awemeType != 68) return;
 
         UIView *v = [self valueForKey:@"view"];
         if (!v) return;
-        // 关键：只有当前高度不是 852 时才改，避免死循环
+        // 高度判断避免死循环：已经是 852 就跳过
         if (fabs(v.frame.size.height - 852.0) < 0.5) return;
         CGRect f = v.frame;
         f.size.height = 852.0;
