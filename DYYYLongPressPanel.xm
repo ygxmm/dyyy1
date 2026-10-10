@@ -1605,113 +1605,53 @@ static BOOL DYYYIsRichPageVC(UIViewController *vc) {
     return isRich;
 }
 
+
+// ==========================================
+// 详情页全屏：只改 inset 归零，抖音自己算高度
+// 图文/视频、推荐/搜索 全部共用同一个 VC
+// 不碰 view.frame → 不会死循环
+// ==========================================
 %ctor {
-    Class cls = objc_getClass("RichContentContainerViewController");
+    Class cls = objc_getClass("AWEAwemeDetailTableViewController");
     if (!cls) return;
 
-    // 1. getImageContentInsets → 0
-    Method m1 = class_getInstanceMethod(cls, @selector(getImageContentInsets));
+    // 1. baseTableViewBottomInset → 0
+    Method m1 = class_getInstanceMethod(cls, @selector(baseTableViewBottomInset));
     if (m1) {
         IMP o1 = method_getImplementation(m1);
         method_setImplementation(m1, imp_implementationWithBlock(^(id self) {
-            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return UIEdgeInsetsZero;
-            return ((UIEdgeInsets (*)(id, SEL))o1)(self, @selector(getImageContentInsets));
+            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
+            return ((double (*)(id, SEL))o1)(self, @selector(baseTableViewBottomInset));
         }));
     }
 
-    // 2. getImageContentTopInset → 0
-    Method m2 = class_getInstanceMethod(cls, @selector(getImageContentTopInset));
+    // 2. tableViewBottomInsetForAllPlatform → 0
+    Method m2 = class_getInstanceMethod(cls, @selector(tableViewBottomInsetForAllPlatform));
     if (m2) {
         IMP o2 = method_getImplementation(m2);
         method_setImplementation(m2, imp_implementationWithBlock(^(id self) {
             if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
-            return ((double (*)(id, SEL))o2)(self, @selector(getImageContentTopInset));
+            return ((double (*)(id, SEL))o2)(self, @selector(tableViewBottomInsetForAllPlatform));
         }));
     }
 
-    // 3. updateShrinkState:insets:animated: → insets 归零
-    Method m3 = class_getInstanceMethod(cls, @selector(updateShrinkState:insets:animated:));
+    // 3. tableViewBottomInsetForAllPlatform:(id) → 0
+    Method m3 = class_getInstanceMethod(cls, @selector(tableViewBottomInsetForAllPlatform:));
     if (m3) {
         IMP o3 = method_getImplementation(m3);
-        method_setImplementation(m3, imp_implementationWithBlock(^(id self, BOOL state, UIEdgeInsets insets, BOOL animated) {
-            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) insets = UIEdgeInsetsZero;
-            ((void (*)(id, SEL, BOOL, UIEdgeInsets, BOOL))o3)(self, @selector(updateShrinkState:insets:animated:), state, insets, animated);
+        method_setImplementation(m3, imp_implementationWithBlock(^(id self, id arg) {
+            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
+            return ((double (*)(id, SEL, id))o3)(self, @selector(tableViewBottomInsetForAllPlatform:), arg);
         }));
     }
 
-    // 4. 兜底：viewDidLayoutSubviews 里判断 852（不是 792）
-    Method m4 = class_getInstanceMethod(cls, @selector(viewDidLayoutSubviews));
+    // 4. tableViewBottomMargin → 0
+    Method m4 = class_getInstanceMethod(cls, @selector(tableViewBottomMargin));
     if (m4) {
         IMP o4 = method_getImplementation(m4);
         method_setImplementation(m4, imp_implementationWithBlock(^(id self) {
-            ((void (*)(id, SEL))o4)(self, @selector(viewDidLayoutSubviews));
-            if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-            UIView *v = [self valueForKey:@"view"];
-            if (!v) return;
-            if (fabs(v.frame.size.height - 852.0) < 0.5) return;  // 已是 852 跳过
-            CGRect f = v.frame;
-            f.size.height = 852.0;
-            v.frame = f;
-        }));
-    }
-}
-
-// 同样对内部列表 VC 用原生方法
-%ctor {
-    Class cls = NSClassFromString(@"AWEMultiContentImpl.RichContentNewListViewController");
-    if (!cls) return;
-
-    Method m1 = class_getInstanceMethod(cls, @selector(getImageContentInsets));
-    if (m1) {
-        IMP o1 = method_getImplementation(m1);
-        method_setImplementation(m1, imp_implementationWithBlock(^(id self) {
-            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return UIEdgeInsetsZero;
-            return ((UIEdgeInsets (*)(id, SEL))o1)(self, @selector(getImageContentInsets));
-        }));
-    }
-
-    Method m2 = class_getInstanceMethod(cls, @selector(getImageContentTopInset));
-    if (m2) {
-        IMP o2 = method_getImplementation(m2);
-        method_setImplementation(m2, imp_implementationWithBlock(^(id self) {
             if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
-            return ((double (*)(id, SEL))o2)(self, @selector(getImageContentTopInset));
+            return ((double (*)(id, SEL))o4)(self, @selector(tableViewBottomMargin));
         }));
     }
 }
-
-// ==========================================
-// 图文cell撑高：只对子VC里有RichContent的cell生效
-// 视频cell里没有RichContent → 跳过 → 不卡死
-// ==========================================
-%ctor {
-    Class cls = objc_getClass("AWEAwemeDetailCellViewController");
-    if (!cls) return;
-    Method m = class_getInstanceMethod(cls, @selector(viewDidLayoutSubviews));
-    if (!m) return;
-    IMP orig = method_getImplementation(m);
-    method_setImplementation(m, imp_implementationWithBlock(^(id self) {
-        ((void (*)(id, SEL))orig)(self, @selector(viewDidLayoutSubviews));
-        if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-
-        // 直接读 model.awemeType 原生字段：68 = 图文/图集
-        id model = nil;
-        @try { model = [self valueForKey:@"model"]; } @catch (__unused NSException *e) {}
-        if (!model) return;
-
-        long long awemeType = 0;
-        @try {
-            awemeType = [[model valueForKey:@"awemeType"] longLongValue];
-        } @catch (__unused NSException *e) { return; }
-        if (awemeType != 68) return;
-
-        UIView *v = [self valueForKey:@"view"];
-        if (!v) return;
-        // 高度判断避免死循环：已经是 852 就跳过
-        if (fabs(v.frame.size.height - 852.0) < 0.5) return;
-        CGRect f = v.frame;
-        f.size.height = 852.0;
-        v.frame = f;
-    }));
-}
-
