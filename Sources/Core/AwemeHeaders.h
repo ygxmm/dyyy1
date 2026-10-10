@@ -575,6 +575,8 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 
 @interface AWEAwemeDetailTableView : UITableView
+@property (nonatomic, weak) UIViewController *containerVC;
+- (void)setFrame:(CGRect)frame;
 @end
 
 @interface _TtC33AWECommentPanelContainerSwiftImpl31CommentViewControllerStateModel : NSObject
@@ -1597,6 +1599,9 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 @interface AWEAwemeDetailTableViewController : UIViewController
 - (BOOL)prefersStatusBarHidden;
+- (double)cellHeight;
+- (double)fixedCellHeight;
+- (id)dataSourceModelForIndexPath:(NSIndexPath *)indexPath;
 @end
 @interface AWEMixVideoPanelDetailTableViewController : AWEAwemeDetailTableViewController
 @property(nonatomic, assign) BOOL isShowingRelatedMixViewController;
@@ -2414,6 +2419,7 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 - (UIEdgeInsets)getImageContentInsets;
 - (double)getImageContentTopInset;
 - (void)updateShrinkState:(BOOL)state insets:(UIEdgeInsets)insets animated:(BOOL)animated;
+- (void)viewWillLayoutSubviews;
 @end
 
 @interface AFDImageContentView : UIView

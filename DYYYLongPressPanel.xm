@@ -1662,9 +1662,20 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
 // 详情页全屏：从 TableView.setFrame: 入手
 // 头文件证明 AWEAwemeDetailTableView 重写了 setFrame:——这就是 792 被算回的元凶
 // ==========================================
+@interface AWEAwemeDetailTableView (DYYYFS)
+@property (nonatomic, weak, readonly) AWEAwemeDetailTableViewController *containerVC;
+@end
+@interface AWEAwemeDetailTableViewController (DYYYFS)
+- (id)dataSourceModelForIndexPath:(NSIndexPath *)ip;
+- (double)cellHeight;
+- (double)fixedCellHeight;
+@end
+
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
+    // 诊断日志
+    NSLog(@"[DYYY-DIAG] setFrame: h=%.1f containerVC=%@", frame.size.height, self.containerVC);
     // 只对图文页生效（表 VC 的子 VC 链里有 RichContent）
     BOOL isRich = NO;
     AWEAwemeDetailTableViewController *containerVC = self.containerVC;
@@ -1696,6 +1707,7 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
 %hook AWEAwemeDetailTableViewController
 
 - (double)cellHeight {
+    NSLog(@"[DYYY-DIAG] cellHeight called, bool=%@", @(DYYYGetBoolCached(@"DYYYEnableFullScreen")));
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
         // 判断图文页
         for (UIViewController *child in self.childViewControllers) {
@@ -1735,6 +1747,7 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
 
 - (void)viewWillLayoutSubviews {
     %orig;
+    NSLog(@"[DYYY-DIAG] RichContent viewWillLayoutSubviews, parentH=%.1f myH=%.1f", self.view.superview.bounds.size.height, self.view.frame.size.height);
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
     UIView *v = self.view;
     UIView *sv = v.superview;
