@@ -1647,71 +1647,76 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
     return NO;
 }
 
-#include <stdarg.h>
 #include <stdio.h>
-#import <objc/message.h>
+#include <stdarg.h>
 
-static void DYYYFSLog(NSString *fmt, ...) {
+// 计数探针：绝不改返回值，绝不每帧写文件
+static void DYYYFLog(NSString *s) {
     @autoreleasepool {
-        va_list ap; va_start(ap, fmt);
-        NSString *body = [[NSString alloc] initWithFormat:fmt arguments:ap];
-        va_end(ap);
         NSArray *p = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
         if (!p.count) return;
-        NSString *path = [p.firstObject stringByAppendingPathComponent:@"dyyy_fs.log"];
-        FILE *fp = fopen(path.UTF8String, "a");
+        FILE *fp = fopen([[p.firstObject stringByAppendingPathComponent:@"dyyy_fs.log"] UTF8String], "a");
         if (!fp) return;
-        fputs(([body stringByAppendingString:@"\n"]).UTF8String, fp);
+        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
         fclose(fp);
     }
 }
 
-static double (*_dyyy_bti)(id, SEL) = NULL;
-static double _my_bti(id self, SEL _cmd) {
-    double r = _dyyy_bti ? _dyyy_bti(self, _cmd) : 0;
-    if (r > 30.0 && r < 100.0) return 0.0;
-    return r;
+// 计数器
+static long _c_bti = 0;
+static long _c_tvi = 0;
+static long _c_chai = 0;
+static long _c_hfr = 0;
+static long _c_sf = 0;
+static long _c_vdls = 0;
+
+// 只 hook、只计数、不改返回值
+static double (*_o_bti)(id, SEL) = NULL;
+static double _m_bti(id s, SEL c) {
+    _c_bti++;
+    return _o_bti ? _o_bti(s, c) : 0;
 }
 
-static double (*_dyyy_chai)(id, SEL, long long) = NULL;
-static double _my_chai(id self, SEL _cmd, long long idx) {
-    double r = _dyyy_chai ? _dyyy_chai(self, _cmd, idx) : 0;
-    DYYYFSLog(@"cellHeight idx=%lld h=%.1f", idx, r);
-    if (r > 780.0 && r < 810.0) {
-        @try {
-            id m = ((id(*)(id,SEL,long long))objc_msgSend)(self, NSSelectorFromString(@"safelyModelForRow:"), idx);
-            if (m) {
-                long long t = [[m valueForKey:@"awemeType"] longLongValue];
-                DYYYFSLog(@"  type=%lld", t);
-                if (t == 68) { DYYYFSLog(@"  ->852"); return 852.0; }
-            }
-        } @catch (__unused NSException *e) {}
-    }
-    return r;
+static double (*_o_tvi)(id, SEL) = NULL;
+static double _m_tvi(id s, SEL c) {
+    _c_tvi++;
+    return _o_tvi ? _o_tvi(s, c) : 0;
 }
 
-static double (*_dyyy_hfr)(id, SEL, id, id) = NULL;
-static double _my_hfr(id self, SEL _cmd, id tv, id ip) {
-    double r = _dyyy_hfr ? _dyyy_hfr(self, _cmd, tv, ip) : 0;
-    DYYYFSLog(@"hfr=%.1f", r);
-    return r;
+static double (*_o_chai)(id, SEL, long long) = NULL;
+static double _m_chai(id s, SEL c, long long i) {
+    _c_chai++;
+    return _o_chai ? _o_chai(s, c, i) : 0;
 }
 
-static void (*_dyyy_vdls)(id, SEL) = NULL;
-static void _my_vdls(id self, SEL _cmd) {
-    if (_dyyy_vdls) _dyyy_vdls(self, _cmd);
-    @autoreleasepool {
-        UIView *v = [(UIViewController *)self view];
-        UIView *sv = v.superview;
-        if (!v || !sv) return;
-        CGFloat ph = sv.bounds.size.height;
-        CGFloat mh = v.frame.size.height;
-        if (ph > 800 && mh < ph - 1) {
-            DYYYFSLog(@"cellVC.view %.1f -> %.1f", mh, ph);
-            CGRect f = v.frame; f.origin.y = 0; f.size.height = ph;
-            v.frame = f;
-        }
-    }
+static double (*_o_hfr)(id, SEL, id, id) = NULL;
+static double _m_hfr(id s, SEL c, id t, id p) {
+    _c_hfr++;
+    return _o_hfr ? _o_hfr(s, c, t, p) : 0;
+}
+
+static void (*_o_sf)(id, SEL, CGRect) = NULL;
+static void _m_sf(id s, SEL c, CGRect f) {
+    _c_sf++;
+    if (_o_sf) _o_sf(s, c, f);
+}
+
+// 只 hook 表 VC 和 table view 的 layoutSubviews 计数
+static void (*_o_vdls)(id, SEL) = NULL;
+static void _m_vdls(id s, SEL c) {
+    _c_vdls++;
+    if (_o_vdls) _o_vdls(s, c);
+}
+
+// 定时器：每 5 秒写一次计数，不刷屏
+static void DYYYStartTimer(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [NSTimer scheduledTimerWithTimeInterval:5.0 repeats:YES block:^(NSTimer *t){
+            DYYYFLog([NSString stringWithFormat:
+                @"[5s] bti=%ld tvi=%ld chai=%ld hfr=%ld setFrame=%ld vdls=%ld",
+                _c_bti, _c_tvi, _c_chai, _c_hfr, _c_sf, _c_vdls]);
+        }];
+    });
 }
 
 %ctor {
@@ -1720,17 +1725,22 @@ static void _my_vdls(id self, SEL _cmd) {
         if (c1) {
             Method m;
             m = class_getInstanceMethod(c1, NSSelectorFromString(@"baseTableViewBottomInset"));
-            if (m) { _dyyy_bti = (double(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_my_bti); }
+            if (m) { _o_bti = (double(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_bti); }
+            m = class_getInstanceMethod(c1, NSSelectorFromString(@"tableViewBottomInsetForAllPlatform"));
+            if (m) { _o_tvi = (double(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_tvi); }
             m = class_getInstanceMethod(c1, NSSelectorFromString(@"cellHeightAtIndex:"));
-            if (m) { _dyyy_chai = (double(*)(id,SEL,long long))method_getImplementation(m); method_setImplementation(m, (IMP)_my_chai); }
+            if (m) { _o_chai = (double(*)(id,SEL,long long))method_getImplementation(m); method_setImplementation(m, (IMP)_m_chai); }
             m = class_getInstanceMethod(c1, NSSelectorFromString(@"tableView:heightForRowAtIndexPath:"));
-            if (m) { _dyyy_hfr = (double(*)(id,SEL,id,id))method_getImplementation(m); method_setImplementation(m, (IMP)_my_hfr); }
+            if (m) { _o_hfr = (double(*)(id,SEL,id,id))method_getImplementation(m); method_setImplementation(m, (IMP)_m_hfr); }
+            m = class_getInstanceMethod(c1, NSSelectorFromString(@"viewDidLayoutSubviews"));
+            if (m) { _o_vdls = (void(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_vdls); }
         }
-        Class c2 = objc_getClass("AWEAwemeDetailCellViewController");
+        Class c2 = objc_getClass("AWEAwemeDetailTableView");
         if (c2) {
-            Method m = class_getInstanceMethod(c2, NSSelectorFromString(@"viewDidLayoutSubviews"));
-            if (m) { _dyyy_vdls = (void(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_my_vdls); }
+            Method m = class_getInstanceMethod(c2, NSSelectorFromString(@"setFrame:"));
+            if (m) { _o_sf = (void(*)(id,SEL,CGRect))method_getImplementation(m); method_setImplementation(m, (IMP)_m_sf); }
         }
-        DYYYFSLog(@"v3 installed");
+        DYYYFLog(@"diag installed");
+        DYYYStartTimer();
     }
 }
