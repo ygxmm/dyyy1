@@ -1648,12 +1648,44 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
 }
 
 // ==========================================
-// 用 runtime API 手动 swizzle，完全绕开 logos %hook 解析
+// 动态沙盒日志：写到 App 自己的 Documents
+// 每次 open-append-close，不写死路径
+// ==========================================
+#include <stdarg.h>
+#include <stdio.h>
+
+static void DYYYFSLog(NSString *fmt, ...) {
+    @autoreleasepool {
+        va_list ap;
+        va_start(ap, fmt);
+        NSString *body = [[NSString alloc] initWithFormat:fmt arguments:ap];
+        va_end(ap);
+
+        NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+        if (paths.count == 0) return;
+        NSString *docs = paths.firstObject;
+        if (docs.length == 0) return;
+        NSString *path = [docs stringByAppendingPathComponent:@"dyyy_fs.log"];
+
+        NSDateFormatter *df = [[NSDateFormatter alloc] init];
+        [df setDateFormat:@"HH:mm:ss.SSS"];
+        NSString *line = [NSString stringWithFormat:@"[%@] %@\n",
+                          [df stringFromDate:[NSDate date]], body];
+
+        FILE *fp = fopen(path.UTF8String, "a");
+        if (!fp) return;
+        fputs(line.UTF8String, fp);
+        fclose(fp);
+    }
+}
+
+// ==========================================
+// runtime 手动 swizzle，绕开 logos %hook
 // ==========================================
 static double (*_dyyy_orig_tvi)(id, SEL) = NULL;
 static double _dyyy_my_tvi(id self, SEL _cmd) {
     double r = _dyyy_orig_tvi ? _dyyy_orig_tvi(self, _cmd) : 0;
-    NSLog(@"[DYYY-FS] InsetForAllPlatform=%.1f", r);
+    DYYYFSLog(@"InsetForAllPlatform=%.1f", r);
     if (r > 30.0 && r < 100.0) return 0.0;
     return r;
 }
@@ -1661,7 +1693,7 @@ static double _dyyy_my_tvi(id self, SEL _cmd) {
 static double (*_dyyy_orig_bti)(id, SEL) = NULL;
 static double _dyyy_my_bti(id self, SEL _cmd) {
     double r = _dyyy_orig_bti ? _dyyy_orig_bti(self, _cmd) : 0;
-    NSLog(@"[DYYY-FS] baseInset=%.1f", r);
+    DYYYFSLog(@"baseInset=%.1f", r);
     if (r > 30.0 && r < 100.0) return 0.0;
     return r;
 }
@@ -1669,7 +1701,7 @@ static double _dyyy_my_bti(id self, SEL _cmd) {
 static double (*_dyyy_orig_tbm)(id, SEL) = NULL;
 static double _dyyy_my_tbm(id self, SEL _cmd) {
     double r = _dyyy_orig_tbm ? _dyyy_orig_tbm(self, _cmd) : 0;
-    NSLog(@"[DYYY-FS] BottomMargin=%.1f", r);
+    DYYYFSLog(@"BottomMargin=%.1f", r);
     return r;
 }
 
@@ -1677,35 +1709,35 @@ static double _dyyy_my_tbm(id self, SEL _cmd) {
     @autoreleasepool {
         Class cls = objc_getClass("AWEAwemeDetailTableViewController");
         if (!cls) {
-            NSLog(@"[DYYY-FS] class not found");
+            DYYYFSLog(@"class not found");
             return;
         }
-        
+
         Method m1 = class_getInstanceMethod(cls, NSSelectorFromString(@"tableViewBottomInsetForAllPlatform"));
         if (m1) {
             _dyyy_orig_tvi = (double(*)(id, SEL))method_getImplementation(m1);
             method_setImplementation(m1, (IMP)_dyyy_my_tvi);
-            NSLog(@"[DYYY-FS] hooked tvi");
+            DYYYFSLog(@"hooked tvi");
         } else {
-            NSLog(@"[DYYY-FS] tvi not found");
+            DYYYFSLog(@"tvi not found");
         }
-        
+
         Method m2 = class_getInstanceMethod(cls, NSSelectorFromString(@"baseTableViewBottomInset"));
         if (m2) {
             _dyyy_orig_bti = (double(*)(id, SEL))method_getImplementation(m2);
             method_setImplementation(m2, (IMP)_dyyy_my_bti);
-            NSLog(@"[DYYY-FS] hooked bti");
+            DYYYFSLog(@"hooked bti");
         } else {
-            NSLog(@"[DYYY-FS] bti not found");
+            DYYYFSLog(@"bti not found");
         }
-        
+
         Method m3 = class_getInstanceMethod(cls, NSSelectorFromString(@"tableViewBottomMargin"));
         if (m3) {
             _dyyy_orig_tbm = (double(*)(id, SEL))method_getImplementation(m3);
             method_setImplementation(m3, (IMP)_dyyy_my_tbm);
-            NSLog(@"[DYYY-FS] hooked tbm");
+            DYYYFSLog(@"hooked tbm");
         }
-        
-        NSLog(@"[DYYY-FS] all installed");
+
+        DYYYFSLog(@"追加all installed");
     }
 }
