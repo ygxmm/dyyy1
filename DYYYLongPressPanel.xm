@@ -1647,10 +1647,9 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
     return NO;
 }
 
-#include <stdio.h>
-#include <stdarg.h>
+#import <objc/message.h>
 
-// 计数探针：绝不改返回值，绝不每帧写文件
+// ---- 写日志：只在偶发事件时调用，不刷屏 ----
 static void DYYYFLog(NSString *s) {
     @autoreleasepool {
         NSArray *p = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
@@ -1662,61 +1661,47 @@ static void DYYYFLog(NSString *s) {
     }
 }
 
-// 计数器
-static long _c_bti = 0;
-static long _c_tvi = 0;
-static long _c_chai = 0;
-static long _c_hfr = 0;
-static long _c_sf = 0;
-static long _c_vdls = 0;
+// ---- 判断当前 VC 是不是图文页 ----
+static BOOL DYYYIsRich(id vc) {
+    @try {
+        id m = [vc valueForKey:@"currentDisplayingAweme"];
+        if (!m) m = [vc valueForKey:@"currentAweme"];
+        if (!m) return NO;
+        long long t = [[m valueForKey:@"awemeType"] longLongValue];
+        return (t == 68);
+    } @catch (__unused NSException *e) {}
+    return NO;
+}
 
-// 只 hook、只计数、不改返回值
+// ---- 1. 底部 inset 归零（详情页生效的那条） ----
 static double (*_o_bti)(id, SEL) = NULL;
-static double _m_bti(id s, SEL c) {
-    _c_bti++;
-    return _o_bti ? _o_bti(s, c) : 0;
+static double _m_bti(id self, SEL _cmd) {
+    double r = _o_bti ? _o_bti(self, _cmd) : 0;
+    if (r > 30.0 && r < 100.0) return 0.0;
+    return r;
 }
 
-static double (*_o_tvi)(id, SEL) = NULL;
-static double _m_tvi(id s, SEL c) {
-    _c_tvi++;
-    return _o_tvi ? _o_tvi(s, c) : 0;
-}
-
-static double (*_o_chai)(id, SEL, long long) = NULL;
-static double _m_chai(id s, SEL c, long long i) {
-    _c_chai++;
-    return _o_chai ? _o_chai(s, c, i) : 0;
-}
-
+// ---- 2. 只 hook heightForRowAtIndexPath:，不改 cellHeightAtIndex ----
+// 日志标记：用静态变量防刷屏
+static int _hfr_log_count = 0;
 static double (*_o_hfr)(id, SEL, id, id) = NULL;
-static double _m_hfr(id s, SEL c, id t, id p) {
-    _c_hfr++;
-    return _o_hfr ? _o_hfr(s, c, t, p) : 0;
-}
-
-static void (*_o_sf)(id, SEL, CGRect) = NULL;
-static void _m_sf(id s, SEL c, CGRect f) {
-    _c_sf++;
-    if (_o_sf) _o_sf(s, c, f);
-}
-
-// 只 hook 表 VC 和 table view 的 layoutSubviews 计数
-static void (*_o_vdls)(id, SEL) = NULL;
-static void _m_vdls(id s, SEL c) {
-    _c_vdls++;
-    if (_o_vdls) _o_vdls(s, c);
-}
-
-// 定时器：每 5 秒写一次计数，不刷屏
-static void DYYYStartTimer(void) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [NSTimer scheduledTimerWithTimeInterval:5.0 repeats:YES block:^(NSTimer *t){
-            DYYYFLog([NSString stringWithFormat:
-                @"[5s] bti=%ld tvi=%ld chai=%ld hfr=%ld setFrame=%ld vdls=%ld",
-                _c_bti, _c_tvi, _c_chai, _c_hfr, _c_sf, _c_vdls]);
-        }];
-    });
+static double _m_hfr(id self, SEL _cmd, id tv, id ip) {
+    double orig = _o_hfr ? _o_hfr(self, _cmd, tv, ip) : 0;
+    if (orig < 780.0 || orig > 810.0) return orig;  // 只处理 792 附近的
+    @try {
+        id model = ((id(*)(id,SEL,id))objc_msgSend)(self, NSSelectorFromString(@"dataSourceModelForIndexPath:"), ip);
+        if (model) {
+            long long t = [[model valueForKey:@"awemeType"] longLongValue];
+            if (t == 68) {
+                if (_hfr_log_count < 5) {
+                    DYYYFLog([NSString stringWithFormat:@"hfr ip=%@ -> 852", ip]);
+                    _hfr_log_count++;
+                }
+                return 852.0;
+            }
+        }
+    } @catch (__unused NSException *e) {}
+    return orig;
 }
 
 %ctor {
@@ -1726,21 +1711,9 @@ static void DYYYStartTimer(void) {
             Method m;
             m = class_getInstanceMethod(c1, NSSelectorFromString(@"baseTableViewBottomInset"));
             if (m) { _o_bti = (double(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_bti); }
-            m = class_getInstanceMethod(c1, NSSelectorFromString(@"tableViewBottomInsetForAllPlatform"));
-            if (m) { _o_tvi = (double(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_tvi); }
-            m = class_getInstanceMethod(c1, NSSelectorFromString(@"cellHeightAtIndex:"));
-            if (m) { _o_chai = (double(*)(id,SEL,long long))method_getImplementation(m); method_setImplementation(m, (IMP)_m_chai); }
             m = class_getInstanceMethod(c1, NSSelectorFromString(@"tableView:heightForRowAtIndexPath:"));
             if (m) { _o_hfr = (double(*)(id,SEL,id,id))method_getImplementation(m); method_setImplementation(m, (IMP)_m_hfr); }
-            m = class_getInstanceMethod(c1, NSSelectorFromString(@"viewDidLayoutSubviews"));
-            if (m) { _o_vdls = (void(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_vdls); }
         }
-        Class c2 = objc_getClass("AWEAwemeDetailTableView");
-        if (c2) {
-            Method m = class_getInstanceMethod(c2, NSSelectorFromString(@"setFrame:"));
-            if (m) { _o_sf = (void(*)(id,SEL,CGRect))method_getImplementation(m); method_setImplementation(m, (IMP)_m_sf); }
-        }
-        DYYYFLog(@"diag installed");
-        DYYYStartTimer();
+        DYYYFLog(@"v4 installed");
     }
 }
