@@ -1646,3 +1646,87 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
     } @catch (__unused NSException *e) {}
     return NO;
 }
+
+static void DLog(NSString *s) {
+    @autoreleasepool {
+        NSArray *p = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+        if (!p.count) return;
+        FILE *fp = fopen([[p.firstObject stringByAppendingPathComponent:@"dyyy_fs.log"] UTF8String], "a");
+        if (!fp) return;
+        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
+        fclose(fp);
+    }
+}
+
+// 递归找 cell 内最大的 UIImageView 的图
+static UIImageView *DYYYFindBiggestImage(UIView *root) {
+    __block UIImageView *best = nil;
+    __block CGFloat bestArea = 0;
+    void (^walk)(UIView *) = ^(UIView *v) {
+        if ([v isKindOfClass:[UIImageView class]]) {
+            UIImageView *iv = (UIImageView *)v;
+            if (iv.image && iv.bounds.size.width > 100 && iv.bounds.size.height > 100) {
+                CGFloat a = iv.bounds.size.width * iv.bounds.size.height;
+                if (a > bestArea) { bestArea = a; best = iv; }
+            }
+        }
+        for (UIView *c in v.subviews) walk(c);
+    };
+    walk(root);
+    return best;
+}
+
+// 只 hook cell.layoutSubviews，只 addSubview，不改 frame
+static void (*_o_cls)(id, SEL) = NULL;
+static int _log_cnt = 0;
+static void _m_cls(id self, SEL _cmd) {
+    if (_o_cls) _o_cls(self, _cmd);
+    @autoreleasepool {
+        UITableViewCell *cell = (UITableViewCell *)self;
+        UIView *cv = cell.contentView;
+        CGFloat cellH = cv.bounds.size.height;
+        CGFloat cellW = cv.bounds.size.width;
+        
+        UIView *old = [cv viewWithTag:0xDYYY];
+        
+        if (cellH < 845 || cellH > 860 || cellW < 300) {
+            if (old) [old removeFromSuperview];
+            return;
+        }
+        
+        UIImageView *target = DYYYFindBiggestImage(cv);
+        if (!target || !target.image) {
+            if (old) [old removeFromSuperview];
+            return;
+        }
+        
+        UIImageView *cover = (UIImageView *)old;
+        if (!cover) {
+            cover = [[UIImageView alloc] init];
+            cover.tag = 0xDYYY;
+            cover.contentMode = UIViewContentModeBottom;
+            cover.clipsToBounds = YES;
+            cover.userInteractionEnabled = NO;
+            [cv addSubview:cover];
+            if (_log_cnt < 3) { DLog(@"vB: cover added"); _log_cnt++; }
+        }
+        cover.image = target.image;
+        cover.frame = CGRectMake(0, cellH - 60, cellW, 60);
+    }
+}
+
+%ctor {
+    @autoreleasepool {
+        Class c = objc_getClass("AWEAwemeDetailTableViewCell");
+        if (c) {
+            Method m = class_getInstanceMethod(c, @selector(layoutSubviews));
+            if (m) {
+                _o_cls = (void(*)(id,SEL))method_getImplementation(m);
+                method_setImplementation(m, (IMP)_m_cls);
+                DLog(@"vB installed");
+            }
+        } else {
+            DLog(@"no cell class");
+        }
+    }
+}
