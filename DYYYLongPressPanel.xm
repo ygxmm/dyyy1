@@ -1648,15 +1648,9 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
 }
 
 // ==========================================
-// 图文页全屏：极简版
-// 只 hook 2 个 double 方法，不做任何外部函数调用
-// 30 < 原值 < 100 时才归零（覆盖图文的 60，不动视频页的 0）
+// 图文页全屏：纯 %hook，无 category 声明
+// 探针版就是这个结构，已验证能编译
 // ==========================================
-@interface AWEAwemeDetailTableViewController (DYYYFS)
-- (double)tableViewBottomInsetForAllPlatform;
-- (double)baseTableViewBottomInset;
-@end
-
 %hook AWEAwemeDetailTableViewController
 
 - (double)tableViewBottomInsetForAllPlatform {
