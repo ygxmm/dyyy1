@@ -1611,47 +1611,92 @@ static BOOL DYYYIsRichPageVC(UIViewController *vc) {
 // 图文/视频、推荐/搜索 全部共用同一个 VC
 // 不碰 view.frame → 不会死循环
 // ==========================================
+
+// ==========================================
+// 图文页全屏：用 RichContentVC 的原生开关 isFullScreen / shouldAdaptFullScreen
+// 视频页没有这个 VC → 天然不受影响
+// 只设属性、不改 frame → 不会死循环
+// ==========================================
 %ctor {
-    Class cls = objc_getClass("AWEAwemeDetailTableViewController");
+    Class cls = objc_getClass("RichContentContainerViewController");
     if (!cls) return;
 
-    // 1. baseTableViewBottomInset → 0
-    Method m1 = class_getInstanceMethod(cls, @selector(baseTableViewBottomInset));
+    // 1. viewDidLoad 时设置全屏开关
+    Method m1 = class_getInstanceMethod(cls, @selector(viewDidLoad));
     if (m1) {
         IMP o1 = method_getImplementation(m1);
         method_setImplementation(m1, imp_implementationWithBlock(^(id self) {
-            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
-            return ((double (*)(id, SEL))o1)(self, @selector(baseTableViewBottomInset));
+            ((void (*)(id, SEL))o1)(self, @selector(viewDidLoad));
+            if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+            @try {
+                [self setValue:@YES forKey:@"isFullScreen"];
+                [self setValue:@YES forKey:@"shouldAdaptFullScreen"];
+                [self setValue:@YES forKey:@"shouldAdaptFullScreenThree"];
+            } @catch (__unused NSException *e) {}
         }));
     }
 
-    // 2. tableViewBottomInsetForAllPlatform → 0
-    Method m2 = class_getInstanceMethod(cls, @selector(tableViewBottomInsetForAllPlatform));
+    // 2. viewWillAppear 时再设一遍（防止切换页面被重置）
+    Method m2 = class_getInstanceMethod(cls, @selector(viewWillAppear:));
     if (m2) {
         IMP o2 = method_getImplementation(m2);
-        method_setImplementation(m2, imp_implementationWithBlock(^(id self) {
-            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
-            return ((double (*)(id, SEL))o2)(self, @selector(tableViewBottomInsetForAllPlatform));
+        method_setImplementation(m2, imp_implementationWithBlock(^(id self, BOOL animated) {
+            ((void (*)(id, SEL, BOOL))o2)(self, @selector(viewWillAppear:), animated);
+            if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+            @try {
+                [self setValue:@YES forKey:@"isFullScreen"];
+                [self setValue:@YES forKey:@"shouldAdaptFullScreen"];
+            } @catch (__unused NSException *e) {}
         }));
     }
 
-    // 3. tableViewBottomInsetForAllPlatform:(id) → 0
-    Method m3 = class_getInstanceMethod(cls, @selector(tableViewBottomInsetForAllPlatform:));
+    // 3. 兜底：getImageContentInsets 返回 0（去掉图片区域的内边距）
+    Method m3 = class_getInstanceMethod(cls, @selector(getImageContentInsets));
     if (m3) {
         IMP o3 = method_getImplementation(m3);
-        method_setImplementation(m3, imp_implementationWithBlock(^(id self, id arg) {
-            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
-            return ((double (*)(id, SEL, id))o3)(self, @selector(tableViewBottomInsetForAllPlatform:), arg);
+        method_setImplementation(m3, imp_implementationWithBlock(^(id self) {
+            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return UIEdgeInsetsZero;
+            return ((UIEdgeInsets (*)(id, SEL))o3)(self, @selector(getImageContentInsets));
         }));
     }
 
-    // 4. tableViewBottomMargin → 0
-    Method m4 = class_getInstanceMethod(cls, @selector(tableViewBottomMargin));
+    // 4. 兜底：getImageContentTopInset 返回 0
+    Method m4 = class_getInstanceMethod(cls, @selector(getImageContentTopInset));
     if (m4) {
         IMP o4 = method_getImplementation(m4);
         method_setImplementation(m4, imp_implementationWithBlock(^(id self) {
             if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
-            return ((double (*)(id, SEL))o4)(self, @selector(tableViewBottomMargin));
+            return ((double (*)(id, SEL))o4)(self, @selector(getImageContentTopInset));
+        }));
+    }
+}
+
+// ==========================================
+// 内部列表 VC 同样设置全屏（它是 RichContentVC 的兄弟）
+// ==========================================
+%ctor {
+    Class cls = NSClassFromString(@"AWEMultiContentImpl.RichContentNewListViewController");
+    if (!cls) return;
+
+    Method m1 = class_getInstanceMethod(cls, @selector(viewWillAppear:));
+    if (m1) {
+        IMP o1 = method_getImplementation(m1);
+        method_setImplementation(m1, imp_implementationWithBlock(^(id self, BOOL animated) {
+            ((void (*)(id, SEL, BOOL))o1)(self, @selector(viewWillAppear:), animated);
+            if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+            @try {
+                [self setValue:@YES forKey:@"isFullScreen"];
+                [self setValue:@YES forKey:@"shouldAdaptFullScreen"];
+            } @catch (__unused NSException *e) {}
+        }));
+    }
+
+    Method m2 = class_getInstanceMethod(cls, @selector(getImageContentInsets));
+    if (m2) {
+        IMP o2 = method_getImplementation(m2);
+        method_setImplementation(m2, imp_implementationWithBlock(^(id self) {
+            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return UIEdgeInsetsZero;
+            return ((UIEdgeInsets (*)(id, SEL))o2)(self, @selector(getImageContentInsets));
         }));
     }
 }
