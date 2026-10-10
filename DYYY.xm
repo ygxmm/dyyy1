@@ -16238,17 +16238,23 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
     }
 
     // DYYY修复：UI层撑满屏幕时，若父链里有 TableView，则强制为 792
-    // 推荐页(有AWEFeedTableView) / 详情页(有AWEAwemeDetailTableView) 都对齐到 792
-    // 搜索页/聊天页等不触发，保留原版行为
+    // 推荐页/详情页对齐到 792，但搜索页保持原生的 852（否则整体上移60pt）
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIView *dyyyAnc = self.view.superview;
-        while (dyyyAnc) {
-            NSString *dyyyCls = NSStringFromClass([dyyyAnc class]);
-            if ([dyyyCls isEqualToString:@"AWEFeedTableView"] || [dyyyCls isEqualToString:@"AWEAwemeDetailTableView"]) {
-                frame.size.height = [UIScreen mainScreen].bounds.size.height - 60.0;
-                break;
+        NSString *dyyyRefer = [self valueForKey:@"referString"];
+        BOOL dyyyIsSearchPage = [dyyyRefer isEqualToString:@"general_search"] ||
+                                [dyyyRefer isEqualToString:@"search_result"] ||
+                                [dyyyRefer isEqualToString:@"search_ecommerce"] ||
+                                [dyyyRefer isEqualToString:@"general_search_scan"];
+        if (!dyyyIsSearchPage) {
+            UIView *dyyyAnc = self.view.superview;
+            while (dyyyAnc) {
+                NSString *dyyyCls = NSStringFromClass([dyyyAnc class]);
+                if ([dyyyCls isEqualToString:@"AWEFeedTableView"] || [dyyyCls isEqualToString:@"AWEAwemeDetailTableView"]) {
+                    frame.size.height = [UIScreen mainScreen].bounds.size.height - 60.0;
+                    break;
+                }
+                dyyyAnc = dyyyAnc.superview;
             }
-            dyyyAnc = dyyyAnc.superview;
         }
     }
 
