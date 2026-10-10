@@ -1648,15 +1648,31 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
 }
 
 // ==========================================
-// 只 hook AWEPlayInteractionViewController 的全屏开关
-// 这是 792 的真正源头
+// runtime hook: shouldAdjustFullScreenCellDisplay -> YES
+// 用 %ctor + method_setImplementation，不用 %hook
 // ==========================================
-%hook AWEPlayInteractionViewController
+static BOOL (*_o_sa)(id, SEL) = NULL;
+static int _sa_log = 0;
 
-- (BOOL)shouldAdjustFullScreenCellDisplay {
-    BOOL orig = %orig;
-    NSLog(@"[DYYY-FS] shouldAdjustFullScreenCellDisplay orig=%d -> YES", orig);
+static BOOL _m_sa(id self, SEL _cmd) {
+    BOOL r = _o_sa ? _o_sa(self, _cmd) : NO;
+    if (_sa_log < 5) {
+        NSLog(@"[DYYY-FS] shouldAdjustFullScreen orig=%d -> YES", r);
+        _sa_log++;
+    }
     return YES;
 }
 
-%end
+%ctor {
+    @autoreleasepool {
+        Class c = objc_getClass("AWEPlayInteractionViewController");
+        if (!c) { NSLog(@"[DYYY-FS] class not found"); return; }
+
+        Method m = class_getInstanceMethod(c, NSSelectorFromString(@"shouldAdjustFullScreenCellDisplay"));
+        if (!m) { NSLog(@"[DYYY-FS] method not found"); return; }
+
+        _o_sa = (BOOL(*)(id,SEL))method_getImplementation(m);
+        method_setImplementation(m, (IMP)_m_sa);
+        NSLog(@"[DYYY-FS] hooked shouldAdjustFullScreenCellDisplay");
+    }
+}
