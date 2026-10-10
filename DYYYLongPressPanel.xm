@@ -1648,35 +1648,32 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
 }
 
 // ==========================================
-// 图文详情页全屏：改"底部 inset 输入"，让抖音自己算到 852
-// 真凶：tableViewBottomInsetForAllPlatform / baseTableViewBottomInset
+// 图文页全屏探针：先看这两个方法到底返回多少
 // ==========================================
 %hook AWEAwemeDetailTableViewController
 
 - (double)tableViewBottomInsetForAllPlatform {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        id model = [self currentAweme];
-        if (model) {
-            long long t = [[model valueForKey:@"awemeType"] longLongValue];
-            if (t == 68) {   // 68 = 图文
-                return 0;
-            }
-        }
-    }
-    return %orig;
+    double r = %orig;
+    NSLog(@"[DYYY-FS] tableViewBottomInsetForAllPlatform = %.1f", r);
+    return r;
 }
 
 - (double)baseTableViewBottomInset {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        id model = [self currentAweme];
-        if (model) {
-            long long t = [[model valueForKey:@"awemeType"] longLongValue];
-            if (t == 68) {
-                return 0;
-            }
-        }
-    }
-    return %orig;
+    double r = %orig;
+    NSLog(@"[DYYY-FS] baseTableViewBottomInset = %.1f", r);
+    return r;
+}
+
+- (double)tableViewBottomMargin {
+    double r = %orig;
+    NSLog(@"[DYYY-FS] tableViewBottomMargin = %.1f", r);
+    return r;
+}
+
+- (void)applyTableViewLayoutForAllPlatform {
+    NSLog(@"[DYYY-FS] applyTableViewLayoutForAllPlatform called, tableView.frame=%@",
+          NSStringFromCGRect(self.tableView.frame));
+    %orig;
 }
 
 %end
