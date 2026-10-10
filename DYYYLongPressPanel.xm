@@ -1719,3 +1719,47 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
         }
     }));
 }
+
+// ==========================================
+// 临时诊断：列出 ImageContentAdapterCellView 的所有方法
+// 找 Swift 暴露的 imageContentInsets / imageContentViewHeightType 等
+// ==========================================
+%ctor {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        Class cls = NSClassFromString(@"AWEMultiContentImpl.ImageContentAdapterCellView");
+        if (!cls) {
+            NSLog(@"[DYYY-DIAG] 找不到 AWEMultiContentImpl.ImageContentAdapterCellView");
+            return;
+        }
+
+        NSString *dir = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/DYYY"];
+        [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+        NSString *path = [dir stringByAppendingPathComponent:@"methods.log"];
+        NSMutableString *out = [NSMutableString string];
+
+        [out appendFormat:@"===== Class: %@ =====\n", NSStringFromClass(cls)];
+        // 实例方法
+        unsigned int count = 0;
+        Method *methods = class_copyMethodList(cls, &count);
+        for (unsigned int i = 0; i < count; i++) {
+            [out appendFormat:@"  - %s\n", sel_getName(method_getName(methods[i]))];
+        }
+        free(methods);
+
+        // 父类方法
+        Class superCls = class_getSuperclass(cls);
+        while (superCls && superCls != [NSObject class]) {
+            [out appendFormat:@"===== Superclass: %@ =====\n", NSStringFromClass(superCls)];
+            unsigned int scount = 0;
+            Method *smethods = class_copyMethodList(superCls, &scount);
+            for (unsigned int i = 0; i < scount; i++) {
+                [out appendFormat:@"  - %s\n", sel_getName(method_getName(smethods[i]))];
+            }
+            free(smethods);
+            superCls = class_getSuperclass(superCls);
+        }
+
+        [out writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        NSLog(@"[DYYY-DIAG] 方法列表已写入 %@", path);
+    });
+}
