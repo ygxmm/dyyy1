@@ -2398,3 +2398,8 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 
 
+
+// ===== 图文详情页容器 =====
+@interface RichContentContainerViewController : UIViewController
+- (void)viewDidLayoutSubviews;
+@end
