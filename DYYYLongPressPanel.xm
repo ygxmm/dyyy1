@@ -1648,27 +1648,64 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
 }
 
 // ==========================================
-// 图文页全屏：纯 %hook，无 category 声明
-// 探针版就是这个结构，已验证能编译
+// 用 runtime API 手动 swizzle，完全绕开 logos %hook 解析
 // ==========================================
-%hook AWEAwemeDetailTableViewController
-
-- (double)tableViewBottomInsetForAllPlatform {
-    double r = %orig;
-    if (r > 30.0 && r < 100.0) {
-        NSLog(@"[DYYY-FS] tableViewBottomInset %.1f -> 0", r);
-        return 0.0;
-    }
+static double (*_dyyy_orig_tvi)(id, SEL) = NULL;
+static double _dyyy_my_tvi(id self, SEL _cmd) {
+    double r = _dyyy_orig_tvi ? _dyyy_orig_tvi(self, _cmd) : 0;
+    NSLog(@"[DYYY-FS] InsetForAllPlatform=%.1f", r);
+    if (r > 30.0 && r < 100.0) return 0.0;
     return r;
 }
 
-- (double)baseTableViewBottomInset {
-    double r = %orig;
-    if (r > 30.0 && r < 100.0) {
-        NSLog(@"[DYYY-FS] baseTableViewBottomInset %.1f -> 0", r);
-        return 0.0;
-    }
+static double (*_dyyy_orig_bti)(id, SEL) = NULL;
+static double _dyyy_my_bti(id self, SEL _cmd) {
+    double r = _dyyy_orig_bti ? _dyyy_orig_bti(self, _cmd) : 0;
+    NSLog(@"[DYYY-FS] baseInset=%.1f", r);
+    if (r > 30.0 && r < 100.0) return 0.0;
     return r;
 }
 
-%end
+static double (*_dyyy_orig_tbm)(id, SEL) = NULL;
+static double _dyyy_my_tbm(id self, SEL _cmd) {
+    double r = _dyyy_orig_tbm ? _dyyy_orig_tbm(self, _cmd) : 0;
+    NSLog(@"[DYYY-FS] BottomMargin=%.1f", r);
+    return r;
+}
+
+%ctor {
+    @autoreleasepool {
+        Class cls = objc_getClass("AWEAwemeDetailTableViewController");
+        if (!cls) {
+            NSLog(@"[DYYY-FS] class not found");
+            return;
+        }
+        
+        Method m1 = class_getInstanceMethod(cls, NSSelectorFromString(@"tableViewBottomInsetForAllPlatform"));
+        if (m1) {
+            _dyyy_orig_tvi = (double(*)(id, SEL))method_getImplementation(m1);
+            method_setImplementation(m1, (IMP)_dyyy_my_tvi);
+            NSLog(@"[DYYY-FS] hooked tvi");
+        } else {
+            NSLog(@"[DYYY-FS] tvi not found");
+        }
+        
+        Method m2 = class_getInstanceMethod(cls, NSSelectorFromString(@"baseTableViewBottomInset"));
+        if (m2) {
+            _dyyy_orig_bti = (double(*)(id, SEL))method_getImplementation(m2);
+            method_setImplementation(m2, (IMP)_dyyy_my_bti);
+            NSLog(@"[DYYY-FS] hooked bti");
+        } else {
+            NSLog(@"[DYYY-FS] bti not found");
+        }
+        
+        Method m3 = class_getInstanceMethod(cls, NSSelectorFromString(@"tableViewBottomMargin"));
+        if (m3) {
+            _dyyy_orig_tbm = (double(*)(id, SEL))method_getImplementation(m3);
+            method_setImplementation(m3, (IMP)_dyyy_my_tbm);
+            NSLog(@"[DYYY-FS] hooked tbm");
+        }
+        
+        NSLog(@"[DYYY-FS] all installed");
+    }
+}
