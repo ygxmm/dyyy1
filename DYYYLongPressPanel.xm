@@ -1658,67 +1658,93 @@ static void DLog(NSString *s) {
     }
 }
 
-static BOOL _dyyyInLayout = NO;
-static int _log_sf = 0;
-static int _log_ls = 0;
+static BOOL _inLayout = NO;
+static int _cnt_rc = 0, _cnt_pi = 0;
 
-// hook AWEAwemeDetailTableView.setFrame:
+// 撑 RichContent.view 到 superview
+static void (*_o_rc)(id, SEL) = NULL;
+static void _m_rc(id self, SEL _cmd) {
+    if (_o_rc) _o_rc(self, _cmd);
+    if (_inLayout) return;
+    UIView *v = ((UIViewController *)self).view;
+    UIView *sv = v.superview;
+    if (!v || !sv) return;
+    CGFloat svh = sv.bounds.size.height;
+    if (svh > 800 && v.frame.size.height < svh - 1) {
+        _inLayout = YES;
+        CGRect f = v.frame; f.origin.y = 0; f.size.height = svh;
+        v.frame = f;
+        _inLayout = NO;
+        if (_cnt_rc < 3) { DLog([NSString stringWithFormat:@"RC %.1f->%.1f", v.frame.size.height, svh]); _cnt_rc++; }
+    }
+}
+
+// 撑 AWEPlayInteractionVC.view 到 superview
+static void (*_o_pi)(id, SEL) = NULL;
+static void _m_pi(id self, SEL _cmd) {
+    if (_o_pi) _o_pi(self, _cmd);
+    if (_inLayout) return;
+    UIView *v = ((UIViewController *)self).view;
+    UIView *sv = v.superview;
+    if (!v || !sv) return;
+    CGFloat svh = sv.bounds.size.height;
+    if (svh > 800 && v.frame.size.height < svh - 1) {
+        _inLayout = YES;
+        CGRect f = v.frame; f.origin.y = 0; f.size.height = svh;
+        v.frame = f;
+        _inLayout = NO;
+        if (_cnt_pi < 3) { DLog([NSString stringWithFormat:@"PI %.1f->%.1f", v.frame.size.height, svh]); _cnt_pi++; }
+    }
+}
+
+// 保留 v9 的 table 撑
 static void (*_o_sf)(id, SEL, CGRect) = NULL;
 static void _m_sf(id self, SEL _cmd, CGRect frame) {
     UIView *sv = ((UIView *)self).superview;
-    if (!_dyyyInLayout && sv) {
+    if (!_inLayout && sv) {
         CGFloat svh = sv.bounds.size.height;
-        if (svh > 800 && frame.size.height < svh - 1) {
-            frame.size.height = svh;
-            if (_log_sf < 5) { DLog([NSString stringWithFormat:@"setFrame h->%.1f", svh]); _log_sf++; }
-        }
+        if (svh > 800 && frame.size.height < svh - 1) frame.size.height = svh;
     }
     if (_o_sf) _o_sf(self, _cmd, frame);
 }
 
-// hook AWEAwemeDetailTableView.layoutSubviews
 static void (*_o_ls)(id, SEL) = NULL;
 static void _m_ls(id self, SEL _cmd) {
     if (_o_ls) _o_ls(self, _cmd);
-    if (_dyyyInLayout) return;
+    if (_inLayout) return;
     UIView *v = (UIView *)self;
     UIView *sv = v.superview;
     if (!sv) return;
     CGFloat svh = sv.bounds.size.height;
     if (svh > 800 && v.frame.size.height < svh - 1) {
-        _dyyyInLayout = YES;
-        CGRect f = v.frame;
-        f.size.height = svh;
+        _inLayout = YES;
+        CGRect f = v.frame; f.size.height = svh;
         v.frame = f;
-        _dyyyInLayout = NO;
-        if (_log_ls < 5) { DLog([NSString stringWithFormat:@"ls 撑到 %.1f", svh]); _log_ls++; }
+        _inLayout = NO;
     }
-}
-
-// hook baseTableViewBottomInset 归零
-static double (*_o_bti)(id, SEL) = NULL;
-static double _m_bti(id self, SEL _cmd) {
-    double r = _o_bti ? _o_bti(self, _cmd) : 0;
-    if (r > 30.0 && r < 100.0) return 0.0;
-    return r;
 }
 
 %ctor {
     @autoreleasepool {
-        Class c1 = objc_getClass("AWEAwemeDetailTableView");
-        if (c1) {
-            Method m = class_getInstanceMethod(c1, @selector(setFrame:));
-            if (m) { _o_sf = (void(*)(id,SEL,CGRect))method_getImplementation(m); method_setImplementation(m, (IMP)_m_sf); DLog(@"hook setFrame:"); }
-            m = class_getInstanceMethod(c1, @selector(layoutSubviews));
-            if (m) { _o_ls = (void(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_ls); DLog(@"hook layoutSubviews"); }
-        } else {
-            DLog(@"no TableView class");
+        Class c;
+        c = objc_getClass("AWEAwemeDetailTableView");
+        if (c) {
+            Method m = class_getInstanceMethod(c, @selector(setFrame:));
+            if (m) { _o_sf = (void(*)(id,SEL,CGRect))method_getImplementation(m); method_setImplementation(m, (IMP)_m_sf); }
+            m = class_getInstanceMethod(c, @selector(layoutSubviews));
+            if (m) { _o_ls = (void(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_ls); }
+            DLog(@"hook TableView");
         }
-        Class c2 = objc_getClass("AWEAwemeDetailTableViewController");
-        if (c2) {
-            Method m = class_getInstanceMethod(c2, @selector(baseTableViewBottomInset));
-            if (m) { _o_bti = (double(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_bti); DLog(@"hook bti"); }
+        c = objc_getClass("RichContentContainerViewController");
+        if (c) {
+            Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
+            if (m) { _o_rc = (void(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_rc); DLog(@"hook RC"); }
         }
-        DLog(@"v9 installed");
+        c = objc_getClass("AWEPlayInteractionViewController");
+        if (c) {
+            Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
+            if (m) { _o_pi = (void(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_pi); DLog(@"hook PI"); }
+        }
+        DLog(@"v10 installed");
     }
 }
