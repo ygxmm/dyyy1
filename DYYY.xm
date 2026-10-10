@@ -17838,3 +17838,14 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 
 // ===== 详情页 Cell 撑满全屏（严格限定 AWEAwemeDetailTableView） =====
+
+
+// ===== 隐藏"暂时没有更多了"底部占位 =====
+%hook AWEFeedRefreshFooter
+
+- (void)layoutSubviews {
+    %orig;
+    self.hidden = YES;
+}
+
+%end
