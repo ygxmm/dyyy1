@@ -2398,8 +2398,10 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 
 
-
 // ===== 图文详情页容器 =====
 @interface RichContentContainerViewController : UIViewController
 - (void)viewDidLayoutSubviews;
+- (void)showSharePanel;
+- (void)performLikeAction;
+- (void)showDislikeOnVideo;
 @end
