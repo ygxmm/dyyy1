@@ -17893,6 +17893,10 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 // ==========================================
 // 图文详情页容器撑高到 852（与视频详情页对齐）
 // ==========================================
+@interface RichContentContainerViewController : UIViewController
+- (void)viewDidLayoutSubviews;
+@end
+
 %hook RichContentContainerViewController
 
 - (void)viewDidLayoutSubviews {
