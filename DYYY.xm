@@ -17813,3 +17813,27 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
     }
 }
+
+
+// ===== 详情页 Cell 撑满全屏（严格限定 AWEAwemeDetailTableView） =====
+%hook AWEAwemeDetailTableViewCell
+
+- (void)setFrame:(CGRect)frame {
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        UIView *sv = self.superview;
+        if (sv && [NSStringFromClass([sv class]) isEqualToString:@"AWEAwemeDetailTableView"]) {
+            frame.size.height = [UIScreen mainScreen].bounds.size.height;
+        }
+    }
+    %orig(frame);
+}
+
+- (void)layoutSubviews {
+    %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        self.clipsToBounds = NO;
+        self.contentView.clipsToBounds = NO;
+    }
+}
+
+%end

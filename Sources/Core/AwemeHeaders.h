@@ -622,9 +622,6 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @interface AWECommentInputViewController : UIViewController
 @end
 
-@interface AWEAwemeDetailTableViewCell : UIView
-@end
-
 @interface IESLiveFeedDrawerEntranceView : UIView
 @end
 
@@ -2389,4 +2386,10 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 
 // 顶栏选中指示线
 @interface AWEFeedMultiTabSelectedContainerView : UIView
+@end
+
+
+@interface AWEAwemeDetailTableViewCell : UITableViewCell
+- (void)setFrame:(CGRect)frame;
+- (void)layoutSubviews;
 @end
