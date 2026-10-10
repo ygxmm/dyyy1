@@ -2378,6 +2378,9 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 
 
+
+
 @interface AWEPlayInteractionViewController : UIViewController
 - (void)viewDidLayoutSubviews;
+- (void)speedButtonTapped:(id)sender;
 @end
