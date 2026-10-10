@@ -16274,8 +16274,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
                     if (!strongSelf || !strongSelf.view.superview) return;
                     CGRect f = strongSelf.view.frame;
                     if (f.size.height < 800) {
-                        CGFloat delta = 852.0 - f.size.height;
-                        f.origin.y -= delta;
+                        // 只改高度，不动 origin.y，让底部自然向下延伸
                         f.size.height = 852.0;
                         strongSelf.view.frame = f;
                     }
