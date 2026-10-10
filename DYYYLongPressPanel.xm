@@ -1648,60 +1648,33 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
 }
 
 // ==========================================
-// 图文页全屏修复
-// 主：changeModernFullScreen:YES（官方现代全屏开关）
-// 辅：tableViewBottomInsetForAllPlatform / baseTableViewBottomInset 归零
-// 判据：awemeType == 68（图文）
+// 图文页全屏：极简版
+// 只 hook 2 个 double 方法，不做任何外部函数调用
+// 30 < 原值 < 100 时才归零（覆盖图文的 60，不动视频页的 0）
 // ==========================================
-@interface AWEAwemeDetailTableViewController (DYYYFullScreen)
-- (void)changeModernFullScreen:(BOOL)a0;
+@interface AWEAwemeDetailTableViewController (DYYYFS)
 - (double)tableViewBottomInsetForAllPlatform;
 - (double)baseTableViewBottomInset;
 @end
 
-static id DYYYRichModel(id vc) {
-    @try {
-        return [vc valueForKey:@"currentDisplayingAweme"];
-    } @catch (__unused NSException *e) {}
-    return nil;
-}
-
-static BOOL DYYYIsRichPage(id vc) {
-    id m = DYYYRichModel(vc);
-    if (!m) return NO;
-    @try {
-        long long t = [[m valueForKey:@"awemeType"] longLongValue];
-        return (t == 68);
-    } @catch (__unused NSException *e) {}
-    return NO;
-}
-
 %hook AWEAwemeDetailTableViewController
 
-- (void)viewWillAppear:(BOOL)animated {
-    %orig;
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    if (DYYYIsRichPage(self)) {
-        [self changeModernFullScreen:YES];
-        NSLog(@"[DYYY-FS] rich page detected, changeModernFullScreen:YES");
-    }
-}
-
 - (double)tableViewBottomInsetForAllPlatform {
-    double orig = %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYIsRichPage(self)) {
-        NSLog(@"[DYYY-FS] tableViewBottomInset orig=%.1f -> 0", orig);
-        return 0;
+    double r = %orig;
+    if (r > 30.0 && r < 100.0) {
+        NSLog(@"[DYYY-FS] tableViewBottomInset %.1f -> 0", r);
+        return 0.0;
     }
-    return orig;
+    return r;
 }
 
 - (double)baseTableViewBottomInset {
-    double orig = %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYIsRichPage(self)) {
-        return 0;
+    double r = %orig;
+    if (r > 30.0 && r < 100.0) {
+        NSLog(@"[DYYY-FS] baseTableViewBottomInset %.1f -> 0", r);
+        return 0.0;
     }
-    return orig;
+    return r;
 }
 
 %end
