@@ -1631,63 +1631,91 @@ static BOOL DYYYIsRichPageVC(UIViewController *vc) {
 // 2. RichContentVC 撑到父容器 → 内容填满
 // 视频页没有 RichContentVC → 不触发
 // ==========================================
+
+// ==========================================
+// 详情页全屏：只用头文件里的原生方法
+// ==========================================
+
+// 判断图文：用原生 dataSourceModelForIndexPath:
+static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
+    @try {
+        id model = [(id)self dataSourceModelForIndexPath:ip];
+        if (!model) return NO;
+        long long t = [[model valueForKey:@"awemeType"] longLongValue];
+        return (t == 68);
+    } @catch (__unused NSException *e) {}
+    return NO;
+}
+
+// Hook 1: cell 高度——用原生 dataSourceModelForIndexPath 判断图文
+%ctor {
+    Class cls = objc_getClass("AWEAwemeDetailTableViewController");
+    if (!cls) return;
+    Method m = class_getInstanceMethod(cls, @selector(tableView:heightForRowAtIndexPath:));
+    if (!m) return;
+    IMP orig = method_getImplementation(m);
+    method_setImplementation(m, imp_implementationWithBlock(^(id self, UITableView *tv, NSIndexPath *ip) {
+        double h = ((double (*)(id, SEL, UITableView *, NSIndexPath *))orig)(self, @selector(tableView:heightForRowAtIndexPath:), tv, ip);
+        if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return h;
+        // 用原生方法判断图文
+        if (DYYYIsRichIndexPath(self, ip)) return 852.0;
+        return h;
+    }));
+}
+
+// Hook 2: 三个 inset 归零（仅图文来源）
 %ctor {
     Class cls = objc_getClass("AWEAwemeDetailTableViewController");
     if (!cls) return;
 
-    // 1. baseTableViewBottomInset → 0
+    // 用 isFromGeneralSearch 判断——搜索页跳过 inset 归零（原生 852，不需要）
+    // 推荐页归零 → TableView 撑到 852
     Method m1 = class_getInstanceMethod(cls, @selector(baseTableViewBottomInset));
     if (m1) {
         IMP o1 = method_getImplementation(m1);
         method_setImplementation(m1, imp_implementationWithBlock(^(id self) {
-            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
-            return ((double (*)(id, SEL))o1)(self, @selector(baseTableViewBottomInset));
+            if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+                return ((double (*)(id, SEL))o1)(self, @selector(baseTableViewBottomInset));
+            }
+            // 搜索来源原生已 852，不归零；推荐来源归零撑满
+            BOOL fromSearch = NO;
+            @try { fromSearch = [(id)self isFromGeneralSearch]; } @catch (__unused NSException *e) {}
+            if (fromSearch) {
+                return ((double (*)(id, SEL))o1)(self, @selector(baseTableViewBottomInset));
+            }
+            return 0.0;
         }));
     }
 
-    // 2. tableViewBottomInsetForAllPlatform → 0
     Method m2 = class_getInstanceMethod(cls, @selector(tableViewBottomInsetForAllPlatform));
     if (m2) {
         IMP o2 = method_getImplementation(m2);
         method_setImplementation(m2, imp_implementationWithBlock(^(id self) {
-            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
-            return ((double (*)(id, SEL))o2)(self, @selector(tableViewBottomInsetForAllPlatform));
+            if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+                return ((double (*)(id, SEL))o2)(self, @selector(tableViewBottomInsetForAllPlatform));
+            }
+            BOOL fromSearch = NO;
+            @try { fromSearch = [(id)self isFromGeneralSearch]; } @catch (__unused NSException *e) {}
+            if (fromSearch) {
+                return ((double (*)(id, SEL))o2)(self, @selector(tableViewBottomInsetForAllPlatform));
+            }
+            return 0.0;
         }));
     }
 
-    // 3. tableViewBottomMargin → 0
     Method m3 = class_getInstanceMethod(cls, @selector(tableViewBottomMargin));
     if (m3) {
         IMP o3 = method_getImplementation(m3);
         method_setImplementation(m3, imp_implementationWithBlock(^(id self) {
-            if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
-            return ((double (*)(id, SEL))o3)(self, @selector(tableViewBottomMargin));
+            if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+                return ((double (*)(id, SEL))o3)(self, @selector(tableViewBottomMargin));
+            }
+            BOOL fromSearch = NO;
+            @try { fromSearch = [(id)self isFromGeneralSearch]; } @catch (__unused NSException *e) {}
+            if (fromSearch) {
+                return ((double (*)(id, SEL))o3)(self, @selector(tableViewBottomMargin));
+            }
+            return 0.0;
         }));
     }
-}
-
-// ==========================================
-// RichContentVC 撑到父容器高度（只读父容器高度，不改 TableView）
-// 视频页没有这个 VC → 天然不触发
-// ==========================================
-%ctor {
-    Class cls = objc_getClass("RichContentContainerViewController");
-    if (!cls) return;
-    Method m = class_getInstanceMethod(cls, @selector(viewDidLayoutSubviews));
-    if (!m) return;
-    IMP orig = method_getImplementation(m);
-    method_setImplementation(m, imp_implementationWithBlock(^(id self) {
-        ((void (*)(id, SEL))orig)(self, @selector(viewDidLayoutSubviews));
-        if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-
-        UIView *v = [self valueForKey:@"view"];
-        if (!v || !v.superview) return;
-        CGFloat parentH = v.superview.frame.size.height;
-        if (parentH < 800) return;   // 父容器不够大，跳过
-        if (fabs(v.frame.size.height - parentH) < 0.5) return;  // 已一致，跳过
-
-        CGRect f = v.frame;
-        f.size.height = parentH;
-        v.frame = f;
-    }));
 }
