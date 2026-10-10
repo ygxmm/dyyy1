@@ -17866,3 +17866,45 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
         }
     }
 }
+
+// ==========================================
+// 搜索页元素栈下移修复
+// 原因：搜索页父容器高度 745，比推荐页 852 少了 107，
+// 系统按父容器布局导致元素栈被上抬 60pt（底栏高度）
+// ==========================================
+%hook AWEElementStackView
+
+- (void)layoutSubviews {
+    %orig;
+
+    // 只在搜索页生效
+    BOOL isSearchPage = NO;
+    for (UIView *anc = self; anc; anc = anc.superview) {
+        if ([anc.nextResponder isKindOfClass:NSClassFromString(@"AWESearchResultViewController")] ||
+            [anc.nextResponder isKindOfClass:NSClassFromString(@"AWESearchMiddleFeedViewController")] ||
+            [anc.nextResponder isKindOfClass:NSClassFromString(@"AWESearchViewController")]) {
+            isSearchPage = YES;
+            break;
+        }
+    }
+    if (!isSearchPage) {
+        return;
+    }
+
+    // 防止重复累加（用 associated object 标记）
+    static char kDYYYSearchStackAdjustedKey;
+    NSNumber *alreadyAdjusted = objc_getAssociatedObject(self, &kDYYYSearchStackAdjustedKey);
+    if (alreadyAdjusted.boolValue) {
+        return;
+    }
+
+    // 下移 gCurrentTabBarHeight（默认 60pt）
+    CGFloat offset = (gCurrentTabBarHeight > 0) ? gCurrentTabBarHeight : 60.0;
+    CGRect f = self.frame;
+    f.origin.y += offset;
+    self.frame = f;
+
+    objc_setAssociatedObject(self, &kDYYYSearchStackAdjustedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+%end
