@@ -16263,17 +16263,23 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
             [refer isEqualToString:@"search_result"] ||
             [refer isEqualToString:@"search_ecommerce"] ||
             [refer isEqualToString:@"general_search_scan"]) {
-            Class stackClass = NSClassFromString(@"AWEElementStackView");
-            for (UIView *sub in [DYYYUtils findAllSubviewsOfClass:stackClass inContainer:self.view]) {
-                CGRect f = sub.frame;
-                // 只处理左侧栈（x 小、宽度大），避开右侧栈
-                if (f.origin.x < 100 && f.size.width > 150 && f.size.height > 0) {
-                    CGFloat targetY = self.view.bounds.size.height - f.size.height;
-                    if (fabs(f.origin.y - targetY) > 0.5) {
-                        f.origin.y = targetY;
-                        sub.frame = f;
+            // DYYY修复：把交互层 view 高度撑到 852，整体下移 60pt
+            // 异步 + 一次性标记，避免死循环
+            static char kDYYYSearchViewExpandedKey;
+            if (!objc_getAssociatedObject(self, &kDYYYSearchViewExpandedKey)) {
+                objc_setAssociatedObject(self, &kDYYYSearchViewExpandedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                __weak typeof(self) weakSelf = self;
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    __strong typeof(weakSelf) strongSelf = weakSelf;
+                    if (!strongSelf || !strongSelf.view.superview) return;
+                    CGRect f = strongSelf.view.frame;
+                    if (f.size.height < 800) {
+                        CGFloat delta = 852.0 - f.size.height;
+                        f.origin.y -= delta;
+                        f.size.height = 852.0;
+                        strongSelf.view.frame = f;
                     }
-                }
+                });
             }
         }
     }
