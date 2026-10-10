@@ -16346,11 +16346,9 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
             CGRect frame = contentView.frame;
             CGFloat parentHeight = contentView.superview.frame.size.height;
 
-            if (frame.size.height == parentHeight - gCurrentTabBarHeight) {
+            // DYYY修复：不用==精确比较，只要小于父容器高度就撑满
+            if (frame.size.height < parentHeight) {
                 frame.size.height = parentHeight;
-                contentView.frame = frame;
-            } else if (frame.size.height == parentHeight - (gCurrentTabBarHeight * 2)) {
-                frame.size.height = parentHeight - gCurrentTabBarHeight;
                 contentView.frame = frame;
             }
         }
@@ -16394,11 +16392,9 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
             CGRect frame = contentView.frame;
             CGFloat parentHeight = contentView.superview.frame.size.height;
 
-            if (frame.size.height == parentHeight - gCurrentTabBarHeight) {
+            // DYYY修复：不用==精确比较，只要小于父容器高度就撑满
+            if (frame.size.height < parentHeight) {
                 frame.size.height = parentHeight;
-                contentView.frame = frame;
-            } else if (frame.size.height == parentHeight - (gCurrentTabBarHeight * 2)) {
-                frame.size.height = parentHeight - gCurrentTabBarHeight;
                 contentView.frame = frame;
             }
         }
@@ -17816,24 +17812,3 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 
 // ===== 详情页 Cell 撑满全屏（严格限定 AWEAwemeDetailTableView） =====
-%hook AWEAwemeDetailTableViewCell
-
-- (void)setFrame:(CGRect)frame {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIView *sv = self.superview;
-        if (sv && [NSStringFromClass([sv class]) isEqualToString:@"AWEAwemeDetailTableView"]) {
-            frame.size.height = [UIScreen mainScreen].bounds.size.height;
-        }
-    }
-    %orig(frame);
-}
-
-- (void)layoutSubviews {
-    %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        self.clipsToBounds = NO;
-        self.contentView.clipsToBounds = NO;
-    }
-}
-
-%end

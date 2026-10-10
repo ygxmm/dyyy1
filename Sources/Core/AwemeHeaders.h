@@ -2389,7 +2389,3 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 
 
-@interface AWEAwemeDetailTableViewCell : UITableViewCell
-- (void)setFrame:(CGRect)frame;
-- (void)layoutSubviews;
-@end
