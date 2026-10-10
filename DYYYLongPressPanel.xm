@@ -1657,51 +1657,71 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
 
 // ==========================================
 // 图文页全屏（用 AwemeHeaders.h 的声明 + %hook）
+
 // ==========================================
-%hook RichContentContainerViewController
+// 详情页全屏：从 TableView.setFrame: 入手
+// 头文件证明 AWEAwemeDetailTableView 重写了 setFrame:——这就是 792 被算回的元凶
+// ==========================================
+%hook AWEAwemeDetailTableView
 
-// 1. 进页面时设置原生全屏开关
-- (void)viewDidLoad {
-    %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        self.isFullScreen = YES;
-        self.shouldAdaptFullScreen = YES;
-        self.shouldAdaptFullScreenThree = YES;
-    }
-}
-
-// 2. viewWillAppear 再设一遍（防止切页被重置）
-- (void)viewWillAppear:(BOOL)animated {
-    %orig(animated);
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        self.isFullScreen = YES;
-        self.shouldAdaptFullScreen = YES;
-    }
-}
-
-// 3. 内容 frame 返回全屏高度
-- (struct CGRect)awemeContentViewFrame {
-    struct CGRect f = %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        if (f.size.height < 850.0 && f.size.height > 100.0) {
-            f.origin.y = 0;
-            f.size.height = 852.0;
+- (void)setFrame:(CGRect)frame {
+    // 只对图文页生效（表 VC 的子 VC 链里有 RichContent）
+    BOOL isRich = NO;
+    AWEAwemeDetailTableViewController *containerVC = self.containerVC;
+    if (containerVC && DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        for (UIViewController *child in containerVC.childViewControllers) {
+            if ([child isKindOfClass:NSClassFromString(@"AWEAwemeDetailCellViewController")]) {
+                for (UIViewController *gc in child.childViewControllers) {
+                    if ([gc isKindOfClass:NSClassFromString(@"RichContentContainerViewController")]) {
+                        isRich = YES;
+                        break;
+                    }
+                }
+                if (isRich) break;
+            }
         }
     }
-    return f;
+    if (isRich) {
+        frame.origin.y = 0;
+        frame.size.height = 852.0;
+    }
+    %orig(frame);
 }
 
-// 4. 图片内容 insets 归零
-- (struct UIEdgeInsets)getImageContentInsets {
+%end
+
+// ==========================================
+// Cell 高度：直接改 cellHeight，避开 tableView:heightForRowAtIndexPath:
+// ==========================================
+%hook AWEAwemeDetailTableViewController
+
+- (double)cellHeight {
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        return UIEdgeInsetsZero;
+        // 判断图文页
+        for (UIViewController *child in self.childViewControllers) {
+            if ([child isKindOfClass:NSClassFromString(@"AWEAwemeDetailCellViewController")]) {
+                for (UIViewController *gc in child.childViewControllers) {
+                    if ([gc isKindOfClass:NSClassFromString(@"RichContentContainerViewController")]) {
+                        return 852.0;
+                    }
+                }
+            }
+        }
     }
     return %orig;
 }
 
-- (double)getImageContentTopInset {
+- (double)fixedCellHeight {
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        return 0.0;
+        for (UIViewController *child in self.childViewControllers) {
+            if ([child isKindOfClass:NSClassFromString(@"AWEAwemeDetailCellViewController")]) {
+                for (UIViewController *gc in child.childViewControllers) {
+                    if ([gc isKindOfClass:NSClassFromString(@"RichContentContainerViewController")]) {
+                        return 852.0;
+                    }
+                }
+            }
+        }
     }
     return %orig;
 }
@@ -1709,18 +1729,25 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
 %end
 
 // ==========================================
-// 图片内容视图（AFDImageContentView）
+// 搜索页：只撑 RichContentVC（父容器已经是 852）
 // ==========================================
-%hook AFDImageContentView
+%hook RichContentContainerViewController
 
-- (BOOL)isInFullPage {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return YES;
-    return %orig;
-}
-
-- (void)setIsInFullPage:(BOOL)fullPage animated:(BOOL)animated {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) fullPage = YES;
-    %orig(fullPage, animated);
+- (void)viewWillLayoutSubviews {
+    %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    UIView *v = self.view;
+    UIView *sv = v.superview;
+    if (!sv) return;
+    CGFloat parentH = sv.bounds.size.height;
+    if (parentH > 800.0) {
+        CGRect f = v.frame;
+        if (fabs(f.size.height - parentH) > 0.5 || f.origin.y != 0) {
+            f.origin.y = 0;
+            f.size.height = parentH;
+            v.frame = f;
+        }
+    }
 }
 
 %end
