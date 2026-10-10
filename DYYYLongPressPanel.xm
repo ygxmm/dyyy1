@@ -1649,8 +1649,7 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
 
 #import <objc/message.h>
 
-// ---- 写日志：只在偶发事件时调用，不刷屏 ----
-static void DYYYFLog(NSString *s) {
+static void DLog(NSString *s) {
     @autoreleasepool {
         NSArray *p = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
         if (!p.count) return;
@@ -1661,59 +1660,73 @@ static void DYYYFLog(NSString *s) {
     }
 }
 
-// ---- 判断当前 VC 是不是图文页 ----
-static BOOL DYYYIsRich(id vc) {
-    @try {
-        id m = [vc valueForKey:@"currentDisplayingAweme"];
-        if (!m) m = [vc valueForKey:@"currentAweme"];
-        if (!m) return NO;
-        long long t = [[m valueForKey:@"awemeType"] longLongValue];
-        return (t == 68);
-    } @catch (__unused NSException *e) {}
-    return NO;
+// 计数器
+static long _snap_h = 0, _snap_i = 0, _snap_r = 0, _snap_s = 0;
+static long _adj = 0, _act = 0, _scr = 0;
+
+// smartSlidePageSnapCellHeightForIndex:
+static double (*_o_sh)(id, SEL, long long) = NULL;
+static double _m_sh(id s, SEL c, long long i) {
+    _snap_h++;
+    return _o_sh ? _o_sh(s, c, i) : 0;
 }
 
-// ---- 1. 底部 inset 归零（详情页生效的那条） ----
-static double (*_o_bti)(id, SEL) = NULL;
-static double _m_bti(id self, SEL _cmd) {
-    double r = _o_bti ? _o_bti(self, _cmd) : 0;
-    if (r > 30.0 && r < 100.0) return 0.0;
-    return r;
+// smartSlidePageSnapShouldSkipWithScrollView:velocity:
+static BOOL (*_o_ss)(id, SEL, id, CGPoint) = NULL;
+static BOOL _m_ss(id s, SEL c, id sv, CGPoint v) {
+    _snap_s++;
+    return _o_ss ? _o_ss(s, c, sv, v) : NO;
 }
 
-// ---- 2. 只 hook heightForRowAtIndexPath:，不改 cellHeightAtIndex ----
-// 日志标记：用静态变量防刷屏
-static int _hfr_log_count = 0;
-static double (*_o_hfr)(id, SEL, id, id) = NULL;
-static double _m_hfr(id self, SEL _cmd, id tv, id ip) {
-    double orig = _o_hfr ? _o_hfr(self, _cmd, tv, ip) : 0;
-    if (orig < 780.0 || orig > 810.0) return orig;  // 只处理 792 附近的
-    @try {
-        id model = ((id(*)(id,SEL,id))objc_msgSend)(self, NSSelectorFromString(@"dataSourceModelForIndexPath:"), ip);
-        if (model) {
-            long long t = [[model valueForKey:@"awemeType"] longLongValue];
-            if (t == 68) {
-                if (_hfr_log_count < 5) {
-                    DYYYFLog([NSString stringWithFormat:@"hfr ip=%@ -> 852", ip]);
-                    _hfr_log_count++;
-                }
-                return 852.0;
-            }
-        }
-    } @catch (__unused NSException *e) {}
-    return orig;
+// adjustTableViewHeightForTargetIndex:
+static void (*_o_adj)(id, SEL, long long) = NULL;
+static void _m_adj(id s, SEL c, long long i) {
+    _adj++;
+    if (_o_adj) _o_adj(s, c, i);
+}
+
+// updateCurrentActiveCell:index:
+static void (*_o_act)(id, SEL, id, long long) = NULL;
+static void _m_act(id s, SEL c, id cell, long long i) {
+    _act++;
+    if (_o_act) _o_act(s, c, cell, i);
+}
+
+// cellIsInScreen:
+static BOOL (*_o_scr)(id, SEL, id) = NULL;
+static BOOL _m_scr(id s, SEL c, id cell) {
+    _scr++;
+    return _o_scr ? _o_scr(s, c, cell) : NO;
+}
+
+// 每 5 秒写一次计数
+static void DStartTimer(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [NSTimer scheduledTimerWithTimeInterval:5.0 repeats:YES block:^(NSTimer *t){
+            DLog([NSString stringWithFormat:
+                @"[5s] snapH=%ld snapSkip=%ld adjust=%ld active=%ld inScreen=%ld",
+                _snap_h, _snap_s, _adj, _act, _scr]);
+        }];
+    });
 }
 
 %ctor {
     @autoreleasepool {
-        Class c1 = objc_getClass("AWEAwemeDetailTableViewController");
-        if (c1) {
+        Class c = objc_getClass("AWEAwemeDetailTableViewController");
+        if (c) {
             Method m;
-            m = class_getInstanceMethod(c1, NSSelectorFromString(@"baseTableViewBottomInset"));
-            if (m) { _o_bti = (double(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_bti); }
-            m = class_getInstanceMethod(c1, NSSelectorFromString(@"tableView:heightForRowAtIndexPath:"));
-            if (m) { _o_hfr = (double(*)(id,SEL,id,id))method_getImplementation(m); method_setImplementation(m, (IMP)_m_hfr); }
+            m = class_getInstanceMethod(c, NSSelectorFromString(@"smartSlidePageSnapCellHeightForIndex:"));
+            if (m) { _o_sh = (double(*)(id,SEL,long long))method_getImplementation(m); method_setImplementation(m, (IMP)_m_sh); }
+            m = class_getInstanceMethod(c, NSSelectorFromString(@"smartSlidePageSnapShouldSkipWithScrollView:velocity:"));
+            if (m) { _o_ss = (BOOL(*)(id,SEL,id,CGPoint))method_getImplementation(m); method_setImplementation(m, (IMP)_m_ss); }
+            m = class_getInstanceMethod(c, NSSelectorFromString(@"adjustTableViewHeightForTargetIndex:"));
+            if (m) { _o_adj = (void(*)(id,SEL,long long))method_getImplementation(m); method_setImplementation(m, (IMP)_m_adj); }
+            m = class_getInstanceMethod(c, NSSelectorFromString(@"updateCurrentActiveCell:index:"));
+            if (m) { _o_act = (void(*)(id,SEL,id,long long))method_getImplementation(m); method_setImplementation(m, (IMP)_m_act); }
+            m = class_getInstanceMethod(c, NSSelectorFromString(@"cellIsInScreen:"));
+            if (m) { _o_scr = (BOOL(*)(id,SEL,id))method_getImplementation(m); method_setImplementation(m, (IMP)_m_scr); }
         }
-        DYYYFLog(@"v4 installed");
+        DLog(@"who-checker installed");
+        DStartTimer();
     }
 }
