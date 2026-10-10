@@ -2398,6 +2398,3 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 
 
-@interface AWEFeedRefreshFooter : UIView
-- (void)layoutSubviews;
-@end

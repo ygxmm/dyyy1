@@ -17841,11 +17841,21 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 
 // ===== 隐藏"暂时没有更多了"底部占位 =====
-%hook AWEFeedRefreshFooter
 
-- (void)layoutSubviews {
-    %orig;
-    self.hidden = YES;
+
+// ===== 用 runtime hook 隐藏"暂时没有更多了"底部占位（绕过 Logos 编译期问题） =====
+%ctor {
+    Class cls = objc_getClass("AWEFeedRefreshFooter");
+    if (cls) {
+        SEL sel = @selector(layoutSubviews);
+        Method m = class_getInstanceMethod(cls, sel);
+        if (m) {
+            IMP origImp = method_getImplementation(m);
+            IMP newImp = imp_implementationWithBlock(^(id self, SEL _cmd) {
+                ((void (*)(id, SEL))origImp)(self, _cmd);
+                [self setHidden:YES];
+            });
+            method_setImplementation(m, newImp);
+        }
+    }
 }
-
-%end
