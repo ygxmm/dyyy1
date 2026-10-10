@@ -16228,6 +16228,19 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         frame.size.height = superviewHeight - gCurrentTabBarHeight;
     }
 
+    // DYYY修复：详情页场景，UI层的superview是播放器(852)，但UI应该锚定到TableView高度(792)
+    UIView *dyyyAncestor = self.view.superview;
+    while (dyyyAncestor) {
+        if ([dyyyAncestor isKindOfClass:[UITableView class]]) {
+            CGFloat tableH = CGRectGetHeight(dyyyAncestor.bounds);
+            if (tableH > 100 && fabs(frame.size.height - tableH) > 0.5) {
+                frame.size.height = tableH;
+            }
+            break;
+        }
+        dyyyAncestor = dyyyAncestor.superview;
+    }
+
     if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
         self.view.frame = frame;
     }
