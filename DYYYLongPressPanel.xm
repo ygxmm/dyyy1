@@ -1648,31 +1648,37 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
 }
 
 // ==========================================
-// runtime hook: shouldAdjustFullScreenCellDisplay -> YES
-// 用 %ctor + method_setImplementation，不用 %hook
+// 只对详情页打开"全屏 cell 显示"，搜索页不动
 // ==========================================
 static BOOL (*_o_sa)(id, SEL) = NULL;
-static int _sa_log = 0;
+static int _log_sa = 0;
 
 static BOOL _m_sa(id self, SEL _cmd) {
-    BOOL r = _o_sa ? _o_sa(self, _cmd) : NO;
-    if (_sa_log < 5) {
-        NSLog(@"[DYYY-FS] shouldAdjustFullScreen orig=%d -> YES", r);
-        _sa_log++;
+    BOOL orig = _o_sa ? _o_sa(self, _cmd) : NO;
+    BOOL inDetail = NO;
+    @try {
+        id v = [self valueForKey:@"isInDetailFeed"];
+        inDetail = v ? [v boolValue] : NO;
+    } @catch (__unused NSException *e) {}
+
+    if (_log_sa < 10) {
+        NSLog(@"[DYYY-FS] shouldAdjustFullScreen orig=%d inDetail=%d -> %d",
+              orig, inDetail, inDetail ? 1 : orig);
+        _log_sa++;
     }
-    return YES;
+
+    if (inDetail) return YES;
+    return orig;
 }
 
 %ctor {
     @autoreleasepool {
         Class c = objc_getClass("AWEPlayInteractionViewController");
         if (!c) { NSLog(@"[DYYY-FS] class not found"); return; }
-
         Method m = class_getInstanceMethod(c, NSSelectorFromString(@"shouldAdjustFullScreenCellDisplay"));
         if (!m) { NSLog(@"[DYYY-FS] method not found"); return; }
-
         _o_sa = (BOOL(*)(id,SEL))method_getImplementation(m);
         method_setImplementation(m, (IMP)_m_sa);
-        NSLog(@"[DYYY-FS] hooked shouldAdjustFullScreenCellDisplay");
+        NSLog(@"[DYYY-FS] v6 installed");
     }
 }
