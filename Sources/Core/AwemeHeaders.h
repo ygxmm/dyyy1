@@ -443,25 +443,6 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property(nonatomic, weak) id videoDelegate;
 @end
 
-@interface AWEPlayInteractionViewController : UIViewController
-@property(nonatomic, strong) UIView *view;
-@property(nonatomic, strong) AWEAwemeModel *model;
-@property(nonatomic, strong) NSString *referString;
-@property(nonatomic, assign) BOOL isCommentVCShowing;
-@property(nonatomic, weak) id richContentContainer;
-@property(nonatomic, strong) AWEPlayInteractionContext *context;
-- (id)controllerByProtocol:(Protocol *)protocol;
-- (id)videoDelegate;
-- (void)performCommentAction;
-- (void)performLikeAction;
-- (void)showSharePanel;
-- (void)showDislikeOnVideo;
-- (void)onVideoPlayerViewDoubleClicked:(id)arg1;
-- (void)speedButtonTapped:(id)sender;
-- (void)buttonTouchDown:(id)sender;
-- (void)buttonTouchUp:(id)sender;
-@end
-
 @interface HTSLiveRoomStatsMessage : NSObject
 - (NSInteger)displayValue;
 @end
@@ -2394,4 +2375,9 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 
 @interface TTMetalViewVP : UIView
 - (void)setFrame:(CGRect)frame;
+@end
+
+
+@interface AWEPlayInteractionViewController : UIViewController
+- (void)viewDidLayoutSubviews;
 @end
