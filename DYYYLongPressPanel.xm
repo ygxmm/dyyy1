@@ -1648,32 +1648,60 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
 }
 
 // ==========================================
-// 图文页全屏探针：只打日志，不改行为
-// 目的：确认 852-792=60 是否来自这三个方法
+// 图文页全屏修复
+// 主：changeModernFullScreen:YES（官方现代全屏开关）
+// 辅：tableViewBottomInsetForAllPlatform / baseTableViewBottomInset 归零
+// 判据：awemeType == 68（图文）
 // ==========================================
+@interface AWEAwemeDetailTableViewController (DYYYFullScreen)
+- (void)changeModernFullScreen:(BOOL)a0;
+- (double)tableViewBottomInsetForAllPlatform;
+- (double)baseTableViewBottomInset;
+@end
+
+static id DYYYRichModel(id vc) {
+    @try {
+        return [vc valueForKey:@"currentDisplayingAweme"];
+    } @catch (__unused NSException *e) {}
+    return nil;
+}
+
+static BOOL DYYYIsRichPage(id vc) {
+    id m = DYYYRichModel(vc);
+    if (!m) return NO;
+    @try {
+        long long t = [[m valueForKey:@"awemeType"] longLongValue];
+        return (t == 68);
+    } @catch (__unused NSException *e) {}
+    return NO;
+}
+
 %hook AWEAwemeDetailTableViewController
 
+- (void)viewWillAppear:(BOOL)animated {
+    %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    if (DYYYIsRichPage(self)) {
+        [self changeModernFullScreen:YES];
+        NSLog(@"[DYYY-FS] rich page detected, changeModernFullScreen:YES");
+    }
+}
+
 - (double)tableViewBottomInsetForAllPlatform {
-    double r = %orig;
-    NSLog(@"[DYYY-FS] tableViewBottomInsetForAllPlatform = %.1f", r);
-    return r;
+    double orig = %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYIsRichPage(self)) {
+        NSLog(@"[DYYY-FS] tableViewBottomInset orig=%.1f -> 0", orig);
+        return 0;
+    }
+    return orig;
 }
 
 - (double)baseTableViewBottomInset {
-    double r = %orig;
-    NSLog(@"[DYYY-FS] baseTableViewBottomInset = %.1f", r);
-    return r;
-}
-
-- (double)tableViewBottomMargin {
-    double r = %orig;
-    NSLog(@"[DYYY-FS] tableViewBottomMargin = %.1f", r);
-    return r;
-}
-
-- (void)applyTableViewLayoutForAllPlatform {
-    NSLog(@"[DYYY-FS] applyTableViewLayoutForAllPlatform called");
-    %orig;
+    double orig = %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYIsRichPage(self)) {
+        return 0;
+    }
+    return orig;
 }
 
 %end
