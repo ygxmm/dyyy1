@@ -16263,18 +16263,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
             [refer isEqualToString:@"search_result"] ||
             [refer isEqualToString:@"search_ecommerce"] ||
             [refer isEqualToString:@"general_search_scan"]) {
-            // DYYY修复：搜索页关键元素整体下移 60pt（补回被误减的底栏高度）
-            CGFloat dyyyOffset = (gCurrentTabBarHeight > 0) ? gCurrentTabBarHeight : 60.0;
-            for (UIView *sub in self.view.subviews) {
-                NSString *cls = NSStringFromClass([sub class]);
-                BOOL needShift = [cls isEqualToString:@"AWEElementStackView"] ||
-                                 [cls isEqualToString:@"AWEPlayInteractionProgressContainerView"];
-                if (needShift) {
-                    CGRect f = sub.frame;
-                    f.origin.y += dyyyOffset;
-                    sub.frame = f;
-                }
-            }
+
         }
     }
 }
