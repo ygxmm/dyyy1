@@ -1647,86 +1647,16 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
     return NO;
 }
 
-#import <objc/message.h>
+// ==========================================
+// 只 hook AWEPlayInteractionViewController 的全屏开关
+// 这是 792 的真正源头
+// ==========================================
+%hook AWEPlayInteractionViewController
 
-static void DLog(NSString *s) {
-    @autoreleasepool {
-        NSArray *p = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-        if (!p.count) return;
-        FILE *fp = fopen([[p.firstObject stringByAppendingPathComponent:@"dyyy_fs.log"] UTF8String], "a");
-        if (!fp) return;
-        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
-        fclose(fp);
-    }
+- (BOOL)shouldAdjustFullScreenCellDisplay {
+    BOOL orig = %orig;
+    NSLog(@"[DYYY-FS] shouldAdjustFullScreenCellDisplay orig=%d -> YES", orig);
+    return YES;
 }
 
-// 计数器
-static long _snap_h = 0, _snap_i = 0, _snap_r = 0, _snap_s = 0;
-static long _adj = 0, _act = 0, _scr = 0;
-
-// smartSlidePageSnapCellHeightForIndex:
-static double (*_o_sh)(id, SEL, long long) = NULL;
-static double _m_sh(id s, SEL c, long long i) {
-    _snap_h++;
-    return _o_sh ? _o_sh(s, c, i) : 0;
-}
-
-// smartSlidePageSnapShouldSkipWithScrollView:velocity:
-static BOOL (*_o_ss)(id, SEL, id, CGPoint) = NULL;
-static BOOL _m_ss(id s, SEL c, id sv, CGPoint v) {
-    _snap_s++;
-    return _o_ss ? _o_ss(s, c, sv, v) : NO;
-}
-
-// adjustTableViewHeightForTargetIndex:
-static void (*_o_adj)(id, SEL, long long) = NULL;
-static void _m_adj(id s, SEL c, long long i) {
-    _adj++;
-    if (_o_adj) _o_adj(s, c, i);
-}
-
-// updateCurrentActiveCell:index:
-static void (*_o_act)(id, SEL, id, long long) = NULL;
-static void _m_act(id s, SEL c, id cell, long long i) {
-    _act++;
-    if (_o_act) _o_act(s, c, cell, i);
-}
-
-// cellIsInScreen:
-static BOOL (*_o_scr)(id, SEL, id) = NULL;
-static BOOL _m_scr(id s, SEL c, id cell) {
-    _scr++;
-    return _o_scr ? _o_scr(s, c, cell) : NO;
-}
-
-// 每 5 秒写一次计数
-static void DStartTimer(void) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [NSTimer scheduledTimerWithTimeInterval:5.0 repeats:YES block:^(NSTimer *t){
-            DLog([NSString stringWithFormat:
-                @"[5s] snapH=%ld snapSkip=%ld adjust=%ld active=%ld inScreen=%ld",
-                _snap_h, _snap_s, _adj, _act, _scr]);
-        }];
-    });
-}
-
-%ctor {
-    @autoreleasepool {
-        Class c = objc_getClass("AWEAwemeDetailTableViewController");
-        if (c) {
-            Method m;
-            m = class_getInstanceMethod(c, NSSelectorFromString(@"smartSlidePageSnapCellHeightForIndex:"));
-            if (m) { _o_sh = (double(*)(id,SEL,long long))method_getImplementation(m); method_setImplementation(m, (IMP)_m_sh); }
-            m = class_getInstanceMethod(c, NSSelectorFromString(@"smartSlidePageSnapShouldSkipWithScrollView:velocity:"));
-            if (m) { _o_ss = (BOOL(*)(id,SEL,id,CGPoint))method_getImplementation(m); method_setImplementation(m, (IMP)_m_ss); }
-            m = class_getInstanceMethod(c, NSSelectorFromString(@"adjustTableViewHeightForTargetIndex:"));
-            if (m) { _o_adj = (void(*)(id,SEL,long long))method_getImplementation(m); method_setImplementation(m, (IMP)_m_adj); }
-            m = class_getInstanceMethod(c, NSSelectorFromString(@"updateCurrentActiveCell:index:"));
-            if (m) { _o_act = (void(*)(id,SEL,id,long long))method_getImplementation(m); method_setImplementation(m, (IMP)_m_act); }
-            m = class_getInstanceMethod(c, NSSelectorFromString(@"cellIsInScreen:"));
-            if (m) { _o_scr = (BOOL(*)(id,SEL,id))method_getImplementation(m); method_setImplementation(m, (IMP)_m_scr); }
-        }
-        DLog(@"who-checker installed");
-        DStartTimer();
-    }
-}
+%end
