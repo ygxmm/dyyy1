@@ -1580,20 +1580,26 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
     }
 }
 
-// ==========================================
-// 图文详情页容器撑高到 852（声明在 AwemeHeaders.h）
-// ==========================================
-%hook RichContentContainerViewController
 
-- (void)viewDidLayoutSubviews {
-    %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGRect f = self.view.frame;
+// ==========================================
+// 图文详情页容器撑高到 852（运行时Hook，绕过Logos解析bug）
+// ==========================================
+%ctor {
+    Class dyyyRichCls = objc_getClass("RichContentContainerViewController");
+    if (!dyyyRichCls) return;
+    Method dyyyM = class_getInstanceMethod(dyyyRichCls, @selector(viewDidLayoutSubviews));
+    if (!dyyyM) return;
+    IMP dyyyOrigImp = method_getImplementation(dyyyM);
+    IMP dyyyNewImp = imp_implementationWithBlock(^(id self, SEL _cmd) {
+        ((void (*)(id, SEL))dyyyOrigImp)(self, _cmd);
+        if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+        UIView *v = [self valueForKey:@"view"];
+        if (!v) return;
+        CGRect f = v.frame;
         if (fabs(f.size.height - 792.0) < 1.0) {
             f.size.height = 852.0;
-            self.view.frame = f;
+            v.frame = f;
         }
-    }
+    });
+    method_setImplementation(dyyyM, dyyyNewImp);
 }
-
-%end
