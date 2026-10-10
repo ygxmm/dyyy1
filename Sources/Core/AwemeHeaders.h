@@ -628,9 +628,6 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property(nonatomic, strong) UICollectionView *collectionView;
 @end
 
-@interface AWEFeedRefreshFooter : UIView
-@end
-
 @interface AWERLSegmentView : UIView
 @end
 
@@ -2398,4 +2395,9 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 - (void)showSharePanel;
 - (void)performLikeAction;
 - (void)showDislikeOnVideo;
+@end
+
+
+@interface AWEFeedRefreshFooter : UIView
+- (void)layoutSubviews;
 @end
