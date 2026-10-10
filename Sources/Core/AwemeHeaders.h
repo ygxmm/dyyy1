@@ -2339,9 +2339,6 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @interface AWEListKitMagicCollectionView : UICollectionView
 @end
 
-@interface TTPlayerView : UIView
-@end
-
 // 开屏广告
 @interface BDASplashManager : NSObject
 - (void)showSplashControllerViewOnKeyWindow:(id)keyWindow model:(id)model;
@@ -2389,3 +2386,12 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 
 
+
+
+@interface TTPlayerView : UIView
+- (void)setFrame:(CGRect)frame;
+@end
+
+@interface TTMetalViewVP : UIView
+- (void)setFrame:(CGRect)frame;
+@end
