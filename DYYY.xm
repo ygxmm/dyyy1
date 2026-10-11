@@ -18056,39 +18056,96 @@ static void DYYYV54Log(NSString *fmt, ...) {
 }
 
 
-// ===== v58: 只解除 RichContentContainerVC.view 的裁剪 =====
-// dump 证据：
-//   RichContentContainerVC.view  792  clips=1  ← 裁剪层
-//     RichContentNewListVC.view  792  clips=0
-//       AWEDPlayerViewController.view  852  ← 内容本身是 852
-// 说明内容层是 852，被外层 rcView 792 + clips=1 裁掉
-// 之前所有尝试都改 frame/约束（触发循环）
-// v58 只改 clipsToBounds：不触发 layout
-static void (*_o_v58)(id, SEL) = NULL;
+// ===== v61: 找 detailVC.view 下所有"占位空视图"并移出屏幕 =====
+// 用户的思路：抖音 rcView 792 是设计，但底部有个 60pt "占位视图"
+// 把这个占位挪开，让抖音自己重排
+// 先别 setHidden，只改 frame.origin.y = svh（移出屏幕），看抖音反应
+static void (*_o_v61)(id, SEL) = NULL;
+static int _v61_log = 0;
 
-static void _m_v58(id self, SEL _cmd) {
-    if (_o_v58) _o_v58(self, _cmd);
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    UIView *v = ((UIViewController *)self).view;
-    if (!v) return;
-    if (v.clipsToBounds) {
-        v.clipsToBounds = NO;
+static void DYYYV61Log(NSString *fmt, ...) {
+    @autoreleasepool {
+        va_list ap; va_start(ap, fmt);
+        NSString *s = [[NSString alloc] initWithFormat:fmt arguments:ap];
+        va_end(ap);
+        if (!s) return;
+        NSString *home = NSHomeDirectory();
+        if (home.length == 0) return;
+        NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
+                          stringByAppendingPathComponent:@"dyyy_v61.log"];
+        FILE *fp = fopen(path.UTF8String, "a");
+        if (!fp) return;
+        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
+        fclose(fp);
     }
-    // 顺带把 RichContentNewListVC 的中间层也解裁（如果有）
-    for (UIView *sub in v.subviews) {
-        if (sub.clipsToBounds) {
-            sub.clipsToBounds = NO;
+}
+
+static void _m_v61(id self, SEL _cmd) {
+    if (_o_v61) _o_v61(self, _cmd);
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+
+    @autoreleasepool {
+        UIViewController *vc = (UIViewController *)self;
+
+        // 只对图文（awemeType == 68）
+        BOOL isRich = NO;
+        @try {
+            id aweme = [vc valueForKey:@"model"];
+            if (aweme) {
+                long long t = [[aweme valueForKey:@"awemeType"] longLongValue];
+                isRich = (t == 68);
+            }
+        } @catch (__unused NSException *e) {}
+        if (!isRich) return;
+
+        UIView *root = vc.view;
+        if (!root || root.bounds.size.height < 800) return;
+        CGFloat svh = root.bounds.size.height;
+
+        // 遍历所有子孙：找"60pt 高 + 贴底 + 无可见子视图"的空容器
+        NSMutableArray *q = [NSMutableArray arrayWithObject:root];
+        int safety = 0;
+        while (q.count > 0 && safety++ < 500) {
+            UIView *v = q.firstObject;
+            [q removeObjectAtIndex:0];
+            [q addObjectsFromArray:v.subviews];
+
+            if (v == root) continue;
+            CGFloat mh = v.frame.size.height;
+            CGFloat my = v.frame.origin.y;
+            // 只找 40~100 高度 + 贴底
+            if (mh < 40 || mh > 100) continue;
+            if (my + mh < svh - 5) continue;
+            // 必须没有可见子视图（占位空容器）
+            BOOL hasVisibleChild = NO;
+            for (UIView *c in v.subviews) {
+                if (!c.hidden && c.alpha > 0.01) { hasVisibleChild = YES; break; }
+            }
+            if (hasVisibleChild) continue;
+
+            NSString *cls = NSStringFromClass([v class]);
+            if ([cls containsString:@"TabBar"] || [cls containsString:@"tabBar"]) continue;
+
+            if (_v61_log < 10) {
+                DYYYV61Log(@"[v61] move out: %@ %p frame=%@",
+                           cls, v, NSStringFromCGRect(v.frame));
+                _v61_log++;
+            }
+            CGRect f = v.frame;
+            f.origin.y = svh;
+            v.frame = f;
         }
     }
 }
 
 %ctor {
-    Class c = objc_getClass("RichContentContainerViewController");
+    Class c = objc_getClass("AWEAwemeDetailCellViewController");
     if (c) {
         Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
         if (m) {
-            _o_v58 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_o_v58);
+            _o_v61 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v61);
+            NSLog(@"[DYYY-v61] installed");
         }
     }
 }
