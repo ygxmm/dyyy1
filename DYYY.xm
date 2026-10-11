@@ -17955,19 +17955,18 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 
 
-// ===== v27: 改 table.bottom 约束 constant -60 -> 0 =====
-// 从 v23 dump 看清：
-//   att=4 (NSLayoutAttributeBottom) == att=4 const=-60.0
-//   table.bottom == superview.bottom - 60  → table 高 792
-// 改成 constant=0 → table 高 852
-static void (*_o_v27)(id, SEL) = NULL;
-static int _log_v27 = 0;
 
-static void _m_v27(id self, SEL _cmd) {
-    if (_o_v27) _o_v27(self, _cmd);
+// ===== v28: 改 table.bottom 约束 -60 -> 0 并触发重排 =====
+// v27 只改 constant，第一次进图文能撑满（新约束头次算就按 0 算）
+// 但第二次进图文时抖音先按 -60 算过一遍，改 0 后没重排 → 视觉不变
+// v28 在改完后用 dispatch_async 下一 runloop 触发一次 layoutIfNeeded
+static void (*_o_v28)(id, SEL) = NULL;
+static int _log_v28 = 0;
+
+static void _m_v28(id self, SEL _cmd) {
+    if (_o_v28) _o_v28(self, _cmd);
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    if (_log_v27 >= 8) return;
-    _log_v27++;
+    if (_log_v28 >= 10) return;
 
     @autoreleasepool {
         UIViewController *vc = (UIViewController *)self;
@@ -17990,38 +17989,48 @@ static void _m_v27(id self, SEL _cmd) {
         UIView *sv = table.superview;
         if (!sv) return;
 
-        DLog(@"[DYYY-v27] table=%p sv=%p", table, sv);
-
-        // 扫 sv 的约束 + sv.superview 的约束，找 table.bottom 约束
+        BOOL changed = NO;
         NSMutableArray *pools = [NSMutableArray arrayWithObject:sv.constraints];
         if (sv.superview) [pools addObject:sv.superview.constraints];
 
-        int hit = 0;
         for (NSArray *pool in pools) {
             for (NSLayoutConstraint *c in pool) {
-                // 看 first 或 second 是 table，attribute 是 Bottom (4)
-                BOOL firstIsTable = (c.firstItem == table);
-                BOOL secondIsTable = (c.secondItem == table);
-                if (!firstIsTable && !secondIsTable) continue;
-
-                NSLayoutAttribute a1 = c.firstAttribute;
-                NSLayoutAttribute a2 = c.secondAttribute;
-                // Bottom == Bottom 或 Bottom == nil(只设常量)
-                if ((a1 == NSLayoutAttributeBottom || a2 == NSLayoutAttributeBottom)) {
-                    DLog(@"[DYYY-v27] BOTTOM first=%@ att=%ld second=%@ att=%ld const=%.1f",
-                          NSStringFromClass([c.firstItem class]), (long)a1,
-                          c.secondItem ? NSStringFromClass([c.secondItem class]) : @"nil", (long)a2,
-                          c.constant);
-                    if (fabs(c.constant) > 1.0) {
-                        CGFloat old = c.constant;
-                        c.constant = 0;
-                        hit++;
-                        DLog(@"[DYYY-v27] -> constant %.1f 改 0", old);
-                    }
+                if (c.firstItem != table && c.secondItem != table) continue;
+                if (c.firstAttribute != NSLayoutAttributeBottom &&
+                    c.secondAttribute != NSLayoutAttributeBottom) continue;
+                if (fabs(c.constant) > 1.0) {
+                    c.constant = 0;
+                    changed = YES;
                 }
             }
         }
-        DLog(@"[DYYY-v27] 改了 %d 条", hit);
+
+        if (_log_v28 < 5) {
+            DLog(@"[DYYY-v28] table=%p changed=%d h=%.1f",
+                  table, changed, table.frame.size.height);
+            _log_v28++;
+        }
+
+        // 只在实际改过或当前高度还是 792 时触发重排
+        if (changed || table.frame.size.height < rootView.bounds.size.height - 1) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                @autoreleasepool {
+                    UIView *t = table;
+                    UIView *s = sv;
+                    if (!t || !s) return;
+                    [s setNeedsLayout];
+                    [s layoutIfNeeded];
+                    if (t.frame.size.height < s.bounds.size.height - 1) {
+                        // 二次尝试：改 frame 兜底
+                        CGRect f = t.frame;
+                        f.origin.y = 0;
+                        f.size.height = s.bounds.size.height;
+                        t.frame = f;
+                        t.clipsToBounds = NO;
+                    }
+                }
+            });
+        }
     }
 }
 
@@ -18030,9 +18039,9 @@ static void _m_v27(id self, SEL _cmd) {
     if (c) {
         Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
         if (m) {
-            _o_v27 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_v27);
-            DLog(@"[DYYY-v27] installed");
+            _o_v28 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v28);
+            DLog(@"[DYYY-v28] installed");
         }
     }
 }
