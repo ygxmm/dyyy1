@@ -18084,3 +18084,33 @@ static void _m_v29(id self, SEL _cmd) {
 }
 
 %end
+
+
+// ===== v38: 详情页移出所有底部 60pt 遮挡条 =====
+// FLEX 定位：rootVC.view 下有匿名 UIView (2, 788, 393, 60) 挡住图片
+// 遍历 rootVC.view 直接子视图，把贴底的 40~100pt 条移出屏幕
+%hook AWEAwemeDetailTableViewController
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    UIView *rv = self.view;
+    if (!rv || rv.bounds.size.height < 800) return;
+    CGFloat svh = rv.bounds.size.height;
+    for (UIView *sub in rv.subviews) {
+        CGFloat mh = sub.frame.size.height;
+        CGFloat my = sub.frame.origin.y;
+        if (mh < 30 || mh > 100) continue;
+        if (my + mh < svh - 5) continue;   // 必须贴底
+        NSString *cls = NSStringFromClass([sub class]);
+        if ([cls isEqualToString:@"AWEAwemeDetailTableView"]) continue;
+        if ([cls containsString:@"VisualEffect"]) continue;
+        if ([cls containsString:@"UIImageView"]) continue;
+        sub.hidden = YES;
+        CGRect f = sub.frame;
+        f.origin.y = svh;
+        sub.frame = f;
+    }
+}
+
+%end
