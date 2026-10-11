@@ -15193,6 +15193,11 @@ static Class tabBarButtonClass = nil;
     BOOL hidePlus = DYYYGetBool(@"DYYYHidePlusButton");
     BOOL isPad = (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad);
 
+    // perf: 快速路径——没有任何隐藏按钮开关时，跳过遍历/排序/重排
+    if (!hideShop && !hideMsg && !hideFri && !hideMe && !hidePlus && !isPad) {
+        return;
+    }
+
     NSMutableArray *visibleButtons = [NSMutableArray array];
     UIView *ipadContainerView = nil;
 
