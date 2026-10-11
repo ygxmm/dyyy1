@@ -17927,18 +17927,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 // ===== 详情页 Cell 撑满全屏（严格限定 AWEAwemeDetailTableView） =====
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 // ===== v29: 每个 table 只处理一次，不再每帧 dispatch =====
 // v28 每次 layout 都 dispatch_async + layoutIfNeeded → 打断主页加载
 // v29 用 associatedObject 标记已处理的 table，只动手一次
@@ -17995,9 +17983,6 @@ static void _m_v29(id self, SEL _cmd) {
         // 标记已处理（无论是否改过，都不再处理这个 table）
         objc_setAssociatedObject(table, kDYYYV29Done, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
-        DLog(@"[DYYY-v29] table=%p changed=%d h=%.1f (标记已处理)",
-              table, changed, table.frame.size.height);
-
         if (changed) {
             // 只在真正改过约束时触发一次重排
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -18015,7 +18000,6 @@ static void _m_v29(id self, SEL _cmd) {
         if (m) {
             _o_v29 = (void(*)(id,SEL))method_getImplementation(m);
             method_setImplementation(m, (IMP)_m_v29);
-            DLog(@"[DYYY-v29] installed");
         }
     }
 }
