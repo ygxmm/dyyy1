@@ -18057,3 +18057,30 @@ static void _m_v29(id self, SEL _cmd) {
 }
 
 %end
+
+
+// ===== v37: 图文页把 AWECommentInputBackgroundView 彻底移出屏幕 =====
+%hook AWECommentInputBackgroundView
+
+- (void)setHidden:(BOOL)hidden {
+    %orig(hidden);
+}
+
+- (void)layoutSubviews {
+    %orig;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    UIView *sv = self.superview;
+    if (!sv) return;
+    CGFloat svh = sv.bounds.size.height;
+    CGFloat my = self.frame.origin.y;
+    CGFloat mh = self.frame.size.height;
+    // 贴在 superview 底部 40~100pt 的小条 → 移出屏幕
+    if (mh > 30 && mh < 100 && my + mh >= svh - 1) {
+        CGRect f = self.frame;
+        f.origin.y = svh;
+        self.frame = f;
+        self.hidden = YES;
+    }
+}
+
+%end
