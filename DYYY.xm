@@ -18036,86 +18036,89 @@ static void _m_v29(id self, SEL _cmd) {
 }
 
 
-// ===== v49: 拦截 AWECommentInputBackgroundView 的 setHidden/setFrame/setAlpha =====
-// 头文件关键：
-//   - (void)refreshLayout;   抖音主动调它重排，会覆盖我们的 layoutSubviews 改动
-//   - (struct CGSize)intrinsicContentSize;  返回 60pt
-// 之前所有 hook layoutSubviews 的方案都会被 refreshLayout 覆盖
-// v49 直接拦截"设置请求本身"：抖音调 setHidden:NO、setFrame:、setAlpha:1 都被我们改掉
-static BOOL DYYYV49IsRichDetailVC(id v) {
-    UIView *sv = ((UIView *)v).superview;
-    if (!sv) return NO;
-    if (sv.bounds.size.height < 800) return NO;
-    UIResponder *r = sv.nextResponder;
-    int d = 0;
-    while (r && d++ < 10) {
-        if ([r isKindOfClass:NSClassFromString(@"AWEAwemeDetailTableViewController")]) {
-            @try {
-                id aweme = [(id)r valueForKey:@"currentDisplayingAweme"];
-                if (!aweme) aweme = [(id)r valueForKey:@"currentAweme"];
-                if (aweme) {
-                    long long t = [[aweme valueForKey:@"awemeType"] longLongValue];
-                    return (t == 68);
-                }
-            } @catch (__unused NSException *e) {}
-            return NO;
+// ===== v50: hook RichContentNewListViewController 的 updateAwemeContentViewFrame: =====
+// 关键 diff（旧版 vs 新版）：
+//   旧版 AWEMultiContentImpl.RichContentNewListViewController
+//       没有 awemeContentViewFrame / updateAwemeContentViewFrame:
+//       图文内容自由撑满 852
+//   新版新增：
+//       - (CGRect)awemeContentViewFrame;
+//       - (CGRect)awemeContentViewInitFrame;
+//       - (void)updateAwemeContentViewFrame:(CGRect)a0;
+//       - (void)updateAwemeContentViewFrame:(CGRect)a0 animationDuration:(double)a1;
+//   抖音调 updateAwemeContentViewFrame:{0,0,393,792} → 内容被限到 792
+//
+// v50 拦截这两个 setter：抖音想设 792，我们改成 superview 全屏
+static void (*_o_v50_u1)(id, SEL, CGRect) = NULL;
+static void (*_o_v50_u2)(id, SEL, CGRect, double) = NULL;
+static int _v50_log = 0;
+
+static BOOL DYYYV50IsRichScene(id self) {
+    // 只处理图文：从当前 awemeModel 拿 awemeType
+    @try {
+        id model = nil;
+        if ([self respondsToSelector:NSSelectorFromString(@"currentAwemeModel")]) {
+            model = [self performSelector:NSSelectorFromString(@"currentAwemeModel")];
         }
-        if ([r isKindOfClass:[UIViewController class]]) break;
-        r = r.nextResponder;
-    }
+        if (!model) {
+            model = [self valueForKey:@"currentAwemeModel"];
+        }
+        if (model) {
+            long long t = [[model valueForKey:@"awemeType"] longLongValue];
+            return (t == 68);
+        }
+    } @catch (__unused NSException *e) {}
     return NO;
 }
 
-// 1. hook setHidden: —— 抖音想 NO，我们强制 YES
-static void (*_o_v49_h)(id, SEL, BOOL) = NULL;
-static void _m_v49_h(id self, SEL _cmd, BOOL hidden) {
-    if (!hidden && DYYYV49IsRichDetailVC(self)) {
-        hidden = YES;   // 强制 YES
+static CGRect DYYYV50FullFrame(id self, CGRect original) {
+    UIView *v = ((UIViewController *)self).view;
+    UIView *sv = v.superview;
+    if (!sv) return original;
+    CGFloat svh = sv.bounds.size.height;
+    CGFloat svw = sv.bounds.size.width;
+    if (svh < 800) return original;
+    // 只处理被限制到 792 的那种
+    if (original.size.height > svh - 1) return original;
+
+    if (_v50_log < 8) {
+        NSLog(@"[DYYY-v50] force frame %.1f -> %.1f", original.size.height, svh);
+        _v50_log++;
     }
-    if (_o_v49_h) _o_v49_h(self, _cmd, hidden);
+    return CGRectMake(0, 0, svw, svh);
 }
 
-// 2. hook setAlpha: —— 抖音想 1，我们强制 0
-static void (*_o_v49_a)(id, SEL, CGFloat) = NULL;
-static void _m_v49_a(id self, SEL _cmd, CGFloat alpha) {
-    if (alpha > 0.01 && DYYYV49IsRichDetailVC(self)) {
-        alpha = 0.0;
+static void _m_v50_u1(id self, SEL _cmd, CGRect frame) {
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYYV50IsRichScene(self)) {
+        frame = DYYYV50FullFrame(self, frame);
     }
-    if (_o_v49_a) _o_v49_a(self, _cmd, alpha);
+    if (_o_v50_u1) _o_v50_u1(self, _cmd, frame);
 }
 
-// 3. hook setFrame: —— 贴底 60pt 的请求改成屏幕外
-static void (*_o_v49_f)(id, SEL, CGRect) = NULL;
-static void _m_v49_f(id self, SEL _cmd, CGRect frame) {
-    UIView *sv = ((UIView *)self).superview;
-    if (sv && DYYYV49IsRichDetailVC(self)) {
-        CGFloat svh = sv.bounds.size.height;
-        if (frame.size.height > 40 && frame.size.height < 100 &&
-            frame.origin.y + frame.size.height >= svh - 5) {
-            frame.origin.y = svh;
-        }
+static void _m_v50_u2(id self, SEL _cmd, CGRect frame, double duration) {
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYYV50IsRichScene(self)) {
+        frame = DYYYV50FullFrame(self, frame);
     }
-    if (_o_v49_f) _o_v49_f(self, _cmd, frame);
+    if (_o_v50_u2) _o_v50_u2(self, _cmd, frame, duration);
 }
 
 %ctor {
-    Class c = objc_getClass("AWECommentInputBackgroundView");
-    if (!c) { NSLog(@"[DYYY-v49] class not found"); return; }
+    Class c = objc_getClass("AWEMultiContentImpl.RichContentNewListViewController");
+    if (!c) { NSLog(@"[DYYY-v50] class not found"); return; }
 
-    Method m1 = class_getInstanceMethod(c, @selector(setHidden:));
+    Method m1 = class_getInstanceMethod(c, NSSelectorFromString(@"updateAwemeContentViewFrame:"));
     if (m1) {
-        _o_v49_h = (void(*)(id,SEL,BOOL))method_getImplementation(m1);
-        method_setImplementation(m1, (IMP)_m_v49_h);
+        _o_v50_u1 = (void(*)(id,SEL,CGRect))method_getImplementation(m1);
+        method_setImplementation(m1, (IMP)_m_v50_u1);
+        NSLog(@"[DYYY-v50] hook updateAwemeContentViewFrame:");
     }
-    Method m2 = class_getInstanceMethod(c, @selector(setAlpha:));
+
+    Method m2 = class_getInstanceMethod(c, NSSelectorFromString(@"updateAwemeContentViewFrame:animationDuration:"));
     if (m2) {
-        _o_v49_a = (void(*)(id,SEL,CGFloat))method_getImplementation(m2);
-        method_setImplementation(m2, (IMP)_m_v49_a);
+        _o_v50_u2 = (void(*)(id,SEL,CGRect,double))method_getImplementation(m2);
+        method_setImplementation(m2, (IMP)_m_v50_u2);
+        NSLog(@"[DYYY-v50] hook updateAwemeContentViewFrame:animationDuration:");
     }
-    Method m3 = class_getInstanceMethod(c, @selector(setFrame:));
-    if (m3) {
-        _o_v49_f = (void(*)(id,SEL,CGRect))method_getImplementation(m3);
-        method_setImplementation(m3, (IMP)_m_v49_f);
-    }
-    NSLog(@"[DYYY-v49] installed (h=%d a=%d f=%d)", m1?1:0, m2?1:0, m3?1:0);
+
+    if (!m1 && !m2) NSLog(@"[DYYY-v50] no methods found");
 }
