@@ -18158,33 +18158,28 @@ static void new_RCC_viewWillDisappear(id self, SEL _cmd, BOOL animated) {
     }
 }
 
-// ===== v74: Hook 底部 Inset 和 Cell 调整，强迫图文页撑满 852 =====
-#import <objc/runtime.h>
+// ===== v75: 把图文页互动UI整体上移，避免被792裁剪 =====
+%hook AWEPlayInteractionViewController
 
-static double (*orig_tableViewBottomInset)(id, SEL);
-static double (*orig_tableViewBottomMargin)(id, SEL);
-
-static double hook_tableViewBottomInset(id self, SEL _cmd) {
-    return 0; // 干掉底部安全区
-}
-
-static double hook_tableViewBottomMargin(id self, SEL _cmd) {
-    return 0; // 干掉底部 Margin
-}
-
-%ctor {
-    Class c = objc_getClass("AWEAwemeDetailTableViewController");
-    if (!c) return;
+- (void)viewDidLayoutSubviews {
+    %orig;
     
-    Method m1 = class_getInstanceMethod(c, NSSelectorFromString(@"tableViewBottomInsetForAllPlatform"));
-    if (m1) {
-        orig_tableViewBottomInset = (double (*)(id, SEL))method_getImplementation(m1);
-        method_setImplementation(m1, (IMP)hook_tableViewBottomInset);
-    }
-    
-    Method m2 = class_getInstanceMethod(c, NSSelectorFromString(@"tableViewBottomMargin"));
-    if (m2) {
-        orig_tableViewBottomMargin = (double (*)(id, SEL))method_getImplementation(m2);
-        method_setImplementation(m2, (IMP)hook_tableViewBottomMargin);
+    CGFloat limitY = 792.0;
+    for (UIView *sub in self.view.subviews) {
+        CGRect f = sub.frame;
+        CGFloat maxY = CGRectGetMaxY(f);
+        CGFloat minY = CGRectGetMinY(f);
+        
+        if (maxY > limitY && minY < limitY) {
+            // 跨越裁剪线，往上移，使其底部刚好在792
+            f.origin.y -= (maxY - limitY);
+            sub.frame = f;
+        } else if (minY >= limitY) {
+            // 完全在裁剪线以下，整体移进可见区
+            f.origin.y = limitY - f.size.height;
+            sub.frame = f;
+        }
     }
 }
+
+%end
