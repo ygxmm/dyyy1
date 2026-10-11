@@ -18084,19 +18084,19 @@ static void hook_updateShrinkState(id self, SEL _cmd, BOOL state, UIEdgeInsets i
 
     Method m1 = class_getInstanceMethod(c, @selector(getImageContentInsets));
     if (m1) {
-        orig_getImageContentInsets = (void *)method_getImplementation(m1);
+        orig_getImageContentInsets = (UIEdgeInsets (*)(id, SEL))method_getImplementation(m1);
         method_setImplementation(m1, (IMP)hook_getImageContentInsets);
     }
 
     Method m2 = class_getInstanceMethod(c, @selector(setImageContentInsets:animated:duration:));
     if (m2) {
-        orig_setImageContentInsets = (void *)method_getImplementation(m2);
+        orig_setImageContentInsets = (void (*)(id, SEL, UIEdgeInsets, BOOL, double))method_getImplementation(m2);
         method_setImplementation(m2, (IMP)hook_setImageContentInsets);
     }
 
     Method m3 = class_getInstanceMethod(c, @selector(updateShrinkState:insets:animated:));
     if (m3) {
-        orig_updateShrinkState = (void *)method_getImplementation(m3);
+        orig_updateShrinkState = (void (*)(id, SEL, BOOL, UIEdgeInsets, BOOL))method_getImplementation(m3);
         method_setImplementation(m3, (IMP)hook_updateShrinkState);
     }
 }
