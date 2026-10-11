@@ -9789,10 +9789,10 @@ static BOOL DYYYShouldVerifiedCollapseCommentHeaderModel(id model) {
 // 隐藏消息页顶栏头像气泡
 %hook AFDSkylightCellBubble
 - (void)layoutSubviews {
-    if (DYYYGetBool(@"DYYYHideAvatarBubble")) {
-        [self removeFromSuperview];
-    }
     %orig;
+    if (DYYYGetBool(@"DYYYHideAvatarBubble")) {
+        self.hidden = YES;
+    }
 }
 %end
 
@@ -15148,20 +15148,19 @@ static Class tabBarButtonClass = nil;
         if (gCurrentTabBarHeight == kInvalidHeight) {
             gCurrentTabBarHeight = originalTabBarHeight;
         }
-        NSLog(@"[DYYY] initializeOriginalTabBarHeight: Skipped! originalTabBarHeight already initialized as %.1f.", originalTabBarHeight);
         return;
     }
 
     UIWindow *targetWindow = self.window ?: [DYYYUtils getActiveWindow];
     if (self.frame.size.height >= 30) {
         originalTabBarHeight = self.frame.size.height;
-        NSLog(@"[DYYY] initializeOriginalTabBarHeight: Success! originalTabBarHeight set to %.1f (from self.frame.size.height)", originalTabBarHeight);
+
     } else if (targetWindow) {
         CGFloat bottomInset = targetWindow.safeAreaInsets.bottom;
         originalTabBarHeight = 49 + bottomInset;
-        NSLog(@"[DYYY] initializeOriginalTabBarHeight: Success! originalTabBarHeight set to %.1f (fallback calculation: 49.0 + %.1f)", originalTabBarHeight, bottomInset);
+
     } else {
-        NSLog(@"[DYYY] initializeOriginalTabBarHeight: Failed! No window available.");
+
     }
     if (originalTabBarHeight != kInvalidHeight) {
         gCurrentTabBarHeight = originalTabBarHeight;
@@ -15180,13 +15179,11 @@ static Class tabBarButtonClass = nil;
     %orig;
 
     if (originalTabBarHeight == kInvalidHeight) {
-        NSLog(@"[DYYY] layoutSubviews: Fallback! originalTabBarHeight initialization triggered.");
         [self initializeOriginalTabBarHeight];
     }
 
     if (gCurrentTabBarHeight == kInvalidHeight) {
         gCurrentTabBarHeight = originalTabBarHeight;
-        NSLog(@"[DYYY] layoutSubviews: gCurrentTabBarHeight fallback synced to %.1f.", gCurrentTabBarHeight);
     }
 
     BOOL hideShop = DYYYGetBool(@"DYYYHideShopButton");
