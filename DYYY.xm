@@ -18056,90 +18056,81 @@ static void DYYYV54Log(NSString *fmt, ...) {
 }
 
 
-// ===== v63: 让 rcView + RichContentNewListVC 两层都不裁 =====
-// dump 铁证：
-//   RichContentContainerVC.view  792 clips=1  ← 一层裁
-//     RichContentNewListVC.view  792          ← 二层也要解
-//       TTMetalViewVP            852          ← 图片真实 852
-// 两层都解裁，852 图片就露出来了
-// 用 KVO 拿不到就 hook viewDidLoad 记录，再拦 setClipsToBounds
+// ===== v64: 把 AWEPlayInteractionViewController.view 从 792 撑到 852 =====
+// dump 铁证（v63 后）：
+//   RichContentContainerVC.view           852  clips=0  ✅
+//     AWEDPlayerViewController.view       852  ✅  图片层
+//     AWEPlayInteractionViewController.view 792  ❌  UI 层（点赞/文案）
+// v64 只针对 PlayInteractionVC.view，加严判条件：
+//  - superview 高度 > 800（详情页）
+//  - self.view 高度 < superview 高度 - 1（矮了）
+//  - superview 的父链里有 RichContentContainerViewController（图文页特征）
+// 用 associatedObject 标记，防止每帧都改导致的循环
 
-static __weak UIView *g_rcView = nil;
-static __weak UIView *g_rclView = nil;
+static const void *kDYYYV64Done = &kDYYYV64Done;
 
-// --- 记录 rcView ---
-static void (*_o_v63_vdl1)(id, SEL) = NULL;
-static void _m_v63_vdl1(id self, SEL _cmd) {
-    if (_o_v63_vdl1) _o_v63_vdl1(self, _cmd);
-    g_rcView = ((UIViewController *)self).view;
-}
+static void (*_o_v64)(id, SEL) = NULL;
 
-// --- 记录 rclView ---
-static void (*_o_v63_vdl2)(id, SEL) = NULL;
-static void _m_v63_vdl2(id self, SEL _cmd) {
-    if (_o_v63_vdl2) _o_v63_vdl2(self, _cmd);
-    g_rclView = ((UIViewController *)self).view;
-}
-
-// --- 拦 setClipsToBounds ---
-static void (*_o_v63_scb)(id, SEL, BOOL) = NULL;
-static void _m_v63_scb(id self, SEL _cmd, BOOL clips) {
-    if (clips && DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIView *v = (UIView *)self;
-        UIView *rc = g_rcView;
-        UIView *rcl = g_rclView;
-        if ((rc && v == rc) || (rcl && v == rcl)) {
-            clips = NO;
+static BOOL DYYYV64IsRichDetail(UIView *view) {
+    UIResponder *r = view.nextResponder;
+    int d = 0;
+    while (r && d++ < 15) {
+        Class c = [r class];
+        NSString *name = NSStringFromClass(c);
+        if ([name isEqualToString:@"RichContentContainerViewController"]) {
+            return YES;
+        }
+        if ([name isEqualToString:@"AWEAwemeDetailTableViewController"]) {
+            return NO;
+        }
+        if ([r isKindOfClass:[UIView class]]) {
+            r = ((UIView *)r).superview;
+        } else {
+            r = r.nextResponder;
         }
     }
-    if (_o_v63_scb) _o_v63_scb(self, _cmd, clips);
+    return NO;
 }
 
-// --- 也拦 CALayer.setMasksToBounds，有些代码走这条路 ---
-static void (*_o_v63_mtb)(id, SEL, BOOL) = NULL;
-static void _m_v63_mtb(id self, SEL _cmd, BOOL masks) {
-    if (masks && DYYYGetBool(@"DYYYEnableFullScreen")) {
-        id delegate = nil;
-        @try { delegate = [(CALayer *)self delegate]; } @catch (__unused NSException *e) {}
-        UIView *rc = g_rcView;
-        UIView *rcl = g_rclView;
-        if (delegate && ((rc && delegate == rc) || (rcl && delegate == rcl))) {
-            masks = NO;
-        }
+static void _m_v64(id self, SEL _cmd) {
+    if (_o_v64) _o_v64(self, _cmd);
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+
+    @autoreleasepool {
+        UIViewController *vc = (UIViewController *)self;
+        UIView *v = vc.view;
+        UIView *sv = v.superview;
+        if (!v || !sv) return;
+
+        CGFloat svh = sv.bounds.size.height;
+        CGFloat vh = v.frame.size.height;
+
+        if (svh < 800) return;
+        if (vh >= svh - 1) return;
+
+        if (!DYYYV64IsRichDetail(sv)) return;
+        if (objc_getAssociatedObject(v, kDYYYV64Done)) return;
+
+        objc_setAssociatedObject(v, kDYYYV64Done, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+        NSLog(@"[DYYY-v64] PlayInteractionVC.view %.1f -> %.1f", vh, svh);
+
+        CGRect f = v.frame;
+        f.origin.y = 0;
+        f.size.height = svh;
+        v.frame = f;
+        v.clipsToBounds = NO;
     }
-    if (_o_v63_mtb) _o_v63_mtb(self, _cmd, masks);
 }
 
 %ctor {
-    Class c1 = objc_getClass("RichContentContainerViewController");
-    if (c1) {
-        Method m = class_getInstanceMethod(c1, @selector(viewDidLoad));
+    Class c = objc_getClass("AWEPlayInteractionViewController");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
         if (m) {
-            _o_v63_vdl1 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_v63_vdl1);
+            _o_v64 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v64);
+            NSLog(@"[DYYY-v64] installed");
         }
     }
-
-    Class c2 = objc_getClass("AWEMultiContentImpl.RichContentNewListViewController");
-    if (c2) {
-        Method m = class_getInstanceMethod(c2, @selector(viewDidLoad));
-        if (m) {
-            _o_v63_vdl2 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_v63_vdl2);
-        }
-    }
-
-    Method scb = class_getInstanceMethod([UIView class], @selector(setClipsToBounds:));
-    if (scb) {
-        _o_v63_scb = (void(*)(id,SEL,BOOL))method_getImplementation(scb);
-        method_setImplementation(scb, (IMP)_m_v63_scb);
-    }
-
-    Method mtb = class_getInstanceMethod([CALayer class], @selector(setMasksToBounds:));
-    if (mtb) {
-        _o_v63_mtb = (void(*)(id,SEL,BOOL))method_getImplementation(mtb);
-        method_setImplementation(mtb, (IMP)_m_v63_mtb);
-    }
-
-    NSLog(@"[DYYY-v63] installed");
 }
