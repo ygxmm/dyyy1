@@ -18056,78 +18056,39 @@ static void DYYYV54Log(NSString *fmt, ...) {
 }
 
 
+// ===== v58: 只解除 RichContentContainerVC.view 的裁剪 =====
+// dump 证据：
+//   RichContentContainerVC.view  792  clips=1  ← 裁剪层
+//     RichContentNewListVC.view  792  clips=0
+//       AWEDPlayerViewController.view  852  ← 内容本身是 852
+// 说明内容层是 852，被外层 rcView 792 + clips=1 裁掉
+// 之前所有尝试都改 frame/约束（触发循环）
+// v58 只改 clipsToBounds：不触发 layout
+static void (*_o_v58)(id, SEL) = NULL;
 
-
-// ===== v57: hook 播放器的 shouldAdaptFullScreen + shouldAdaptShowWithVideo =====
-// 头文件 AWEPlayVideoViewController / AWEDPlayerViewController_Merge:
-//   @property BOOL shouldAdaptFullScreen;
-//   @property BOOL shouldAdaptFullScreenThree;
-//   + (BOOL)shouldAdaptShowWithVideo:(id)a0;
-// 视频页 YES（rcView 852），图文页 NO（rcView 792）
-// 让图文页也返回 YES
-
-static BOOL (*_o_v57_p1)(id, SEL) = NULL;
-static BOOL _m_v57_p1(id self, SEL _cmd) {
-    BOOL orig = _o_v57_p1 ? _o_v57_p1(self, _cmd) : NO;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return orig;
-    return YES;
-}
-
-static BOOL (*_o_v57_p2)(id, SEL) = NULL;
-static BOOL _m_v57_p2(id self, SEL _cmd) {
-    BOOL orig = _o_v57_p2 ? _o_v57_p2(self, _cmd) : NO;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return orig;
-    return YES;
-}
-
-static BOOL (*_o_v57_d1)(id, SEL) = NULL;
-static BOOL _m_v57_d1(id self, SEL _cmd) {
-    BOOL orig = _o_v57_d1 ? _o_v57_d1(self, _cmd) : NO;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return orig;
-    return YES;
-}
-
-static BOOL (*_o_v57_d2)(id, SEL) = NULL;
-static BOOL _m_v57_d2(id self, SEL _cmd) {
-    BOOL orig = _o_v57_d2 ? _o_v57_d2(self, _cmd) : NO;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return orig;
-    return YES;
-}
-
-static BOOL (*_o_v57_cls)(id, SEL, id) = NULL;
-static BOOL _m_v57_cls(id self, SEL _cmd, id video) {
-    BOOL orig = _o_v57_cls ? _o_v57_cls(self, _cmd, video) : NO;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return orig;
-    return YES;
-}
-
-static void (*_o_v57_upd1)(id, SEL, BOOL) = NULL;
-static void _m_v57_upd1(id self, SEL _cmd, BOOL value) {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) value = YES;
-    if (_o_v57_upd1) _o_v57_upd1(self, _cmd, value);
+static void _m_v58(id self, SEL _cmd) {
+    if (_o_v58) _o_v58(self, _cmd);
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    UIView *v = ((UIViewController *)self).view;
+    if (!v) return;
+    if (v.clipsToBounds) {
+        v.clipsToBounds = NO;
+    }
+    // 顺带把 RichContentNewListVC 的中间层也解裁（如果有）
+    for (UIView *sub in v.subviews) {
+        if (sub.clipsToBounds) {
+            sub.clipsToBounds = NO;
+        }
+    }
 }
 
 %ctor {
-    Class c1 = objc_getClass("AWEPlayVideoViewController");
-    if (c1) {
-        Method m;
-        m = class_getInstanceMethod(c1, @selector(shouldAdaptFullScreen));
-        if (m) { _o_v57_p1 = (BOOL(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v57_p1); }
-        m = class_getInstanceMethod(c1, @selector(shouldAdaptFullScreenThree));
-        if (m) { _o_v57_p2 = (BOOL(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v57_p2); }
-        m = class_getInstanceMethod(c1, @selector(updateShouldAdaptFullScreen:));
-        if (m) { _o_v57_upd1 = (void(*)(id,SEL,BOOL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v57_upd1); }
-        Class meta = objc_getMetaClass("AWEPlayVideoViewController");
-        m = class_getClassMethod(meta, @selector(shouldAdaptShowWithVideo:));
-        if (m) { _o_v57_cls = (BOOL(*)(id,SEL,id))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v57_cls); }
-    }
-
-    Class c2 = objc_getClass("AWEDPlayerViewController_Merge");
-    if (c2) {
-        Method m;
-        m = class_getInstanceMethod(c2, @selector(shouldAdaptFullScreen));
-        if (m) { _o_v57_d1 = (BOOL(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v57_d1); }
-        m = class_getInstanceMethod(c2, @selector(shouldAdaptFullScreenThree));
-        if (m) { _o_v57_d2 = (BOOL(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v57_d2); }
+    Class c = objc_getClass("RichContentContainerViewController");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
+        if (m) {
+            _o_v58 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_o_v58);
+        }
     }
 }
