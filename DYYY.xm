@@ -18036,80 +18036,53 @@ static void _m_v29(id self, SEL _cmd) {
 }
 
 
-// ===== v37: 图文页把评论输入框背景移出屏幕（不挡图片） =====
-// AWECommentInputBackgroundView 是输入框背景，占 y=792~852 60pt
-// 图片撑到 852 后被它盖住
-// 把它 y 移到屏幕外（852），视觉消失，不影响评论输入功能
-%hook AWECommentInputBackgroundView
-
-- (void)setFrame:(CGRect)frame {
-    UIView *sv = self.superview;
-    if (sv && DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat svh = sv.bounds.size.height;
-        // 只处理"贴在 superview 底部的 60 高的小条"
-        if (frame.size.height < 100 && frame.size.height > 40 &&
-            frame.origin.y + frame.size.height >= svh - 1 &&
-            frame.origin.y + frame.size.height <= svh + 1) {
-            frame.origin.y = svh;   // 移到屏幕外
-        }
-    }
-    %orig(frame);
-}
-
-%end
-
-
-// ===== v37: 图文页把 AWECommentInputBackgroundView 彻底移出屏幕 =====
-%hook AWECommentInputBackgroundView
-
-- (void)setHidden:(BOOL)hidden {
-    %orig(hidden);
-}
-
-- (void)layoutSubviews {
-    %orig;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    UIView *sv = self.superview;
-    if (!sv) return;
-    CGFloat svh = sv.bounds.size.height;
-    CGFloat my = self.frame.origin.y;
-    CGFloat mh = self.frame.size.height;
-    // 贴在 superview 底部 40~100pt 的小条 → 移出屏幕
-    if (mh > 30 && mh < 100 && my + mh >= svh - 1) {
-        CGRect f = self.frame;
-        f.origin.y = svh;
-        self.frame = f;
-        self.hidden = YES;
-    }
-}
-
-%end
-
-
-// ===== v38: 详情页移出所有底部 60pt 遮挡条 =====
-// FLEX 定位：rootVC.view 下有匿名 UIView (2, 788, 393, 60) 挡住图片
-// 遍历 rootVC.view 直接子视图，把贴底的 40~100pt 条移出屏幕
-%hook AWEAwemeDetailTableViewController
+// ===== v39: 图文详情页调用抖音自带 layoutInputViewInOffScreenSceneWithHidden =====
+// AWECommentInputViewController 头文件：
+//   - (void)layoutInputViewInOffScreenScene;
+//   - (void)layoutInputViewInOffScreenSceneWithHidden:(BOOL)a0;
+//   - (BOOL)isShowingKeyboard;
+// 图文详情页抖音没触发这个逻辑，输入框背景停在 y=792 挡图
+%hook AWECommentInputViewController
 
 - (void)viewDidLayoutSubviews {
     %orig;
+
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    UIView *rv = self.view;
-    if (!rv || rv.bounds.size.height < 800) return;
-    CGFloat svh = rv.bounds.size.height;
-    for (UIView *sub in rv.subviews) {
-        CGFloat mh = sub.frame.size.height;
-        CGFloat my = sub.frame.origin.y;
-        if (mh < 30 || mh > 100) continue;
-        if (my + mh < svh - 5) continue;   // 必须贴底
-        NSString *cls = NSStringFromClass([sub class]);
-        if ([cls isEqualToString:@"AWEAwemeDetailTableView"]) continue;
-        if ([cls containsString:@"VisualEffect"]) continue;
-        if ([cls containsString:@"UIImageView"]) continue;
-        sub.hidden = YES;
-        CGRect f = sub.frame;
-        f.origin.y = svh;
-        sub.frame = f;
+    if ([self isShowingKeyboard]) return;      // 键盘弹出时不处理
+
+    UIViewController *parent = self.parentViewController;
+    if (!parent) return;
+    NSString *pCls = NSStringFromClass([parent class]);
+    if (![pCls isEqualToString:@"AWEAwemeDetailTableViewController"]) return;
+
+    // 只对图文（awemeType == 68）
+    BOOL isRich = NO;
+    @try {
+        id aweme = [parent valueForKey:@"currentDisplayingAweme"];
+        if (aweme) {
+            long long type = [[aweme valueForKey:@"awemeType"] longLongValue];
+            isRich = (type == 68);
+        }
+    } @catch (__unused NSException *e) {}
+    if (!isRich) return;
+
+    // 优先用带隐藏版（更强）
+    SEL sel = NSSelectorFromString(@"layoutInputViewInOffScreenSceneWithHidden:");
+    if ([self respondsToSelector:sel]) {
+        NSMethodSignature *sig = [self methodSignatureForSelector:sel];
+        NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
+        [inv setTarget:self];
+        [inv setSelector:sel];
+        BOOL yes = YES;
+        [inv setArgument:&yes atIndex:2];
+        [inv invoke];
+        return;
+    }
+
+    // 兜底：无参版
+    SEL sel2 = NSSelectorFromString(@"layoutInputViewInOffScreenScene");
+    if ([self respondsToSelector:sel2]) {
+        [self performSelector:sel2];
     }
 }
 
