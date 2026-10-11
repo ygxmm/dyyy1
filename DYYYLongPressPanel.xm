@@ -1658,56 +1658,59 @@ static void DLog(NSString *s) {
     }
 }
 
-// 关键：只查 superview 的 nextResponder 一层（不做 while 遍历）
-static UIViewController *DYYYDirectParentVC(UIView *sv) {
-    UIResponder *r = sv.nextResponder;
-    while (r) {
-        if ([r isKindOfClass:[UIViewController class]]) return (UIViewController *)r;
-        r = r.nextResponder;
-        if (!r) break;
+// 上溯 parentViewController 链，看是否经过 RichContentNewList / RichContentContainer
+// 只有图文页会经过，视频页不会
+static BOOL DYYYIsInRichContent(UIViewController *vc) {
+    UIViewController *p = vc.parentViewController;
+    int depth = 0;
+    while (p && depth < 15) {
+        NSString *cls = NSStringFromClass([p class]);
+        if ([cls containsString:@"RichContentNewList"] ||
+            [cls containsString:@"RichContentContainer"]) {
+            return YES;
+        }
+        p = p.parentViewController;
+        depth++;
     }
-    return nil;
+    return NO;
 }
 
-// hook AWEPlayInteractionViewController.viewDidMoveToSuperview
-// 只在挂载时刻运行 1 次，不参与每帧 layout
-static void (*_o_mv)(id, SEL) = NULL;
-static int _log_mv = 0;
-static void _m_mv(id self, SEL _cmd) {
-    if (_o_mv) _o_mv(self, _cmd);
+// hook viewDidMoveToWindow —— VC 的方法，只在 window 变化时调一次
+static void (*_o_vdmtw)(id, SEL) = NULL;
+static int _log = 0;
+static void _m_vdmtw(id self, SEL _cmd) {
+    if (_o_vdmtw) _o_vdmtw(self, _cmd);
     @autoreleasepool {
         UIViewController *vc = (UIViewController *)self;
-        UIView *v = vc.view;
-        UIView *sv = v.superview;
-        if (!v || !sv) return;
+        if (!vc.view.superview) return;
         
-        UIViewController *parent = DYYYDirectParentVC(sv);
-        BOOL isDetail = [parent isKindOfClass:NSClassFromString(@"AWEAwemeDetailCellViewController")];
+        BOOL inRich = DYYYIsInRichContent(vc);
         
-        if (_log_mv < 20) {
-            DLog([NSString stringWithFormat:@"mv parent=%@ isDetail=%d",
-                  NSStringFromClass([parent class]), isDetail]);
-            _log_mv++;
+        if (_log < 20) {
+            UIViewController *p = vc.parentViewController;
+            DLog([NSString stringWithFormat:@"vdmtw parent=%@ inRich=%d",
+                  NSStringFromClass([p class]), inRich]);
+            _log++;
         }
         
-        if (!isDetail) return;
+        if (!inRich) return;
         
-        // 延迟到下一 runloop 再改，避免和抖音自身的 layout 打架
+        // 下一 runloop 改，避开抖音自身 layout
         dispatch_async(dispatch_get_main_queue(), ^{
-            UIView *vv = ((UIViewController *)self).view;
-            UIView *ssv = vv.superview;
-            if (!ssv) return;
-            CGFloat ph = ssv.bounds.size.height;
-            CGFloat mh = vv.frame.size.height;
+            UIView *v = ((UIViewController *)self).view;
+            UIView *sv = v.superview;
+            if (!v || !sv) return;
+            CGFloat ph = sv.bounds.size.height;
+            CGFloat mh = v.frame.size.height;
             if (ph > 800 && mh < ph - 1) {
-                CGRect f = vv.frame;
+                CGRect f = v.frame;
                 f.origin.y = 0;
                 f.size.height = ph;
-                vv.frame = f;
-                vv.clipsToBounds = NO;
-                ssv.clipsToBounds = NO;
-                if (ssv.superview) ssv.superview.clipsToBounds = NO;
-                DLog(@"mv 撑到 852");
+                v.frame = f;
+                v.clipsToBounds = NO;
+                sv.clipsToBounds = NO;
+                if (sv.superview) sv.superview.clipsToBounds = NO;
+                DLog(@"vdmtw 撑到 852");
             }
         });
     }
@@ -1717,13 +1720,13 @@ static void _m_mv(id self, SEL _cmd) {
     @autoreleasepool {
         Class c = objc_getClass("AWEPlayInteractionViewController");
         if (!c) { DLog(@"no class"); return; }
-        Method m = class_getInstanceMethod(c, @selector(viewDidMoveToSuperview));
+        Method m = class_getInstanceMethod(c, @selector(viewDidMoveToWindow));
         if (m) {
-            _o_mv = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_mv);
-            DLog(@"v13 installed");
+            _o_vdmtw = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_vdmtw);
+            DLog(@"v14 installed");
         } else {
-            DLog(@"no viewDidMoveToSuperview");
+            DLog(@"no viewDidMoveToWindow");
         }
     }
 }
