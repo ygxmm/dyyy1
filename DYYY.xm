@@ -18036,65 +18036,98 @@ static void _m_v29(id self, SEL _cmd) {
 }
 
 
-// ===== v53: 把 rcView 自己那条 height=792 的硬约束改成 852 =====
-// v52 dump 证据：
-//   rcView.constraints 里有：
-//     UIView(rcView).Height 0 nil.nil +792.0 prio=1000 active=1
-// 这是绝对硬编码，不是相对 superview
-// 每次 layout 都改（抖音可能重设 792），但只改 constant，不触发 setNeedsLayout
-// 改 constant 本身不触发 layout，所以不会循环
-static void (*_o_v53)(id, SEL) = NULL;
-static int _v53_log = 0;
+// ===== v54: 拦截 RichContentContainerViewController 的 updateShrinkState =====
+// 头文件关键：
+//   - (void)updateShrinkState:(BOOL)a0 insets:(UIEdgeInsets)a1 animated:(BOOL)a2;
+//   - (void)updateShrinkState:(BOOL)a0 insets:(UIEdgeInsets)a1 animated:(BOOL)a2 animationDuration:(double)a3;
+//   @property (nonatomic) BOOL isFullScreen;
+// 抖音调这个方法把图文内容"收缩"到 792（insets 里有 60pt）
+// v54 拦截它：只对图文（awemeType==68）强制改成 NO + Zero（不收缩）
+static int _v54_log = 0;
 
-static void _m_v53(id self, SEL _cmd) {
-    if (_o_v53) _o_v53(self, _cmd);
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-
-    @autoreleasepool {
+// --- updateShrinkState:insets:animated: ---
+static void (*_o_v54_us1)(id, SEL, BOOL, UIEdgeInsets, BOOL) = NULL;
+static void _m_v54_us1(id self, SEL _cmd, BOOL state, UIEdgeInsets insets, BOOL animated) {
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         UIViewController *vc = (UIViewController *)self;
-
-        // 只对图文
-        BOOL isRich = NO;
         @try {
             id model = [vc valueForKey:@"model"];
             if (model) {
                 long long t = [[model valueForKey:@"awemeType"] longLongValue];
-                isRich = (t == 68);
-            }
-        } @catch (__unused NSException *e) {}
-        if (!isRich) return;
-
-        UIView *rcView = vc.view;
-        if (!rcView) return;
-
-        CGFloat target = rcView.superview.bounds.size.height;
-        if (target < 800) return;
-
-        // 遍历 rcView 自己的约束，找 Height=792 那条
-        for (NSLayoutConstraint *c in rcView.constraints) {
-            if (c.firstItem == rcView &&
-                c.firstAttribute == NSLayoutAttributeHeight &&
-                c.secondItem == nil) {
-                if (fabs(c.constant - target) > 1) {
-                    if (_v53_log < 5) {
-                        NSLog(@"[DYYY-v53] change %.1f -> %.1f", c.constant, target);
-                        _v53_log++;
+                if (t == 68) {
+                    if (_v54_log < 5) {
+                        NSLog(@"[DYYY-v54] us1 state=%d insets=(%.1f,%.1f,%.1f,%.1f) -> NO + Zero",
+                              state, insets.top, insets.left, insets.bottom, insets.right);
+                        _v54_log++;
                     }
-                    c.constant = target;
+                    state = NO;
+                    insets = UIEdgeInsetsZero;
                 }
             }
-        }
+        } @catch (__unused NSException *e) {}
     }
+    if (_o_v54_us1) _o_v54_us1(self, _cmd, state, insets, animated);
+}
+
+// --- updateShrinkState:insets:animated:animationDuration: ---
+static void (*_o_v54_us2)(id, SEL, BOOL, UIEdgeInsets, BOOL, double) = NULL;
+static void _m_v54_us2(id self, SEL _cmd, BOOL state, UIEdgeInsets insets, BOOL animated, double duration) {
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        UIViewController *vc = (UIViewController *)self;
+        @try {
+            id model = [vc valueForKey:@"model"];
+            if (model) {
+                long long t = [[model valueForKey:@"awemeType"] longLongValue];
+                if (t == 68) {
+                    state = NO;
+                    insets = UIEdgeInsetsZero;
+                }
+            }
+        } @catch (__unused NSException *e) {}
+    }
+    if (_o_v54_us2) _o_v54_us2(self, _cmd, state, insets, animated, duration);
+}
+
+// --- setIsFullScreen: 强制 YES ---
+static void (*_o_v54_sfs)(id, SEL, BOOL) = NULL;
+static void _m_v54_sfs(id self, SEL _cmd, BOOL value) {
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        UIViewController *vc = (UIViewController *)self;
+        @try {
+            id model = [vc valueForKey:@"model"];
+            if (model) {
+                long long t = [[model valueForKey:@"awemeType"] longLongValue];
+                if (t == 68) {
+                    value = YES;
+                }
+            }
+        } @catch (__unused NSException *e) {}
+    }
+    if (_o_v54_sfs) _o_v54_sfs(self, _cmd, value);
 }
 
 %ctor {
     Class c = objc_getClass("RichContentContainerViewController");
-    if (c) {
-        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
-        if (m) {
-            _o_v53 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_v53);
-            NSLog(@"[DYYY-v53] installed");
-        }
+    if (!c) { NSLog(@"[DYYY-v54] class not found"); return; }
+
+    Method m1 = class_getInstanceMethod(c, NSSelectorFromString(@"updateShrinkState:insets:animated:"));
+    if (m1) {
+        _o_v54_us1 = (void(*)(id,SEL,BOOL,UIEdgeInsets,BOOL))method_getImplementation(m1);
+        method_setImplementation(m1, (IMP)_m_v54_us1);
+        NSLog(@"[DYYY-v54] hook updateShrinkState:insets:animated:");
+    }
+
+    Method m2 = class_getInstanceMethod(c, NSSelectorFromString(@"updateShrinkState:insets:animated:animationDuration:"));
+    if (m2) {
+        _o_v54_us2 = (void(*)(id,SEL,BOOL,UIEdgeInsets,BOOL,double))method_getImplementation(m2);
+        method_setImplementation(m2, (IMP)_m_v54_us2);
+        NSLog(@"[DYYY-v54] hook updateShrinkState:...:duration:");
+    }
+
+    Method m3 = class_getInstanceMethod(c, NSSelectorFromString(@"setIsFullScreen:"));
+    if (m3) {
+        _o_v54_sfs = (void(*)(id,SEL,BOOL))method_getImplementation(m3);
+        method_setImplementation(m3, (IMP)_m_v54_sfs);
+        NSLog(@"[DYYY-v54] hook setIsFullScreen:");
     }
 }
