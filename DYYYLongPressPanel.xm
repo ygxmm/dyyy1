@@ -1646,3 +1646,79 @@ static BOOL DYYYIsRichIndexPath(id self, NSIndexPath *ip) {
     } @catch (__unused NSException *e) {}
     return NO;
 }
+
+static void DLog(NSString *s) {
+    @autoreleasepool {
+        NSArray *p = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+        if (!p.count) return;
+        FILE *fp = fopen([[p.firstObject stringByAppendingPathComponent:@"dyyy_fs.log"] UTF8String], "a");
+        if (!fp) return;
+        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
+        fclose(fp);
+    }
+}
+
+// 向上找 view 的 nextResponder 里第一个 UIViewController
+static UIViewController *DYYYFindNearestVC(UIView *v) {
+    UIResponder *r = v.nextResponder;
+    while (r) {
+        if ([r isKindOfClass:[UIViewController class]]) return (UIViewController *)r;
+        r = r.nextResponder;
+    }
+    return nil;
+}
+
+static int _log_v = 0;
+static BOOL _inLayout = NO;
+
+static void (*_o_vdls)(id, SEL) = NULL;
+static void _m_vdls(id self, SEL _cmd) {
+    if (_o_vdls) _o_vdls(self, _cmd);
+    if (_inLayout) return;
+    @autoreleasepool {
+        UIView *v = ((UIViewController *)self).view;
+        UIView *sv = v.superview;
+        if (!v || !sv) return;
+        CGFloat ph = sv.bounds.size.height;
+        CGFloat mh = v.frame.size.height;
+        if (ph < 800) return;
+        
+        // 关键：只用"直接 superview 的 VC 是 AWEAwemeDetailCellViewController"判定
+        UIViewController *parent = DYYYFindNearestVC(sv);
+        BOOL isDetail = [parent isKindOfClass:NSClassFromString(@"AWEAwemeDetailCellViewController")];
+        
+        if (_log_v < 10) {
+            DLog([NSString stringWithFormat:@"vdls parent=%@ isDetail=%d selfH=%.1f superH=%.1f",
+                  NSStringFromClass([parent class]), isDetail, mh, ph]);
+            _log_v++;
+        }
+        
+        if (!isDetail) return;
+        if (mh >= ph - 1) return;
+        
+        _inLayout = YES;
+        CGRect f = v.frame;
+        f.origin.y = 0;
+        f.size.height = ph;
+        v.frame = f;
+        v.clipsToBounds = NO;
+        sv.clipsToBounds = NO;
+        if (sv.superview) sv.superview.clipsToBounds = NO;
+        _inLayout = NO;
+    }
+}
+
+%ctor {
+    @autoreleasepool {
+        Class c = objc_getClass("AWEPlayInteractionViewController");
+        if (!c) { DLog(@"no class"); return; }
+        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
+        if (m) {
+            _o_vdls = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_vdls);
+            DLog(@"v12 installed");
+        } else {
+            DLog(@"no vdls");
+        }
+    }
+}
