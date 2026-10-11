@@ -18034,3 +18034,89 @@ static void _m_v29(id self, SEL _cmd) {
     });
     method_setImplementation(m, newImp);
 }
+
+
+// ===== v43: 图文详情页"改输入"三保险（不改 frame） =====
+// 头文件：
+//   AFDImageContentView: @property BOOL isInFullPage;
+//                        - (void)setIsInFullPage:(BOOL)a0 animated:(BOOL)a1;
+//                        - (void)updateContentViewSizeAnimated:(BOOL)a0;
+//   RichContentContainerViewController: - (UIEdgeInsets)getImageContentInsets;
+// 全部用 runtime 方式 hook，避开 logos %hook 编译问题
+
+// 1. getImageContentInsets 返回全 0（不预留底部 60pt）
+static UIEdgeInsets (*_o_v43_insets)(id, SEL) = NULL;
+static UIEdgeInsets _m_v43_insets(id self, SEL _cmd) {
+    UIEdgeInsets orig = _o_v43_insets ? _o_v43_insets(self, _cmd) : UIEdgeInsetsZero;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return orig;
+    // 返回全 0
+    return UIEdgeInsetsZero;
+}
+
+// 2. AFDImageContentView.isInFullPage = YES + updateContentViewSize
+static void (*_o_v43_afd_layout)(id, SEL) = NULL;
+static void _m_v43_afd_layout(id self, SEL _cmd) {
+    if (_o_v43_afd_layout) _o_v43_afd_layout(self, _cmd);
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    @try {
+        // 用 KVC 设 isInFullPage（头文件是 @property，有 getter/setter）
+        [self setValue:@YES forKey:@"isInFullPage"];
+    } @catch (__unused NSException *e) {}
+    // 调抖音自己的 updateContentViewSize 方法
+    SEL sel = NSSelectorFromString(@"updateContentViewSizeAnimated:");
+    if ([self respondsToSelector:sel]) {
+        NSMethodSignature *sig = [self methodSignatureForSelector:sel];
+        NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
+        [inv setTarget:self];
+        [inv setSelector:sel];
+        BOOL no = NO;
+        [inv setArgument:&no atIndex:2];
+        [inv invoke];
+    }
+}
+
+// 3. RichContentContainerVC 的 isFullScreen/shouldAdaptFullScreen 强制 YES
+static void (*_o_v43_rc_layout)(id, SEL) = NULL;
+static int _v43_log = 0;
+static void _m_v43_rc_layout(id self, SEL _cmd) {
+    if (_o_v43_rc_layout) _o_v43_rc_layout(self, _cmd);
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+
+    @try { [self setValue:@YES forKey:@"isFullScreen"]; } @catch (__unused NSException *e) {}
+    @try { [self setValue:@YES forKey:@"shouldAdaptFullScreen"]; } @catch (__unused NSException *e) {}
+    @try { [self setValue:@YES forKey:@"shouldAdaptFullScreenThree"]; } @catch (__unused NSException *e) {}
+
+    if (_v43_log < 5) {
+        NSLog(@"[DYYY-v43] rc pushed isFullScreen");
+        _v43_log++;
+    }
+}
+
+%ctor {
+    // 1. RichContentContainerViewController.getImageContentInsets
+    Class c1 = objc_getClass("RichContentContainerViewController");
+    if (c1) {
+        Method m = class_getInstanceMethod(c1, NSSelectorFromString(@"getImageContentInsets"));
+        if (m) {
+            _o_v43_insets = (UIEdgeInsets(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v43_insets);
+        }
+        Method m2 = class_getInstanceMethod(c1, NSSelectorFromString(@"viewDidLayoutSubviews"));
+        if (m2) {
+            _o_v43_rc_layout = (void(*)(id,SEL))method_getImplementation(m2);
+            method_setImplementation(m2, (IMP)_m_v43_rc_layout);
+        }
+    }
+
+    // 2. AFDImageContentView.layoutSubviews
+    Class c2 = objc_getClass("AFDImageContentView");
+    if (c2) {
+        Method m = class_getInstanceMethod(c2, NSSelectorFromString(@"layoutSubviews"));
+        if (m) {
+            _o_v43_afd_layout = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v43_afd_layout);
+        }
+    }
+
+    NSLog(@"[DYYY-v43] installed (c1=%d c2=%d)", c1 ? 1 : 0, c2 ? 1 : 0);
+}
