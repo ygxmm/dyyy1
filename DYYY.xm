@@ -18055,98 +18055,92 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
-// ===== v54: 拦截 RichContentContainerViewController 的 updateShrinkState =====
-// 头文件关键：
-//   - (void)updateShrinkState:(BOOL)a0 insets:(UIEdgeInsets)a1 animated:(BOOL)a2;
-//   - (void)updateShrinkState:(BOOL)a0 insets:(UIEdgeInsets)a1 animated:(BOOL)a2 animationDuration:(double)a3;
-//   @property (nonatomic) BOOL isFullScreen;
-// 抖音调这个方法把图文内容"收缩"到 792（insets 里有 60pt）
-// v54 拦截它：只对图文（awemeType==68）强制改成 NO + Zero（不收缩）
-static int _v54_log = 0;
 
-// --- updateShrinkState:insets:animated: ---
-static void (*_o_v54_us1)(id, SEL, BOOL, UIEdgeInsets, BOOL) = NULL;
-static void _m_v54_us1(id self, SEL _cmd, BOOL state, UIEdgeInsets insets, BOOL animated) {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIViewController *vc = (UIViewController *)self;
-        @try {
-            id model = [vc valueForKey:@"model"];
-            if (model) {
-                long long t = [[model valueForKey:@"awemeType"] longLongValue];
-                if (t == 68) {
-                    if (_v54_log < 5) {
-                        DYYYV54Log(@"[DYYY-v54] us1 state=%d insets=(%.1f,%.1f,%.1f,%.1f) -> NO + Zero",
-                              state, insets.top, insets.left, insets.bottom, insets.right);
-                        _v54_log++;
-                    }
-                    state = NO;
-                    insets = UIEdgeInsetsZero;
-                }
-            }
-        } @catch (__unused NSException *e) {}
-    }
-    if (_o_v54_us1) _o_v54_us1(self, _cmd, state, insets, animated);
+// ===== v57: hook 播放器的 shouldAdaptFullScreen + shouldAdaptShowWithVideo =====
+// 头文件：
+//   AWEPlayVideoViewController:
+//     @property BOOL shouldAdaptFullScreen;
+//     @property BOOL shouldAdaptFullScreenThree;
+//     - (void)updateShouldAdaptFullScreen:(BOOL)a0;
+//     + (BOOL)shouldAdaptShowWithVideo:(id)a0;      ← 类方法
+//   AWEDPlayerViewController_Merge:
+//     @property BOOL shouldAdaptFullScreen;
+//     @property BOOL shouldAdaptFullScreenThree;
+//     - (void)updateShouldAdaptFullScreen:(BOOL)a0;
+// 视频页 YES（852），图文页 NO（792）
+// v57 hook 三个 getter + 类方法 + setter
+
+// --- AWEPlayVideoViewController.shouldAdaptFullScreen getter ---
+static BOOL (*_o_v57_p1)(id, SEL) = NULL;
+static BOOL _m_v57_p1(id self, SEL _cmd) {
+    BOOL orig = _o_v57_p1 ? _o_v57_p1(self, _cmd) : NO;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return orig;
+    return YES;
 }
 
-// --- updateShrinkState:insets:animated:animationDuration: ---
-static void (*_o_v54_us2)(id, SEL, BOOL, UIEdgeInsets, BOOL, double) = NULL;
-static void _m_v54_us2(id self, SEL _cmd, BOOL state, UIEdgeInsets insets, BOOL animated, double duration) {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIViewController *vc = (UIViewController *)self;
-        @try {
-            id model = [vc valueForKey:@"model"];
-            if (model) {
-                long long t = [[model valueForKey:@"awemeType"] longLongValue];
-                if (t == 68) {
-                    state = NO;
-                    insets = UIEdgeInsetsZero;
-                }
-            }
-        } @catch (__unused NSException *e) {}
-    }
-    if (_o_v54_us2) _o_v54_us2(self, _cmd, state, insets, animated, duration);
+// --- AWEPlayVideoViewController.shouldAdaptFull YESScreenThree getter ---
+static BOOL (*_o_v57_p2)(id, SEL) = NULL;
+static BO;
+OL _m_v57_p2(id self, SEL _cmd) {
+    BOOL orig = _}
+
+o_v57_p2 ? _o_v57_p2(self//, _cmd) : NO;
+    if (!DYYYGetBool(@" ---DYYYEnableFullScreen")) return orig;
+    return YES;
 }
 
-// --- setIsFullScreen: 强制 YES ---
-static void (*_o_v54_sfs)(id, SEL, BOOL) = NULL;
-static void _m_v54_sfs(id self, SEL _cmd, BOOL value) {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIViewController *vc = (UIViewController *)self;
-        @try {
-            id model = [vc valueForKey:@"model"];
-            if (model) {
-                long long t = [[model valueForKey:@"awemeType"] longLongValue];
-                if (t == 68) {
-                    value = YES;
-                }
-            }
-        } @catch (__unused NSException *e) {}
-    }
-    if (_o_v54_sfs) _o_v54_sfs(self, _cmd, value);
+// --- AWEDPlayer ViewController_Merge.shouldAdaptFullScreen getter ---
+static BOOL (*_o_v57_d1)(id, SEL) = NULL;
+static BOOL _m_v57_d1(id self, SEL _cmd) {
+    BOOL orig = _o_v57_d1 ? _o_v57_d1(self, _cmd) : NO;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return orig;
+    return YES;
+}
+
+// --- AWEDPlayerViewController_Merge.shouldAdaptFullScreenThree getter ---
+static BOOL (*_o_v57_d2)(id, SEL) = NULL;
+static BOOL _m_v57_d2(id self, SEL _cmd) {
+    BOOL orig = _o_v57_d2 ? _o_v57_d2(self, _cmd) : NO;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return orig;
+    return类方法 shouldAdaptShowWithVideo: 返回 YES ---
+static BOOL (*_o_v57_cls)(id, SEL, id) = NULL;
+static BOOL _m_v57_cls(id self, SEL _cmd, id video) {
+    BOOL orig = _o_v57_cls ? _o_v57_cls(self, _cmd, video) : NO;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return orig;
+    return YES;
+}
+
+// --- updateShouldAdaptFullScreen: 强制传 YES ---
+static void (*_o_v57_upd1)(id, SEL, BOOL) = NULL;
+static void _m_v57_upd1(id self, SEL _cmd, BOOL value) {
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) value = YES;
+    if (_o_v57_upd1) _o_v57_upd1(self, _cmd, value);
 }
 
 %ctor {
-    Class c = objc_getClass("RichContentContainerViewController");
-    if (!c) { DYYYV54Log(@"[DYYY-v54] class not found"); return; }
-
-    Method m1 = class_getInstanceMethod(c, NSSelectorFromString(@"updateShrinkState:insets:animated:"));
-    if (m1) {
-        _o_v54_us1 = (void(*)(id,SEL,BOOL,UIEdgeInsets,BOOL))method_getImplementation(m1);
-        method_setImplementation(m1, (IMP)_m_v54_us1);
-        DYYYV54Log(@"[DYYY-v54] hook updateShrinkState:insets:animated:");
+    Class c1 = objc_getClass("AWEPlayVideoViewController");
+    if (c1) {
+        Method m;
+        m = class_getInstanceMethod(c1, @selector(shouldAdaptFullScreen));
+        if (m) { _o_v57_p1 = (BOOL(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v57_p1); }
+        m = class_getInstanceMethod(c1, @selector(shouldAdaptFullScreenThree));
+        if (m) { _o_v57_p2 = (BOOL(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v57_p2); }
+        m = class_getInstanceMethod(c1, @selector(updateShouldAdaptFullScreen:));
+        if (m) { _o_v57_upd1 = (void(*)(id,SEL,BOOL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v57_upd1); }
+        // 类方法
+        Class meta = objc_getMetaClass("AWEPlayVideoViewController");
+        m = class_getClassMethod(meta, @selector(shouldAdaptShowWithVideo:));
+        if (m) { _o_v57_cls = (BOOL(*)(id,SEL,id))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v57_cls); }
+        NSLog(@"[DYYY-v57] hooked PlayVideo VC");
     }
 
-    Method m2 = class_getInstanceMethod(c, NSSelectorFromString(@"updateShrinkState:insets:animated:animationDuration:"));
-    if (m2) {
-        _o_v54_us2 = (void(*)(id,SEL,BOOL,UIEdgeInsets,BOOL,double))method_getImplementation(m2);
-        method_setImplementation(m2, (IMP)_m_v54_us2);
-        DYYYV54Log(@"[DYYY-v54] hook updateShrinkState:...:duration:");
-    }
-
-    Method m3 = class_getInstanceMethod(c, NSSelectorFromString(@"setIsFullScreen:"));
-    if (m3) {
-        _o_v54_sfs = (void(*)(id,SEL,BOOL))method_getImplementation(m3);
-        method_setImplementation(m3, (IMP)_m_v54_sfs);
-        DYYYV54Log(@"[DYYY-v54] hook setIsFullScreen:");
+    Class c2 = objc_getClass("AWEDPlayerViewController_Merge");
+    if (c2) {
+        Method m;
+        m = class_getInstanceMethod(c2, @selector(shouldAdaptFullScreen));
+        if (m) { _o_v57_d1 = (BOOL(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v57_d1); }
+        m = class_getInstanceMethod(c2, @selector(shouldAdaptFullScreenThree));
+        if (m) { _o_v57_d2 = (BOOL(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v57_d2); }
+        NSLog(@"[DYYY-v57] hooked DPlayer Merge");
     }
 }
