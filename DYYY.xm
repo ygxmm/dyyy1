@@ -18036,20 +18036,17 @@ static void _m_v29(id self, SEL _cmd) {
 }
 
 
-// ===== v51 探针：谁把 rcView 设成 792 =====
-// 只是打日志，不改行为
-// 打印 setFrame: 调用栈 + viewDidLayoutSubviews 调用栈
-static void DYYYV51Log(NSString *fmt, ...) {
+// ===== v52: dump rcView 完整约束链，找 60pt 从哪来 =====
+static void DYYYV52Log(NSString *fmt, ...) {
     @autoreleasepool {
-        va_list ap;
-        va_start(ap, fmt);
+        va_list ap; va_start(ap, fmt);
         NSString *s = [[NSString alloc] initWithFormat:fmt arguments:ap];
         va_end(ap);
         if (!s) return;
         NSString *home = NSHomeDirectory();
         if (home.length == 0) return;
         NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
-                          stringByAppendingPathComponent:@"dyyy_v51.log"];
+                          stringByAppendingPathComponent:@"dyyy_v52.log"];
         FILE *fp = fopen(path.UTF8String, "a");
         if (!fp) return;
         fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
@@ -18057,54 +18054,88 @@ static void DYYYV51Log(NSString *fmt, ...) {
     }
 }
 
-// 1. hook RichContentContainerViewController 的 setFrame:
-static void (*_o_v51_sf)(id, SEL, CGRect) = NULL;
-static int _v51_sf_count = 0;
-
-static void _m_v51_sf(id self, SEL _cmd, CGRect frame) {
-    if (_v51_sf_count < 20 && frame.size.height > 700 && frame.size.height < 900) {
-        _v51_sf_count++;
-        NSArray *st = [NSThread callStackSymbols];
-        NSMutableString *s = [NSMutableString stringWithFormat:
-            @"[v51] RC.setFrame h=%.1f frame=%@ stack:\n",
-            frame.size.height, NSStringFromCGRect(frame)];
-        int n = (int)MIN((NSUInteger)15, st.count);
-        for (int i = 0; i < n; i++) {
-            [s appendFormat:@"  %d %@\n", i, st[i]];
-        }
-        DYYYV51Log(@"%@", s);
+static NSString *DYYYAttrName(NSLayoutAttribute a) {
+    switch (a) {
+        case 1: return @"Left";
+        case 2: return @"Right";
+        case 3: return @"Top";
+        case 4: return @"Bottom";
+        case 5: return @"Leading";
+        case 6: return @"Trailing";
+        case 7: return @"Width";
+        case 8: return @"Height";
+        case 9: return @"CenterX";
+        case 10: return @"CenterY";
+        case 31: return @"LastBaseline";
+        case 32: return @"FirstBaseline";
+        case 33: return @"LeftMargin";
+        case 34: return @"RightMargin";
+        case 35: return @"TopMargin";
+        case 36: return @"BottomMargin";
+        case 37: return @"LeadingMargin";
+        case 38: return @"TrailingMargin";
+        case 39: return @"CenterXMargins";
+        case 40: return @"CenterYMargins";
+        default: return [NSString stringWithFormat:@"attr%ld", (long)a];
     }
-    if (_o_v51_sf) _o_v51_sf(self, _cmd, frame);
 }
 
-// 2. hook viewDidLayoutSubviews 打印最终 frame
-static void (*_o_v51_ld)(id, SEL) = NULL;
-static int _v51_ld_count = 0;
-
-static void _m_v51_ld(id self, SEL _cmd) {
-    if (_o_v51_ld) _o_v51_ld(self, _cmd);
-    if (_v51_ld_count < 5) {
-        _v51_ld_count++;
-        UIView *v = ((UIViewController *)self).view;
-        DYYYV51Log(@"[v51] RC.viewDidLayout end: frame=%@", NSStringFromCGRect(v.frame));
+static void DYYYV52DumpConstraints(UIView *start, NSString *label) {
+    DYYYV52Log(@"[v52] ===== %@ =====", label);
+    UIView *v = start;
+    int level = 0;
+    while (v && level < 6) {
+        DYYYV52Log(@"[v52] [%d] %@ %p frame=%@ constraints=%lu",
+                   level, NSStringFromClass([v class]), v,
+                   NSStringFromCGRect(v.frame),
+                   (unsigned long)v.constraints.count);
+        for (NSLayoutConstraint *c in v.constraints) {
+            id f = c.firstItem;
+            id s = c.secondItem;
+            // 只打印高度/宽度相关的（att 7/8/35/36/37/38 或含 rcView）
+            BOOL relevant = (c.firstAttribute == 8 || c.secondAttribute == 8 ||
+                             c.firstAttribute == 7 || c.secondAttribute == 7 ||
+                             c.firstAttribute == 4 || c.secondAttribute == 4 ||
+                             c.firstAttribute == 36 || c.secondAttribute == 36);
+            if (!relevant && f != start && s != start) continue;
+            DYYYV52Log(@"[v52]   %@(%p).%@ %ld %@(%p).%@ +%.1f prio=%.0f active=%d",
+                       NSStringFromClass([f class]), f, DYYYAttrName(c.firstAttribute),
+                       (long)c.relation,
+                       s ? NSStringFromClass([s class]) : @"nil", s,
+                       s ? DYYYAttrName(c.secondAttribute) : @"nil",
+                       c.constant, c.priority, c.active);
+        }
+        v = v.superview;
+        level++;
     }
+}
+
+static void (*_o_v52_ld)(id, SEL) = NULL;
+static int _v52_count = 0;
+
+static void _m_v52_ld(id self, SEL _cmd) {
+    if (_o_v52_ld) _o_v52_ld(self, _cmd);
+    if (_v52_count >= 3) return;
+    _v52_count++;
+
+    UIView *v = ((UIViewController *)self).view;
+    if (!v || v.bounds.size.height > 850) return;   // 只在 792 状态时 dump
+
+    DYYYV52Log(@"[v52] === run %d ===", _v52_count);
+    DYYYV52DumpConstraints(v, @"rcView chain");
+    DYYYV52DumpConstraints(v.superview, @"rcView.superview chain");
 }
 
 %ctor {
     Class c = objc_getClass("RichContentContainerViewController");
-    if (!c) { DYYYV51Log(@"[v51] class not found"); return; }
-
-    Method m1 = class_getInstanceMethod(c, @selector(setFrame:));
-    if (m1) {
-        _o_v51_sf = (void(*)(id,SEL,CGRect))method_getImplementation(m1);
-        method_setImplementation(m1, (IMP)_m_v51_sf);
-        DYYYV51Log(@"[v51] hook setFrame:");
-    }
-
-    Method m2 = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
-    if (m2) {
-        _o_v51_ld = (void(*)(id,SEL))method_getImplementation(m2);
-        method_setImplementation(m2, (IMP)_m_v51_ld);
-        DYYYV51Log(@"[v51] hook viewDidLayoutSubviews");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
+        if (m) {
+            _o_v52_ld = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v52_ld);
+            DYYYV52Log(@"[v52] installed");
+        }
+    } else {
+        DYYYV52Log(@"[v52] class not found");
     }
 }
