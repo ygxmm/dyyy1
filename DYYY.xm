@@ -18312,3 +18312,47 @@ static void _m_v19(id self, SEL _cmd) {
         }
     }
 }
+
+
+// ===== v20: 让抖音自己算 852（不改 frame）=====
+// hook tableViewBottomInsetForAllPlatform 返回值
+// 关键：只对 awemeType==68 图文页返回 0
+// 视频页/主页 feed 不受影响
+static double (*_o_bi_v20)(id, SEL) = NULL;
+static int _log_v20 = 0;
+
+static double _m_bi_v20(id self, SEL _cmd) {
+    double orig = _o_bi_v20 ? _o_bi_v20(self, _cmd) : 0;
+    @try {
+        id m = [self valueForKey:@"currentDisplayingAweme"];
+        if (!m) m = [self valueForKey:@"currentAweme"];
+        if (m) {
+            long long t = [[m valueForKey:@"awemeType"] longLongValue];
+            if (t == 68) {
+                if (_log_v20 < 20) {
+                    DLog(@"[DYYY-v20] 图文 inset %.1f -> 0", orig);
+                    _log_v20++;
+                }
+                return 0.0;
+            }
+        }
+    } @catch (__unused NSException *e) {}
+    return orig;
+}
+
+%ctor {
+    Class c = objc_getClass("AWEAwemeDetailTableViewController");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(tableViewBottomInsetForAllPlatform));
+        if (m) {
+            _o_bi_v20 = (double(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_bi_v20);
+        }
+        // 备用：如果上面那个不存在，试 baseTableViewBottomInset
+        Method m2 = class_getInstanceMethod(c, @selector(baseTableViewBottomInset));
+        if (m2 && !_o_bi_v20) {
+            _o_bi_v20 = (double(*)(id,SEL))method_getImplementation(m2);
+            method_setImplementation(m2, (IMP)_m_bi_v20);
+        }
+    }
+}
