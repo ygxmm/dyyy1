@@ -98,6 +98,29 @@ static NSURL *DYYYLoginBypassURLByReplacingBundleIdentifier(NSURL *url) {
 
 %group DYYYLoginBypassCore
 
+// ===== 统一日志（动态沙盒路径，不写死）=====
+static NSString *DLogPath(void) {
+    @autoreleasepool {
+        // 当前进程沙盒根，拼 Documents/dyyy_fs.log
+        NSString *home = NSHomeDirectory();
+        if (home.length == 0) return nil;
+        NSString *docs = [home stringByAppendingPathComponent:@"Documents"];
+        if (docs.length == 0) return nil;
+        return [docs stringByAppendingPathComponent:@"dyyy_fs.log"];
+    }
+}
+
+static void DLog(NSString *s) {
+    @autoreleasepool {
+        NSString *path = DLogPath();
+        if (!path) return;
+        FILE *fp = fopen(path.UTF8String, "a");
+        if (!fp) return;
+        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
+        fclose(fp);
+    }
+}
+
 %hook NSBundle
 - (NSString *)bundleIdentifier {
     NSString *bundleIdentifier = %orig;
@@ -18018,7 +18041,7 @@ static void _m_dc_vdls_v17(id self, SEL _cmd) {
         CGFloat mh = v.frame.size.height;
         
         if (_v17_log < 10) {
-            NSLog(@"[DYYY-v17] DetailCellVC selfH=%.1f superH=%.1f", mh, ph);
+            DLog(@"[DYYY-v17] DetailCellVC selfH=%.1f superH=%.1f", mh, ph);
             _v17_log++;
         }
         
@@ -18087,7 +18110,7 @@ static void _m_dtvc_vdls_p60(id self, SEL _cmd) {
         if (table.frame.size.height >= 800) return;  // 已经是 852，不探
         
         CGFloat rootH = rootView.bounds.size.height;
-        NSLog(@"[DYYY-p60] === root H=%.1f table H=%.1f ===", rootH, table.frame.size.height);
+        DLog(@"[DYYY-p60] === root H=%.1f table H=%.1f ===", rootH, table.frame.size.height);
         for (UIView *v in rootView.subviews) {
             if (v == table) continue;
             CGFloat h = v.frame.size.height;
@@ -18095,7 +18118,7 @@ static void _m_dtvc_vdls_p60(id self, SEL _cmd) {
             CGFloat bottom = y + h;
             // 只打印可能相关的（>30pt 高 + 贴底部）
             if (h > 30 && bottom >= rootH - 20) {
-                NSLog(@"[DYYY-p60]   %@ h=%.1f y=%.1f bottom=%.1f hidden=%d",
+                DLog(@"[DYYY-p60]   %@ h=%.1f y=%.1f bottom=%.1f hidden=%d",
                       NSStringFromClass([v class]), h, y, bottom, v.hidden);
             }
         }
@@ -18139,7 +18162,7 @@ static void _m_dtvc_vdls_v18(id self, SEL _cmd) {
                     v.hidden = YES;
                     changed = YES;
                     if (_v18_log < 10) {
-                        NSLog(@"[DYYY-v18] hid CommentInputBackgroundView h=%.1f",
+                        DLog(@"[DYYY-v18] hid CommentInputBackgroundView h=%.1f",
                               v.frame.size.height);
                         _v18_log++;
                     }
@@ -18196,7 +18219,7 @@ static void _m_pall(id self, SEL _cmd) {
             p = p.parentViewController;
         }
         
-        NSLog(@"[DYYY-pall] super=%@ selfH=%.1f superH=%.1f chain=%@",
+        DLog(@"[DYYY-pall] super=%@ selfH=%.1f superH=%.1f chain=%@",
               NSStringFromClass([sv class]),
               v.frame.size.height,
               sv.bounds.size.height,
