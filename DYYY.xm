@@ -17924,3 +17924,75 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 
 
+
+
+// ===== v15: 覆盖所有进详情路径（推荐/搜索/用户主页）=====
+// 之前只从 AWEAwemeDetailTableView.layoutSubviews 触发，
+// 用户主页进图文走别的容器，覆盖不到。
+// 改成 hook AWEAwemeDetailCellViewController.viewDidLayoutSubviews：
+// 该 VC 在所有进详情场景都出现，主页 feed 没有 → 精准覆盖
+// 稳态用 __weak cache 跳过 BFS，零开销
+
+static void (*_o_dcls_v15)(id, SEL) = NULL;
+static __weak UIView *_dyyyCachedPIView = nil;
+
+static void _m_dcls_v15(id self, SEL _cmd) {
+    if (_o_dcls_v15) _o_dcls_v15(self, _cmd);
+    
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    
+    UIView *cached = _dyyyCachedPIView;
+    if (cached) {
+        UIView *sv = cached.superview;
+        if (sv && cached.frame.size.height >= sv.bounds.size.height - 1) {
+            return;  // 已撑满，零开销返回
+        }
+    }
+    
+    UIView *root = ((UIViewController *)self).view;
+    if (!root) return;
+    Class playCls = NSClassFromString(@"AWEPlayInteractionViewController");
+    if (!playCls) return;
+    
+    NSMutableArray *q = [NSMutableArray arrayWithObject:root];
+    int safety = 0;
+    UIView *found = nil;
+    while (q.count > 0 && safety++ < 300) {
+        UIView *v = q.firstObject;
+        [q removeObjectAtIndex:0];
+        UIResponder *r = v.nextResponder;
+        int d = 0;
+        while (r && d++ < 10) {
+            if ([r isKindOfClass:playCls]) {
+                found = ((UIViewController *)r).view;
+                break;
+            }
+            if ([r isKindOfClass:[UIViewController class]]) break;
+            r = r.nextResponder;
+        }
+        if (found) break;
+        [q addObjectsFromArray:v.subviews];
+    }
+    if (!found) return;
+    _dyyyCachedPIView = found;
+    UIView *sv = found.superview;
+    if (sv && found.frame.size.height < sv.bounds.size.height - 1) {
+        CGRect f = found.frame;
+        f.origin.y = 0;
+        f.size.height = sv.bounds.size.height;
+        found.frame = f;
+        found.clipsToBounds = NO;
+        sv.clipsToBounds = NO;
+    }
+}
+
+%ctor {
+    Class c = objc_getClass("AWEAwemeDetailCellViewController");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
+        if (m) {
+            _o_dcls_v15 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_dcls_v15);
+        }
+    }
+}
