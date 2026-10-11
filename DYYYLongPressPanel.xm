@@ -1658,53 +1658,58 @@ static void DLog(NSString *s) {
     }
 }
 
-// 向上找 view 的 nextResponder 里第一个 UIViewController
-static UIViewController *DYYYFindNearestVC(UIView *v) {
-    UIResponder *r = v.nextResponder;
+// 关键：只查 superview 的 nextResponder 一层（不做 while 遍历）
+static UIViewController *DYYYDirectParentVC(UIView *sv) {
+    UIResponder *r = sv.nextResponder;
     while (r) {
         if ([r isKindOfClass:[UIViewController class]]) return (UIViewController *)r;
         r = r.nextResponder;
+        if (!r) break;
     }
     return nil;
 }
 
-static int _log_v = 0;
-static BOOL _inLayout = NO;
-
-static void (*_o_vdls)(id, SEL) = NULL;
-static void _m_vdls(id self, SEL _cmd) {
-    if (_o_vdls) _o_vdls(self, _cmd);
-    if (_inLayout) return;
+// hook AWEPlayInteractionViewController.viewDidMoveToSuperview
+// 只在挂载时刻运行 1 次，不参与每帧 layout
+static void (*_o_mv)(id, SEL) = NULL;
+static int _log_mv = 0;
+static void _m_mv(id self, SEL _cmd) {
+    if (_o_mv) _o_mv(self, _cmd);
     @autoreleasepool {
-        UIView *v = ((UIViewController *)self).view;
+        UIViewController *vc = (UIViewController *)self;
+        UIView *v = vc.view;
         UIView *sv = v.superview;
         if (!v || !sv) return;
-        CGFloat ph = sv.bounds.size.height;
-        CGFloat mh = v.frame.size.height;
-        if (ph < 800) return;
         
-        // 关键：只用"直接 superview 的 VC 是 AWEAwemeDetailCellViewController"判定
-        UIViewController *parent = DYYYFindNearestVC(sv);
+        UIViewController *parent = DYYYDirectParentVC(sv);
         BOOL isDetail = [parent isKindOfClass:NSClassFromString(@"AWEAwemeDetailCellViewController")];
         
-        if (_log_v < 10) {
-            DLog([NSString stringWithFormat:@"vdls parent=%@ isDetail=%d selfH=%.1f superH=%.1f",
-                  NSStringFromClass([parent class]), isDetail, mh, ph]);
-            _log_v++;
+        if (_log_mv < 20) {
+            DLog([NSString stringWithFormat:@"mv parent=%@ isDetail=%d",
+                  NSStringFromClass([parent class]), isDetail]);
+            _log_mv++;
         }
         
         if (!isDetail) return;
-        if (mh >= ph - 1) return;
         
-        _inLayout = YES;
-        CGRect f = v.frame;
-        f.origin.y = 0;
-        f.size.height = ph;
-        v.frame = f;
-        v.clipsToBounds = NO;
-        sv.clipsToBounds = NO;
-        if (sv.superview) sv.superview.clipsToBounds = NO;
-        _inLayout = NO;
+        // 延迟到下一 runloop 再改，避免和抖音自身的 layout 打架
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIView *vv = ((UIViewController *)self).view;
+            UIView *ssv = vv.superview;
+            if (!ssv) return;
+            CGFloat ph = ssv.bounds.size.height;
+            CGFloat mh = vv.frame.size.height;
+            if (ph > 800 && mh < ph - 1) {
+                CGRect f = vv.frame;
+                f.origin.y = 0;
+                f.size.height = ph;
+                vv.frame = f;
+                vv.clipsToBounds = NO;
+                ssv.clipsToBounds = NO;
+                if (ssv.superview) ssv.superview.clipsToBounds = NO;
+                DLog(@"mv 撑到 852");
+            }
+        });
     }
 }
 
@@ -1712,13 +1717,13 @@ static void _m_vdls(id self, SEL _cmd) {
     @autoreleasepool {
         Class c = objc_getClass("AWEPlayInteractionViewController");
         if (!c) { DLog(@"no class"); return; }
-        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
+        Method m = class_getInstanceMethod(c, @selector(viewDidMoveToSuperview));
         if (m) {
-            _o_vdls = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_vdls);
-            DLog(@"v12 installed");
+            _o_mv = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_mv);
+            DLog(@"v13 installed");
         } else {
-            DLog(@"no vdls");
+            DLog(@"no viewDidMoveToSuperview");
         }
     }
 }
