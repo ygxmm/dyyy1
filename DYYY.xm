@@ -6,6 +6,7 @@
 //  Created on: 2024/10/04
 //
 #import <QuartzCore/QuartzCore.h>
+#include <stdarg.h>
 #import <AVFoundation/AVFoundation.h>
 #import <UIKit/UIKit.h>
 #import <dlfcn.h>
@@ -110,13 +111,27 @@ static NSString *DLogPath(void) {
     }
 }
 
-static void DLog(NSString *s) {
+// ===== 统一日志（变参，动态沙盒路径）=====
+static NSString *DLogPath(void) {
+    NSString *home = NSHomeDirectory();
+    if (home.length == 0) return nil;
+    return [[home stringByAppendingPathComponent:@"Documents"]
+            stringByAppendingPathComponent:@"dyyy_fs.log"];
+}
+
+static void DLog(NSString *fmt, ...) {
     @autoreleasepool {
+        va_list ap;
+        va_start(ap, fmt);
+        NSString *s = [[NSString alloc] initWithFormat:fmt arguments:ap];
+        va_end(ap);
+        if (!s) return;
         NSString *path = DLogPath();
         if (!path) return;
         FILE *fp = fopen(path.UTF8String, "a");
         if (!fp) return;
-        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
+        fputs(([s stringByAppendingString:@"
+"]).UTF8String, fp);
         fclose(fp);
     }
 }
