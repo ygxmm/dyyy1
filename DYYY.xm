@@ -18192,3 +18192,60 @@ static void _m_dtvc_vdls_p60(id self, SEL _cmd) {
         }
     }
 }
+
+
+// ===== v18: 隐藏评论输入框预留栏，让抖音自己重排 =====
+// 思路：不告诉抖音"答案"，而是改变输入条件（隐藏预留栏），
+// 让抖音自己把 table 重算到 852
+static void (*_o_dtvc_vdls_v18)(id, SEL) = NULL;
+static int _v18_log = 0;
+
+static void _m_dtvc_vdls_v18(id self, SEL _cmd) {
+    if (_o_dtvc_vdls_v18) _o_dtvc_vdls_v18(self, _cmd);
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    
+    @autoreleasepool {
+        UIViewController *vc = (UIViewController *)self;
+        UIView *rootView = vc.view;
+        if (!rootView || rootView.bounds.size.height < 800) return;
+        
+        // 找 AWECommentInputBackgroundView，隐藏它
+        BOOL changed = NO;
+        for (UIView *v in rootView.subviews) {
+            NSString *cls = NSStringFromClass([v class]);
+            if ([cls isEqualToString:@"AWECommentInputBackgroundView"]) {
+                if (!v.hidden) {
+                    v.hidden = YES;
+                    changed = YES;
+                    if (_v18_log < 10) {
+                        NSLog(@"[DYYY-v18] hid CommentInputBackgroundView h=%.1f",
+                              v.frame.size.height);
+                        _v18_log++;
+                    }
+                }
+            }
+        }
+        
+        // 如果有变化，让 table 重排
+        if (changed) {
+            for (UIView *v in rootView.subviews) {
+                if ([NSStringFromClass([v class]) isEqualToString:@"AWEAwemeDetailTableView"]) {
+                    [v setNeedsLayout];
+                    [v layoutIfNeeded];
+                    break;
+                }
+            }
+        }
+    }
+}
+
+%ctor {
+    Class c = objc_getClass("AWEAwemeDetailTableViewController");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
+        if (m) {
+            _o_dtvc_vdls_v18 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_dtvc_vdls_v18);
+        }
+    }
+}
