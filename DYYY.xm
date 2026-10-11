@@ -18056,96 +18056,90 @@ static void DYYYV54Log(NSString *fmt, ...) {
 }
 
 
-// ===== v61: 找 detailVC.view 下所有"占位空视图"并移出屏幕 =====
-// 用户的思路：抖音 rcView 792 是设计，但底部有个 60pt "占位视图"
-// 把这个占位挪开，让抖音自己重排
-// 先别 setHidden，只改 frame.origin.y = svh（移出屏幕），看抖音反应
-static void (*_o_v61)(id, SEL) = NULL;
-static int _v61_log = 0;
+// ===== v63: 让 rcView + RichContentNewListVC 两层都不裁 =====
+// dump 铁证：
+//   RichContentContainerVC.view  792 clips=1  ← 一层裁
+//     RichContentNewListVC.view  792          ← 二层也要解
+//       TTMetalViewVP            852          ← 图片真实 852
+// 两层都解裁，852 图片就露出来了
+// 用 KVO 拿不到就 hook viewDidLoad 记录，再拦 setClipsToBounds
 
-static void DYYYV61Log(NSString *fmt, ...) {
-    @autoreleasepool {
-        va_list ap; va_start(ap, fmt);
-        NSString *s = [[NSString alloc] initWithFormat:fmt arguments:ap];
-        va_end(ap);
-        if (!s) return;
-        NSString *home = NSHomeDirectory();
-        if (home.length == 0) return;
-        NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
-                          stringByAppendingPathComponent:@"dyyy_v61.log"];
-        FILE *fp = fopen(path.UTF8String, "a");
-        if (!fp) return;
-        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
-        fclose(fp);
-    }
+static __weak UIView *g_rcView = nil;
+static __weak UIView *g_rclView = nil;
+
+// --- 记录 rcView ---
+static void (*_o_v63_vdl1)(id, SEL) = NULL;
+static void _m_v63_vdl1(id self, SEL _cmd) {
+    if (_o_v63_vdl1) _o_v63_vdl1(self, _cmd);
+    g_rcView = ((UIViewController *)self).view;
 }
 
-static void _m_v61(id self, SEL _cmd) {
-    if (_o_v61) _o_v61(self, _cmd);
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+// --- 记录 rclView ---
+static void (*_o_v63_vdl2)(id, SEL) = NULL;
+static void _m_v63_vdl2(id self, SEL _cmd) {
+    if (_o_v63_vdl2) _o_v63_vdl2(self, _cmd);
+    g_rclView = ((UIViewController *)self).view;
+}
 
-    @autoreleasepool {
-        UIViewController *vc = (UIViewController *)self;
-
-        // 只对图文（awemeType == 68）
-        BOOL isRich = NO;
-        @try {
-            id aweme = [vc valueForKey:@"model"];
-            if (aweme) {
-                long long t = [[aweme valueForKey:@"awemeType"] longLongValue];
-                isRich = (t == 68);
-            }
-        } @catch (__unused NSException *e) {}
-        if (!isRich) return;
-
-        UIView *root = vc.view;
-        if (!root || root.bounds.size.height < 800) return;
-        CGFloat svh = root.bounds.size.height;
-
-        // 遍历所有子孙：找"60pt 高 + 贴底 + 无可见子视图"的空容器
-        NSMutableArray *q = [NSMutableArray arrayWithObject:root];
-        int safety = 0;
-        while (q.count > 0 && safety++ < 500) {
-            UIView *v = q.firstObject;
-            [q removeObjectAtIndex:0];
-            [q addObjectsFromArray:v.subviews];
-
-            if (v == root) continue;
-            CGFloat mh = v.frame.size.height;
-            CGFloat my = v.frame.origin.y;
-            // 只找 40~100 高度 + 贴底
-            if (mh < 40 || mh > 100) continue;
-            if (my + mh < svh - 5) continue;
-            // 必须没有可见子视图（占位空容器）
-            BOOL hasVisibleChild = NO;
-            for (UIView *c in v.subviews) {
-                if (!c.hidden && c.alpha > 0.01) { hasVisibleChild = YES; break; }
-            }
-            if (hasVisibleChild) continue;
-
-            NSString *cls = NSStringFromClass([v class]);
-            if ([cls containsString:@"TabBar"] || [cls containsString:@"tabBar"]) continue;
-
-            if (_v61_log < 10) {
-                DYYYV61Log(@"[v61] move out: %@ %p frame=%@",
-                           cls, v, NSStringFromCGRect(v.frame));
-                _v61_log++;
-            }
-            CGRect f = v.frame;
-            f.origin.y = svh;
-            v.frame = f;
+// --- 拦 setClipsToBounds ---
+static void (*_o_v63_scb)(id, SEL, BOOL) = NULL;
+static void _m_v63_scb(id self, SEL _cmd, BOOL clips) {
+    if (clips && DYYYGetBool(@"DYYYEnableFullScreen")) {
+        UIView *v = (UIView *)self;
+        UIView *rc = g_rcView;
+        UIView *rcl = g_rclView;
+        if ((rc && v == rc) || (rcl && v == rcl)) {
+            clips = NO;
         }
     }
+    if (_o_v63_scb) _o_v63_scb(self, _cmd, clips);
+}
+
+// --- 也拦 CALayer.setMasksToBounds，有些代码走这条路 ---
+static void (*_o_v63_mtb)(id, SEL, BOOL) = NULL;
+static void _m_v63_mtb(id self, SEL _cmd, BOOL masks) {
+    if (masks && DYYYGetBool(@"DYYYEnableFullScreen")) {
+        id delegate = nil;
+        @try { delegate = [(CALayer *)self delegate]; } @catch (__unused NSException *e) {}
+        UIView *rc = g_rcView;
+        UIView *rcl = g_rclView;
+        if (delegate && ((rc && delegate == rc) || (rcl && delegate == rcl))) {
+            masks = NO;
+        }
+    }
+    if (_o_v63_mtb) _o_v63_mtb(self, _cmd, masks);
 }
 
 %ctor {
-    Class c = objc_getClass("AWEAwemeDetailCellViewController");
-    if (c) {
-        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
+    Class c1 = objc_getClass("RichContentContainerViewController");
+    if (c1) {
+        Method m = class_getInstanceMethod(c1, @selector(viewDidLoad));
         if (m) {
-            _o_v61 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_v61);
-            NSLog(@"[DYYY-v61] installed");
+            _o_v63_vdl1 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v63_vdl1);
         }
     }
+
+    Class c2 = objc_getClass("AWEMultiContentImpl.RichContentNewListViewController");
+    if (c2) {
+        Method m = class_getInstanceMethod(c2, @selector(viewDidLoad));
+        if (m) {
+            _o_v63_vdl2 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v63_vdl2);
+        }
+    }
+
+    Method scb = class_getInstanceMethod([UIView class], @selector(setClipsToBounds:));
+    if (scb) {
+        _o_v63_scb = (void(*)(id,SEL,BOOL))method_getImplementation(scb);
+        method_setImplementation(scb, (IMP)_m_v63_scb);
+    }
+
+    Method mtb = class_getInstanceMethod([CALayer class], @selector(setMasksToBounds:));
+    if (mtb) {
+        _o_v63_mtb = (void(*)(id,SEL,BOOL))method_getImplementation(mtb);
+        method_setImplementation(mtb, (IMP)_m_v63_mtb);
+    }
+
+    NSLog(@"[DYYY-v63] installed");
 }
