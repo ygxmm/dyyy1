@@ -17927,25 +17927,7 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 // ===== 详情页 Cell 撑满全屏（严格限定 AWEAwemeDetailTableView） =====
 
 
-// ===== 隐藏"暂时没有更多了"底部占位 =====
 
-
-// ===== 用 runtime hook 隐藏"暂时没有更多了"底部占位（绕过 Logos 编译期问题） =====
-%ctor {
-    Class cls = objc_getClass("AWEFeedRefreshFooter");
-    if (cls) {
-        SEL sel = @selector(layoutSubviews);
-        Method m = class_getInstanceMethod(cls, sel);
-        if (m) {
-            IMP origImp = method_getImplementation(m);
-            IMP newImp = imp_implementationWithBlock(^(id self, SEL _cmd) {
-                ((void (*)(id, SEL))origImp)(self, _cmd);
-                [self setHidden:YES];
-            });
-            method_setImplementation(m, newImp);
-        }
-    }
-}
 
 
 
@@ -18036,4 +18018,35 @@ static void _m_v29(id self, SEL _cmd) {
             DLog(@"[DYYY-v29] installed");
         }
     }
+}
+
+// ===== 隐藏"暂时没有更多了"底部占位（只对详情页，主页不动） =====
+%ctor {
+    Class cls = objc_getClass("AWEFeedRefreshFooter");
+    if (!cls) return;
+    Method m = class_getInstanceMethod(cls, @selector(layoutSubviews));
+    if (!m) return;
+    IMP origImp = method_getImplementation(m);
+    IMP newImp = imp_implementationWithBlock(^(id self, SEL _cmd) {
+        ((void (*)(id, SEL))origImp)(self, _cmd);
+        // 只在详情页 table 里隐藏 footer；主页 feed 保持原生，让 loadMore 生效
+        BOOL isDetail = NO;
+        UIResponder *r = [self nextResponder];
+        int d = 0;
+        while (r && d++ < 12) {
+            Class c = [r class];
+            NSString *name = NSStringFromClass(c);
+            if ([name isEqualToString:@"AWEAwemeDetailTableViewController"] ||
+                [name isEqualToString:@"AWEAwemeDetailCellViewController"] ||
+                [name isEqualToString:@"AWEAwemeDetailTableView"]) {
+                isDetail = YES;
+                break;
+            }
+            r = [r nextResponder];
+        }
+        if (isDetail) {
+            [self setHidden:YES];
+        }
+    });
+    method_setImplementation(m, newImp);
 }
