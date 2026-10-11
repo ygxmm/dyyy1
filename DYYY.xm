@@ -18056,15 +18056,16 @@ static void DYYYV54Log(NSString *fmt, ...) {
 }
 
 
-// ===== v65: 综合方案 =====
-// 目标：
-//   1. 把所有 792 的容器/view 撑到 852
-//   2. 把底部 60pt 的"占位条/底栏"往后塞（移出屏幕 / setHidden）
-//   3. 带日志，写沙盒 dyyy_v65.log
-// 只要 superview 高度 >= 800 且父链含 RichContent → 全处理
-// associatedObject 只处理一次，防循环
+// ===== v66: hook 图片查看器的 isInFullPage + 探针读 Swift 字段 =====
+// 关键类：AWEMultiContentImpl.ImageContentAdapterCellView
+// 之前 v8 hook 的 AFDImageContentView 是旧类，新版已换
+// 字段（Swift private，但 ObjC 通过 getter 可以读）：
+//   isInFullPage                 - 全屏开关
+//   imageContentViewInsets       - 图片 inset
+//   imageContentViewHeightType   - 高度类型
+//   contentViewShrinkState       - 收缩状态
 
-static void DYYYV65Log(NSString *fmt, ...) {
+static void DYYYV66Log(NSString *fmt, ...) {
     @autoreleasepool {
         va_list ap; va_start(ap, fmt);
         NSString *s = [[NSString alloc] initWithFormat:fmt arguments:ap];
@@ -18073,110 +18074,65 @@ static void DYYYV65Log(NSString *fmt, ...) {
         NSString *home = NSHomeDirectory();
         if (home.length == 0) return;
         NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
-                          stringByAppendingPathComponent:@"dyyy_v65.log"];
+                          stringByAppendingPathComponent:@"dyyy_v66.log"];
         FILE *fp = fopen(path.UTF8String, "a");
         if (!fp) return;
-        fputs(([s stringByAppendingString:@"
-"]).UTF8String, fp);
+        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
         fclose(fp);
     }
 }
 
-// 判断一个 view 的祖先链上有没有 RichContent 类
-static BOOL DYYYV65InRichContent(UIView *view) {
-    UIView *p = view.superview;
-    int d = 0;
-    while (p && d++ < 20) {
-        NSString *name = NSStringFromClass([p class]);
-        if ([name containsString:@"RichContent"]) return YES;
-        if ([name isEqualToString:@"AWEAwemeDetailTableViewController"]) return NO;
-        p = p.superview;
-    }
-    return NO;
+// 1. hook isInFullPage getter 返回 YES
+static BOOL (*_o_v66_fp)(id, SEL) = NULL;
+static BOOL _m_v66_fp(id self, SEL _cmd) {
+    BOOL orig = _o_v66_fp ? _o_v66_fp(self, _cmd) : NO;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return orig;
+    return YES;
 }
 
-static const void *kDYYYV65Expanded = &kDYYYV65Expanded;
-static const void *kDYYYV65Moved = &kDYYYV65Moved;
-
-// ==== 1. hook PlayInteractionVC.viewDidLayoutSubviews 撑 UI 层 ====
-static void (*_o_v65_pi)(id, SEL) = NULL;
-static void _m_v65_pi(id self, SEL _cmd) {
-    if (_o_v65_pi) _o_v65_pi(self, _cmd);
+// 2. 探针：layoutSubviews 时读三个字段
+static void (*_o_v66_ls)(id, SEL) = NULL;
+static int _v66_log = 0;
+static void _m_v66_ls(id self, SEL _cmd) {
+    if (_o_v66_ls) _o_v66_ls(self, _cmd);
+    if (_v66_log >= 5) return;
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
 
-    @autoreleasepool {
-        UIViewController *vc = (UIViewController *)self;
-        UIView *v = vc.view;
-        UIView *sv = v.superview;
-        if (!v || !sv) return;
-        CGFloat svh = sv.bounds.size.height;
-        CGFloat vh = v.frame.size.height;
-        if (svh < 800) return;
-        if (vh >= svh - 1) return;
-        if (!DYYYV65InRichContent(v)) return;
-        if (objc_getAssociatedObject(v, kDYYYV65Expanded)) return;
-        objc_setAssociatedObject(v, kDYYYV65Expanded, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        DYYYV65Log(@"[v65] PI.view %.1f -> %.1f", vh, svh);
-        CGRect f = v.frame;
-        f.origin.y = 0;
-        f.size.height = svh;
-        v.frame = f;
-        v.clipsToBounds = NO;
+    @try {
+        id fp = [self valueForKey:@"isInFullPage"];
+        id insets = [self valueForKey:@"imageContentViewInsets"];
+        id ht = [self valueForKey:@"imageContentViewHeightType"];
+        id shrink = [self valueForKey:@"contentViewShrinkState"];
+        _v66_log++;
+        DYYYV66Log(@"[v66] fp=%@ insets=%@ ht=%@ shrink=%@ frame=%@",
+                   fp, insets, ht, shrink, NSStringFromCGRect(((UIView *)self).frame));
+    } @catch (__unused NSException *e) {
+        DYYYV66Log(@"[v66] KVC failed: %@", e);
     }
-}
-
-// ==== 2. hook 通用 UIView.setFrame，把"贴底 60pt 条"移出屏幕 ====
-// 只对富文本详情页 + 只有高度 40~100 + 贴底
-static void (*_o_v65_sf)(id, SEL, CGRect) = NULL;
-static void _m_v65_sf(id self, SEL _cmd, CGRect frame) {
-    UIView *v = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIView *sv = v.superview;
-        if (sv) {
-            CGFloat svh = sv.bounds.size.height;
-            CGFloat mh = frame.size.height;
-            CGFloat my = frame.origin.y;
-            // 40~100 高 + 贴底
-            if (svh >= 800 && mh >= 40 && mh <= 100 && my + mh >= svh - 5) {
-                NSString *name = NSStringFromClass([v class]);
-                // 跳过 table / 背景 / 图片 / 系统层
-                BOOL skip = [name containsString:@"TableView"]
-                          || [name containsString:@"VisualEffect"]
-                          || [name containsString:@"UIImageView"]
-                          || [name containsString:@"TabBar"]
-                          || [name containsString:@"AWEFeed"];
-                if (!skip && DYYYV65InRichContent(v)) {
-                    // 标记一下避免重复日志
-                    if (!objc_getAssociatedObject(v, kDYYYV65Moved)) {
-                        objc_setAssociatedObject(v, kDYYYV65Moved, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                        DYYYV65Log(@"[v65] move out: %@ %p h=%.1f y=%.1f",
-                                   name, v, mh, my);
-                    }
-                    frame.origin.y = svh;  // 塞到屏幕外
-                    // 同时设 hidden（双保险）
-                    v.hidden = YES;
-                }
-            }
-        }
-    }
-    if (_o_v65_sf) _o_v65_sf(self, _cmd, frame);
 }
 
 %ctor {
-    Class c1 = objc_getClass("AWEPlayInteractionViewController");
-    if (c1) {
-        Method m = class_getInstanceMethod(c1, @selector(viewDidLayoutSubviews));
-        if (m) {
-            _o_v65_pi = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_v65_pi);
-            DYYYV65Log(@"[v65] hook PI.vdls");
-        }
+    Class c = objc_getClass("AWEMultiContentImpl.ImageContentAdapterCellView");
+    if (!c) {
+        DYYYV66Log(@"[v66] class not found");
+        return;
     }
 
-    Method sf = class_getInstanceMethod([UIView class], @selector(setFrame:));
-    if (sf) {
-        _o_v65_sf = (void(*)(id,SEL,CGRect))method_getImplementation(sf);
-        method_setImplementation(sf, (IMP)_m_v65_sf);
-        DYYYV65Log(@"[v65] hook UIView.setFrame:");
+    // 试着找 isInFullPage getter
+    SEL fpSel = NSSelectorFromString(@"isInFullPage");
+    Method m1 = class_getInstanceMethod(c, fpSel);
+    if (m1) {
+        _o_v66_fp = (BOOL(*)(id,SEL))method_getImplementation(m1);
+        method_setImplementation(m1, (IMP)_m_v66_fp);
+        DYYYV66Log(@"[v66] hook isInFullPage");
+    } else {
+        DYYYV66Log(@"[v66] no isInFullPage method");
+    }
+
+    Method m2 = class_getInstanceMethod(c, @selector(layoutSubviews));
+    if (m2) {
+        _o_v66_ls = (void(*)(id,SEL))method_getImplementation(m2);
+        method_setImplementation(m2, (IMP)_m_v66_ls);
+        DYYYV66Log(@"[v66] hook layoutSubviews");
     }
 }
