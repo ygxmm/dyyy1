@@ -17956,23 +17956,24 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 
 
-// ===== v28: 改 table.bottom 约束 -60 -> 0 并触发重排 =====
-// v27 只改 constant，第一次进图文能撑满（新约束头次算就按 0 算）
-// 但第二次进图文时抖音先按 -60 算过一遍，改 0 后没重排 → 视觉不变
-// v28 在改完后用 dispatch_async 下一 runloop 触发一次 layoutIfNeeded
-static void (*_o_v28)(id, SEL) = NULL;
-static int _log_v28 = 0;
 
-static void _m_v28(id self, SEL _cmd) {
-    if (_o_v28) _o_v28(self, _cmd);
+// ===== v29: 每个 table 只处理一次，不再每帧 dispatch =====
+// v28 每次 layout 都 dispatch_async + layoutIfNeeded → 打断主页加载
+// v29 用 associatedObject 标记已处理的 table，只动手一次
+static const void *kDYYYV29Done = &kDYYYV29Done;
+
+static void (*_o_v29)(id, SEL) = NULL;
+
+static void _m_v29(id self, SEL _cmd) {
+    if (_o_v29) _o_v29(self, _cmd);
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    if (_log_v28 >= 10) return;
 
     @autoreleasepool {
         UIViewController *vc = (UIViewController *)self;
         UIView *rootView = vc.view;
         if (!rootView || rootView.bounds.size.height < 800) return;
 
+        // 找 table
         UIView *table = nil;
         NSMutableArray *q = [NSMutableArray arrayWithObject:rootView];
         int safety = 0;
@@ -17986,9 +17987,13 @@ static void _m_v28(id self, SEL _cmd) {
         }
         if (!table) return;
 
+        // 已经处理过？直接退出
+        if (objc_getAssociatedObject(table, kDYYYV29Done)) return;
+
         UIView *sv = table.superview;
         if (!sv) return;
 
+        // 找 bottom 约束改 0
         BOOL changed = NO;
         NSMutableArray *pools = [NSMutableArray arrayWithObject:sv.constraints];
         if (sv.superview) [pools addObject:sv.superview.constraints];
@@ -18005,30 +18010,17 @@ static void _m_v28(id self, SEL _cmd) {
             }
         }
 
-        if (_log_v28 < 5) {
-            DLog(@"[DYYY-v28] table=%p changed=%d h=%.1f",
-                  table, changed, table.frame.size.height);
-            _log_v28++;
-        }
+        // 标记已处理（无论是否改过，都不再处理这个 table）
+        objc_setAssociatedObject(table, kDYYYV29Done, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
-        // 只在实际改过或当前高度还是 792 时触发重排
-        if (changed || table.frame.size.height < rootView.bounds.size.height - 1) {
+        DLog(@"[DYYY-v29] table=%p changed=%d h=%.1f (标记已处理)",
+              table, changed, table.frame.size.height);
+
+        if (changed) {
+            // 只在真正改过约束时触发一次重排
             dispatch_async(dispatch_get_main_queue(), ^{
-                @autoreleasepool {
-                    UIView *t = table;
-                    UIView *s = sv;
-                    if (!t || !s) return;
-                    [s setNeedsLayout];
-                    [s layoutIfNeeded];
-                    if (t.frame.size.height < s.bounds.size.height - 1) {
-                        // 二次尝试：改 frame 兜底
-                        CGRect f = t.frame;
-                        f.origin.y = 0;
-                        f.size.height = s.bounds.size.height;
-                        t.frame = f;
-                        t.clipsToBounds = NO;
-                    }
-                }
+                [sv setNeedsLayout];
+                [sv layoutIfNeeded];
             });
         }
     }
@@ -18039,9 +18031,9 @@ static void _m_v28(id self, SEL _cmd) {
     if (c) {
         Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
         if (m) {
-            _o_v28 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_v28);
-            DLog(@"[DYYY-v28] installed");
+            _o_v29 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v29);
+            DLog(@"[DYYY-v29] installed");
         }
     }
 }
