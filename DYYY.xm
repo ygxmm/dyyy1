@@ -18056,16 +18056,16 @@ static void DYYYV54Log(NSString *fmt, ...) {
 }
 
 
-// ===== v66: hook 图片查看器的 isInFullPage + 探针读 Swift 字段 =====
-// 关键类：AWEMultiContentImpl.ImageContentAdapterCellView
-// 之前 v8 hook 的 AFDImageContentView 是旧类，新版已换
-// 字段（Swift private，但 ObjC 通过 getter 可以读）：
-//   isInFullPage                 - 全屏开关
-//   imageContentViewInsets       - 图片 inset
-//   imageContentViewHeightType   - 高度类型
-//   contentViewShrinkState       - 收缩状态
+// ===== v68: hook 图片 cell 的 CGRect 返回方法 =====
+// 从 v67 ivar 列表看：isInFullPage / _imageContentViewInsets / _imageContentViewHeightType
+// 全是 Swift private，无法 KVC 访问
+// 但方法列表里有这几个返回 CGRect 的方法（这些是 ObjC 可见）：
+//   - (CGRect)imagePlayerFrame
+//   - (CGRect)currentContentRect
+//   - (CGRect)customContainerRectForCalculateVideoFrame
+// 可能是图片实际显示区域的来源
 
-static void DYYYV66Log(NSString *fmt, ...) {
+static void DYYYV68Log(NSString *fmt, ...) {
     @autoreleasepool {
         va_list ap; va_start(ap, fmt);
         NSString *s = [[NSString alloc] initWithFormat:fmt arguments:ap];
@@ -18074,7 +18074,7 @@ static void DYYYV66Log(NSString *fmt, ...) {
         NSString *home = NSHomeDirectory();
         if (home.length == 0) return;
         NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
-                          stringByAppendingPathComponent:@"dyyy_v66.log"];
+                          stringByAppendingPathComponent:@"dyyy_v68.log"];
         FILE *fp = fopen(path.UTF8String, "a");
         if (!fp) return;
         fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
@@ -18082,86 +18082,70 @@ static void DYYYV66Log(NSString *fmt, ...) {
     }
 }
 
-// 1. hook isInFullPage getter 返回 YES
-static BOOL (*_o_v66_fp)(id, SEL) = NULL;
-static BOOL _m_v66_fp(id self, SEL _cmd) {
-    BOOL orig = _o_v66_fp ? _o_v66_fp(self, _cmd) : NO;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return orig;
-    return YES;
+static BOOL DYYYV68IsRich(id view) {
+    UIView *v = (UIView *)view;
+    UIView *sv = v.superview;
+    int d = 0;
+    while (sv && d++ < 15) {
+        NSString *name = NSStringFromClass([sv class]);
+        if ([name containsString:@"RichContent"]) return YES;
+        if ([name isEqualToString:@"AWEAwemeDetailTableViewController"]) return NO;
+        sv = sv.superview;
+    }
+    return NO;
 }
 
-// 2. 探针：layoutSubviews 时读三个字段
-static void (*_o_v66_ls)(id, SEL) = NULL;
-static int _v66_log = 0;
-static void _m_v66_ls(id self, SEL _cmd) {
-    if (_o_v66_ls) _o_v66_ls(self, _cmd);
-    if (_v66_log >= 5) return;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-
-    @try {
-        id fp = [self valueForKey:@"isInFullPage"];
-        id insets = [self valueForKey:@"imageContentViewInsets"];
-        id ht = [self valueForKey:@"imageContentViewHeightType"];
-        id shrink = [self valueForKey:@"contentViewShrinkState"];
-        _v66_log++;
-        DYYYV66Log(@"[v66] fp=%@ insets=%@ ht=%@ shrink=%@ frame=%@",
-                   fp, insets, ht, shrink, NSStringFromCGRect(((UIView *)self).frame));
-    } @catch (__unused NSException *e) {
-        DYYYV66Log(@"[v66] KVC failed: %@", e);
+// --- imagePlayerFrame ---
+static CGRect (*_o_v68_ipf)(id, SEL) = NULL;
+static int _v68_log = 0;
+static CGRect _m_v68_ipf(id self, SEL _cmd) {
+    CGRect orig = _o_v68_ipf ? _o_v68_ipf(self, _cmd) : CGRectZero;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYYV68IsRich(self)) {
+        UIView *sv = ((UIView *)self).superview;
+        CGFloat svh = sv ? sv.bounds.size.height : 852;
+        if (svh < 800) return orig;
+        if (_v68_log < 5) {
+            DYYYV68Log(@"[v68] imagePlayerFrame orig=%@ -> 852", NSStringFromCGRect(orig));
+            _v68_log++;
+        }
+        // 返回全屏 rect
+        return CGRectMake(0, 0, orig.size.width > 0 ? orig.size.width : 393, svh);
     }
+    return orig;
+}
+
+// --- currentContentRect ---
+static CGRect (*_o_v68_ccr)(id, SEL) = NULL;
+static CGRect _m_v68_ccr(id self, SEL _cmd) {
+    CGRect orig = _o_v68_ccr ? _o_v68_ccr(self, _cmd) : CGRectZero;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYYV68IsRich(self)) {
+        UIView *sv = ((UIView *)self).superview;
+        CGFloat svh = sv ? sv.bounds.size.height : 852;
+        if (svh < 800) return orig;
+        if (_v68_log < 10) {
+            DYYYV68Log(@"[v68] currentContentRect orig=%@", NSStringFromCGRect(orig));
+            _v68_log++;
+        }
+        return CGRectMake(0, 0, orig.size.width > 0 ? orig.size.width : 393, svh);
+    }
+    return orig;
 }
 
 %ctor {
     Class c = objc_getClass("AWEMultiContentImpl.ImageContentAdapterCellView");
-    if (!c) {
-        DYYYV66Log(@"[v66] class not found");
-        return;
-    }
+    if (!c) { DYYYV68Log(@"[v68] class not found"); return; }
 
-    // 试着找 isInFullPage getter
-    SEL fpSel = NSSelectorFromString(@"isInFullPage");
-    Method m1 = class_getInstanceMethod(c, fpSel);
+    Method m1 = class_getInstanceMethod(c, NSSelectorFromString(@"imagePlayerFrame"));
     if (m1) {
-        _o_v66_fp = (BOOL(*)(id,SEL))method_getImplementation(m1);
-        method_setImplementation(m1, (IMP)_m_v66_fp);
-        DYYYV66Log(@"[v66] hook isInFullPage");
-    } else {
-        DYYYV66Log(@"[v66] no isInFullPage method");
+        _o_v68_ipf = (CGRect(*)(id,SEL))method_getImplementation(m1);
+        method_setImplementation(m1, (IMP)_m_v68_ipf);
+        DYYYV68Log(@"[v68] hook imagePlayerFrame");
     }
 
-    Method m2 = class_getInstanceMethod(c, @selector(layoutSubviews));
+    Method m2 = class_getInstanceMethod(c, NSSelectorFromString(@"currentContentRect"));
     if (m2) {
-        _o_v66_ls = (void(*)(id,SEL))method_getImplementation(m2);
-        method_setImplementation(m2, (IMP)_m_v66_ls);
-        DYYYV66Log(@"[v66] hook layoutSubviews");
+        _o_v68_ccr = (CGRect(*)(id,SEL))method_getImplementation(m2);
+        method_setImplementation(m2, (IMP)_m_v68_ccr);
+        DYYYV68Log(@"[v68] hook currentContentRect");
     }
-}
-
-// v67 探针：列出 ImageContentAdapterCellView 的所有 ivar / method
-static void DYYYV67Dump(void) {
-    @autoreleasepool {
-        Class c = objc_getClass("AWEMultiContentImpl.ImageContentAdapterCellView");
-        if (!c) { DYYYV66Log(@"[DYYY-v67] class not found"); return; }
-        unsigned int n = 0;
-        Ivar *ivars = class_copyIvarList(c, &n);
-        DYYYV66Log(@"[DYYY-v67] === ivars (%u) ===", n);
-        for (unsigned int i = 0; i < n; i++) {
-            DYYYV66Log(@"[DYYY-v67] ivar: %s type=%s", ivar_getName(ivars[i]), ivar_getTypeEncoding(ivars[i]));
-        }
-        free(ivars);
-
-        Method *methods = class_copyMethodList(c, &n);
-        DYYYV66Log(@"[DYYY-v67] === methods (%u) ===", n);
-        for (unsigned int i = 0; i < n; i++) {
-            DYYYV66Log(@"[DYYY-v67] method: %s", sel_getName(method_getName(methods[i])));
-        }
-        free(methods);
-    }
-}
-
-%ctor {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        DYYYV67Dump();
-    });
 }
