@@ -18249,3 +18249,48 @@ static void _m_dtvc_vdls_v18(id self, SEL _cmd) {
         }
     }
 }
+
+
+// ===== 三入口探针 =====
+// 打印每个 PlayInteractionVC 挂载时的父链 + 高度
+// 用户分别在推荐流/搜索/用户主页进图文，日志显示真实路径
+static void (*_o_pall)(id, SEL) = NULL;
+static int _pall_log = 0;
+
+static void _m_pall(id self, SEL _cmd) {
+    if (_o_pall) _o_pall(self, _cmd);
+    if (_pall_log >= 60) return;
+    
+    @autoreleasepool {
+        UIViewController *vc = (UIViewController *)self;
+        UIView *v = vc.view;
+        UIView *sv = v.superview;
+        if (!v || !sv) return;
+        
+        NSMutableString *chain = [NSMutableString string];
+        UIViewController *p = vc.parentViewController;
+        int d = 0;
+        while (p && d++ < 8) {
+            [chain appendFormat:@"%@>", NSStringFromClass([p class])];
+            p = p.parentViewController;
+        }
+        
+        NSLog(@"[DYYY-pall] super=%@ selfH=%.1f superH=%.1f chain=%@",
+              NSStringFromClass([sv class]),
+              v.frame.size.height,
+              sv.bounds.size.height,
+              chain);
+        _pall_log++;
+    }
+}
+
+%ctor {
+    Class c = objc_getClass("AWEPlayInteractionViewController");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(viewDidMoveToWindow));
+        if (m) {
+            _o_pall = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_pall);
+        }
+    }
+}
