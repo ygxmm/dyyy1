@@ -18036,79 +18036,71 @@ static void _m_v29(id self, SEL _cmd) {
 }
 
 
-// ===== v45: 探针写沙盒文件（动态路径），dump 贴底 60pt 匿名 UIView 的子树 =====
-static void DYYYV45Log(NSString *fmt, ...) {
-    @autoreleasepool {
-        va_list ap;
-        va_start(ap, fmt);
-        NSString *s = [[NSString alloc] initWithFormat:fmt arguments:ap];
-        va_end(ap);
-        if (!s) return;
-        NSString *home = NSHomeDirectory();
-        if (home.length == 0) return;
-        NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
-                          stringByAppendingPathComponent:@"dyyy_v45.log"];
-        FILE *fp = fopen(path.UTF8String, "a");
-        if (!fp) return;
-        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
-        fclose(fp);
-    }
-}
+// ===== v46: AWECommentInputBackgroundView 在图文详情页移出屏幕 =====
+// v45 探针证明：DetailCellVC.view 下 60pt 遮挡就是 AWECommentInputBackgroundView
+// 它是评论输入框背景容器（里面有 CommentInputTextView）
+// 每次 layout 抖音都把它设 hidden=0 贴底 → 挡图
+// v46 hook layoutSubviews，只在贴底 60pt 时移出屏幕（不改子视图，不循环）
+static void (*_o_v46)(id, SEL) = NULL;
+static int _v46_log = 0;
 
-static void (*_o_v45)(id, SEL) = NULL;
-static int _v45_log = 0;
+static void _m_v46(id self, SEL _cmd) {
+    if (_o_v46) _o_v46(self, _cmd);
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
 
-static void _m_v45(id self, SEL _cmd) {
-    if (_o_v45) _o_v45(self, _cmd);
-    if (_v45_log >= 3) return;
+    UIView *v = (UIView *)self;
+    UIView *sv = v.superview;
+    if (!sv) return;
 
-    UIView *root = ((UIViewController *)self).view;
-    if (!root || root.bounds.size.height < 800) return;
-    CGFloat svh = root.bounds.size.height;
+    CGFloat svh = sv.bounds.size.height;
+    if (svh < 800) return;   // 非全屏页跳过
 
-    for (UIView *sub in root.subviews) {
-        CGFloat my = sub.frame.origin.y;
-        CGFloat mh = sub.frame.size.height;
-        if (mh < 40 || mh > 100) continue;
-        if (my + mh < svh - 5) continue;
+    CGFloat mh = v.frame.size.height;
+    CGFloat my = v.frame.origin.y;
 
-        _v45_log++;
+    // 只处理贴底的 40~100pt 小条（键盘弹出时会不同）
+    if (mh < 40 || mh > 100) return;
+    if (my + mh < svh - 5) return;
 
-        DYYYV45Log(@"[v45] ===== target %p class=%@ frame=%@ hidden=%d bg=%@ subviews=%lu",
-                   sub, NSStringFromClass([sub class]),
-                   NSStringFromCGRect(sub.frame), sub.hidden,
-                   sub.backgroundColor,
-                   (unsigned long)sub.subviews.count);
-
-        // 递归 3 层 dump
-        NSMutableArray *curLevel = [NSMutableArray arrayWithObject:sub];
-        int depth = 0;
-        int count = 0;
-        while (curLevel.count > 0 && depth < 3 && count < 80) {
-            NSMutableArray *nextLevel = [NSMutableArray array];
-            for (UIView *p in curLevel) {
-                for (UIView *child in p.subviews) {
-                    DYYYV45Log(@"[v45]   depth=%d %@ frame=%@ hidden=%d",
-                               depth, NSStringFromClass([child class]),
-                               NSStringFromCGRect(child.frame), child.hidden);
-                    count++;
-                    if (count > 80) break;
-                    [nextLevel addObject:child];
-                }
-            }
-            curLevel = nextLevel;
-            depth++;
+    // 往上找父 VC，必须是 AWEAwemeDetailTableViewController
+    BOOL isDetail = NO;
+    UIResponder *r = sv.nextResponder;
+    int d = 0;
+    while (r && d++ < 10) {
+        if ([r isKindOfClass:NSClassFromString(@"AWEAwemeDetailTableViewController")]) {
+            isDetail = YES;
+            break;
         }
+        if ([r isKindOfClass:[UIViewController class]]) break;
+        r = r.nextResponder;
+    }
+    if (!isDetail) return;
+
+    // 移出屏幕 + hidden（只在当前不是这样时才改，避免每帧都写）
+    if (!v.hidden) {
+        v.hidden = YES;
+        if (_v46_log < 5) {
+            NSLog(@"[DYYY-v46] hid AWECommentInputBackgroundView");
+            _v46_log++;
+        }
+    }
+    if (my < svh) {
+        CGRect f = v.frame;
+        f.origin.y = svh;
+        v.frame = f;
     }
 }
 
 %ctor {
-    Class c = objc_getClass("AWEAwemeDetailCellViewController");
+    Class c = objc_getClass("AWECommentInputBackgroundView");
     if (c) {
-        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
+        Method m = class_getInstanceMethod(c, @selector(layoutSubviews));
         if (m) {
-            _o_v45 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_v45);
+            _o_v46 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v46);
+            NSLog(@"[DYYY-v46] installed");
         }
+    } else {
+        NSLog(@"[DYYY-v46] class not found");
     }
 }
