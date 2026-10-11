@@ -18055,54 +18055,53 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
-// ===== v71: 针对真正的 Swift 布局类 RichContentNewListViewController =====
-#import <objc/runtime.h>
+// ===== v72: 物理挪走图文页的底栏，逼迫Swift布局引擎将内容算成852 =====
+%hook AWEAwemeDetailTableViewController
 
-static UIEdgeInsets (*orig_getImageContentInsets)(id, SEL);
-static CGRect (*orig_awemeContentViewFrame)(id, SEL);
-static CGRect (*orig_awemeContentViewInitFrame)(id, SEL);
-
-static UIEdgeInsets hook_getImageContentInsets(id self, SEL _cmd) {
-    UIEdgeInsets insets = orig_getImageContentInsets(self, _cmd);
-    insets.bottom = 0; 
-    return insets;
-}
-
-static CGRect hook_awemeContentViewFrame(id self, SEL _cmd) {
-    CGRect frame = orig_awemeContentViewFrame(self, _cmd);
-    if (frame.size.height < 800 && frame.size.height > 0) {
-        frame.size.height = 852;
+- (void)viewDidLayoutSubviews {
+    %orig;
+    
+    // 只在图文页执行
+    BOOL isImageAlbum = NO;
+    id currentAweme = [self performSelector:@selector(currentAweme)];
+    if (currentAweme) {
+        // 简单判断：如果当前有 RichContentContainerViewController 就是图文
+        for (UIView *sub in self.view.subviews) {
+            if ([NSStringFromClass([sub class]) containsString:@"RichContentContainer"]) {
+                isImageAlbum = YES;
+                break;
+            }
+        }
     }
-    return frame;
-}
-
-static CGRect hook_awemeContentViewInitFrame(id self, SEL _cmd) {
-    CGRect frame = orig_awemeContentViewInitFrame(self, _cmd);
-    if (frame.size.height < 800 && frame.size.height > 0) {
-        frame.size.height = 852;
+    
+    if (!isImageAlbum) return;
+    
+    // 寻找并挪走 TabBar
+    UIWindow *keyWindow = nil;
+    if (@available(iOS 13.0, *)) {
+        for (UIWindowScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if (scene.activationState == UISceneActivationStateForegroundActive) {
+                for (UIWindow *window in scene.windows) {
+                    if (window.isKeyWindow) { keyWindow = window; break; }
+                }
+            }
+        }
+    } else {
+        keyWindow = UIApplication.sharedApplication.keyWindow;
     }
-    return frame;
-}
-
-%ctor {
-    Class c = objc_getClass("AWEMultiContentImpl.RichContentNewListViewController");
-    if (!c) return;
-
-    Method m1 = class_getInstanceMethod(c, NSSelectorFromString(@"getImageContentInsets"));
-    if (m1) {
-        orig_getImageContentInsets = (UIEdgeInsets (*)(id, SEL))method_getImplementation(m1);
-        method_setImplementation(m1, (IMP)hook_getImageContentInsets);
-    }
-
-    Method m2 = class_getInstanceMethod(c, NSSelectorFromString(@"awemeContentViewFrame"));
-    if (m2) {
-        orig_awemeContentViewFrame = (CGRect (*)(id, SEL))method_getImplementation(m2);
-        method_setImplementation(m2, (IMP)hook_awemeContentViewFrame);
-    }
-
-    Method m3 = class_getInstanceMethod(c, NSSelectorFromString(@"awemeContentViewInitFrame"));
-    if (m3) {
-        orig_awemeContentViewInitFrame = (CGRect (*)(id, SEL))method_getImplementation(m3);
-        method_setImplementation(m3, (IMP)hook_awemeContentViewInitFrame);
+    
+    if (keyWindow) {
+        for (UIView *sub in keyWindow.subviews) {
+            if ([NSStringFromClass([sub class]) containsString:@"TabBarController"]) {
+                for (UIView *tabBar in sub.subviews) {
+                    if ([NSStringFromClass([tabBar class]) containsString:@"TabBar"]) {
+                        // 核心操作：把底栏高度设为 0，或挪到屏幕外
+                        tabBar.frame = CGRectMake(0, 852, tabBar.frame.size.width, 0);
+                        tabBar.hidden = YES;
+                    }
+                }
+            }
+        }
     }
 }
+%end
