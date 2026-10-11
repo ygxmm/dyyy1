@@ -18056,21 +18056,16 @@ static void DYYYV54Log(NSString *fmt, ...) {
 }
 
 
-// ===== v57: hook 播放器的 shouldAdaptFullScreen + shouldAdaptShowWithVideo =====
-// 头文件：
-//   AWEPlayVideoViewController:
-//     @property BOOL shouldAdaptFullScreen;
-//     @property BOOL shouldAdaptFullScreenThree;
-//     - (void)updateShouldAdaptFullScreen:(BOOL)a0;
-//     + (BOOL)shouldAdaptShowWithVideo:(id)a0;      ← 类方法
-//   AWEDPlayerViewController_Merge:
-//     @property BOOL shouldAdaptFullScreen;
-//     @property BOOL shouldAdaptFullScreenThree;
-//     - (void)updateShouldAdaptFullScreen:(BOOL)a0;
-// 视频页 YES（852），图文页 NO（792）
-// v57 hook 三个 getter + 类方法 + setter
 
-// --- AWEPlayVideoViewController.shouldAdaptFullScreen getter ---
+
+// ===== v57: hook 播放器的 shouldAdaptFullScreen + shouldAdaptShowWithVideo =====
+// 头文件 AWEPlayVideoViewController / AWEDPlayerViewController_Merge:
+//   @property BOOL shouldAdaptFullScreen;
+//   @property BOOL shouldAdaptFullScreenThree;
+//   + (BOOL)shouldAdaptShowWithVideo:(id)a0;
+// 视频页 YES（rcView 852），图文页 NO（rcView 792）
+// 让图文页也返回 YES
+
 static BOOL (*_o_v57_p1)(id, SEL) = NULL;
 static BOOL _m_v57_p1(id self, SEL _cmd) {
     BOOL orig = _o_v57_p1 ? _o_v57_p1(self, _cmd) : NO;
@@ -18078,18 +18073,13 @@ static BOOL _m_v57_p1(id self, SEL _cmd) {
     return YES;
 }
 
-// --- AWEPlayVideoViewController.shouldAdaptFull YESScreenThree getter ---
 static BOOL (*_o_v57_p2)(id, SEL) = NULL;
-static BO;
-OL _m_v57_p2(id self, SEL _cmd) {
-    BOOL orig = _}
-
-o_v57_p2 ? _o_v57_p2(self//, _cmd) : NO;
-    if (!DYYYGetBool(@" ---DYYYEnableFullScreen")) return orig;
+static BOOL _m_v57_p2(id self, SEL _cmd) {
+    BOOL orig = _o_v57_p2 ? _o_v57_p2(self, _cmd) : NO;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return orig;
     return YES;
 }
 
-// --- AWEDPlayer ViewController_Merge.shouldAdaptFullScreen getter ---
 static BOOL (*_o_v57_d1)(id, SEL) = NULL;
 static BOOL _m_v57_d1(id self, SEL _cmd) {
     BOOL orig = _o_v57_d1 ? _o_v57_d1(self, _cmd) : NO;
@@ -18097,12 +18087,13 @@ static BOOL _m_v57_d1(id self, SEL _cmd) {
     return YES;
 }
 
-// --- AWEDPlayerViewController_Merge.shouldAdaptFullScreenThree getter ---
 static BOOL (*_o_v57_d2)(id, SEL) = NULL;
 static BOOL _m_v57_d2(id self, SEL _cmd) {
     BOOL orig = _o_v57_d2 ? _o_v57_d2(self, _cmd) : NO;
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return orig;
-    return类方法 shouldAdaptShowWithVideo: 返回 YES ---
+    return YES;
+}
+
 static BOOL (*_o_v57_cls)(id, SEL, id) = NULL;
 static BOOL _m_v57_cls(id self, SEL _cmd, id video) {
     BOOL orig = _o_v57_cls ? _o_v57_cls(self, _cmd, video) : NO;
@@ -18110,7 +18101,6 @@ static BOOL _m_v57_cls(id self, SEL _cmd, id video) {
     return YES;
 }
 
-// --- updateShouldAdaptFullScreen: 强制传 YES ---
 static void (*_o_v57_upd1)(id, SEL, BOOL) = NULL;
 static void _m_v57_upd1(id self, SEL _cmd, BOOL value) {
     if (DYYYGetBool(@"DYYYEnableFullScreen")) value = YES;
@@ -18127,11 +18117,9 @@ static void _m_v57_upd1(id self, SEL _cmd, BOOL value) {
         if (m) { _o_v57_p2 = (BOOL(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v57_p2); }
         m = class_getInstanceMethod(c1, @selector(updateShouldAdaptFullScreen:));
         if (m) { _o_v57_upd1 = (void(*)(id,SEL,BOOL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v57_upd1); }
-        // 类方法
         Class meta = objc_getMetaClass("AWEPlayVideoViewController");
         m = class_getClassMethod(meta, @selector(shouldAdaptShowWithVideo:));
         if (m) { _o_v57_cls = (BOOL(*)(id,SEL,id))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v57_cls); }
-        NSLog(@"[DYYY-v57] hooked PlayVideo VC");
     }
 
     Class c2 = objc_getClass("AWEDPlayerViewController_Merge");
@@ -18141,6 +18129,5 @@ static void _m_v57_upd1(id self, SEL _cmd, BOOL value) {
         if (m) { _o_v57_d1 = (BOOL(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v57_d1); }
         m = class_getInstanceMethod(c2, @selector(shouldAdaptFullScreenThree));
         if (m) { _o_v57_d2 = (BOOL(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v57_d2); }
-        NSLog(@"[DYYY-v57] hooked DPlayer Merge");
     }
 }
