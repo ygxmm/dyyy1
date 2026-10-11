@@ -17949,76 +17949,34 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 
 
-// ===== v21: 只改查询方法返回值，让抖音自己决定不预留 =====
-// 头文件里这几个都是"状态查询"，抖音在 layout 前问：
-//   isCommentHideOnBottom      —— 评论栏藏在底部吗？
-//   canShowFixedBottomBar      —— 允许固定底栏吗？
-//   tableViewBottomMargin      —— 底部预留多少？
-// 只要对图文(68)返回"不需要预留"，抖音就自己把 table 算成 852
 
-static BOOL DYYYIsRichAweme(id self) {
-    @try {
-        id m = [self valueForKey:@"currentDisplayingAweme"];
-        if (!m) m = [self valueForKey:@"currentAweme"];
-        if (!m) return NO;
-        long long t = [[m valueForKey:@"awemeType"] longLongValue];
-        return (t == 68);
-    } @catch (__unused NSException *e) {}
-    return NO;
-}
+// ===== v22: 打印 setFrame 调用栈，找出谁把 table 设成 792 =====
+static void (*_o_tsf22)(id, SEL, CGRect) = NULL;
+static int _log22 = 0;
 
-// 1. isCommentHideOnBottom -> YES (仅图文)
-static BOOL (*_o_v21_chb)(id, SEL) = NULL;
-static int _log_v21 = 0;
-static BOOL _m_v21_chb(id self, SEL _cmd) {
-    BOOL orig = _o_v21_chb ? _o_v21_chb(self, _cmd) : NO;
-    if (DYYYIsRichAweme(self)) {
-        if (_log_v21 < 5) { DLog(@"[DYYY-v21] isCommentHideOnBottom %d->1", orig); _log_v21++; }
-        return YES;
+static void _m_tsf22(id self, SEL _cmd, CGRect frame) {
+    if (_log22 < 10 && frame.size.height > 700 && frame.size.height < 850) {
+        NSArray *st = [NSThread callStackSymbols];
+        NSMutableString *s = [NSMutableString stringWithFormat:
+            @"[DYYY-v22] setFrame h=%.1f stack:\n", frame.size.height];
+        int n = (int)MIN((NSUInteger)25, st.count);
+        for (int i = 0; i < n; i++) {
+            [s appendFormat:@"  %d %@\n", i, st[i]];
+        }
+        DLog(s);
+        _log22++;
     }
-    return orig;
-}
-
-// 2. canShowFixedBottomBar -> NO (仅图文)
-static BOOL (*_o_v21_cfb)(id, SEL) = NULL;
-static BOOL _m_v21_cfb(id self, SEL _cmd) {
-    BOOL orig = _o_v21_cfb ? _o_v21_cfb(self, _cmd) : NO;
-    if (DYYYIsRichAweme(self)) return NO;
-    return orig;
-}
-
-// 3. tableViewBottomMargin -> 0 (仅图文)
-static double (*_o_v21_tbm)(id, SEL) = NULL;
-static double _m_v21_tbm(id self, SEL _cmd) {
-    double orig = _o_v21_tbm ? _o_v21_tbm(self, _cmd) : 0;
-    if (DYYYIsRichAweme(self)) {
-        if (_log_v21 < 10) { DLog(@"[DYYY-v21] tableViewBottomMargin %.1f->0", orig); _log_v21++; }
-        return 0.0;
-    }
-    return orig;
-}
-
-// 4. shouldShowCommentInputViewForAweme: -> NO (仅图文)
-static BOOL (*_o_v21_ssc)(id, SEL, id) = NULL;
-static BOOL _m_v21_ssc(id self, SEL _cmd, id aweme) {
-    BOOL orig = _o_v21_ssc ? _o_v21_ssc(self, _cmd, aweme) : NO;
-    if (DYYYIsRichAweme(self)) return NO;
-    return orig;
+    if (_o_tsf22) _o_tsf22(self, _cmd, frame);
 }
 
 %ctor {
-    @autoreleasepool {
-        Class c = objc_getClass("AWEAwemeDetailTableViewController");
-        if (!c) { DLog(@"[DYYY-v21] no class"); return; }
-        Method m;
-        m = class_getInstanceMethod(c, @selector(isCommentHideOnBottom));
-        if (m) { _o_v21_chb = (BOOL(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v21_chb); DLog(@"[DYYY-v21] hook chb"); }
-        m = class_getInstanceMethod(c, @selector(canShowFixedBottomBar));
-        if (m) { _o_v21_cfb = (BOOL(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v21_cfb); DLog(@"[DYYY-v21] hook cfb"); }
-        m = class_getInstanceMethod(c, @selector(tableViewBottomMargin));
-        if (m) { _o_v21_tbm = (double(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v21_tbm); DLog(@"[DYYY-v21] hook tbm"); }
-        m = class_getInstanceMethod(c, @selector(shouldShowCommentInputViewForAweme:));
-        if (m) { _o_v21_ssc = (BOOL(*)(id,SEL,id))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v21_ssc); DLog(@"[DYYY-v21] hook ssc"); }
-        DLog(@"[DYYY-v21] installed");
+    Class c = objc_getClass("AWEAwemeDetailTableView");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(setFrame:));
+        if (m) {
+            _o_tsf22 = (void(*)(id,SEL,CGRect))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_tsf22);
+            DLog(@"[DYYY-v22] hook setFrame:");
+        }
     }
 }
