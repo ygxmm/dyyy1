@@ -18034,3 +18034,26 @@ static void _m_v29(id self, SEL _cmd) {
     });
     method_setImplementation(m, newImp);
 }
+
+
+// ===== v37: 图文页把评论输入框背景移出屏幕（不挡图片） =====
+// AWECommentInputBackgroundView 是输入框背景，占 y=792~852 60pt
+// 图片撑到 852 后被它盖住
+// 把它 y 移到屏幕外（852），视觉消失，不影响评论输入功能
+%hook AWECommentInputBackgroundView
+
+- (void)setFrame:(CGRect)frame {
+    UIView *sv = self.superview;
+    if (sv && DYYYGetBool(@"DYYYEnableFullScreen")) {
+        CGFloat svh = sv.bounds.size.height;
+        // 只处理"贴在 superview 底部的 60 高的小条"
+        if (frame.size.height < 100 && frame.size.height > 40 &&
+            frame.origin.y + frame.size.height >= svh - 1 &&
+            frame.origin.y + frame.size.height <= svh + 1) {
+            frame.origin.y = svh;   // 移到屏幕外
+        }
+    }
+    %orig(frame);
+}
+
+%end
