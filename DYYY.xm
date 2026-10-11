@@ -18036,38 +18036,70 @@ static void _m_v29(id self, SEL _cmd) {
 }
 
 
-// ===== v44: 只隐藏 AWEAwemeDetailCellViewController.imagePreviewMask =====
-// 头文件：@property (retain, nonatomic) UIView *imagePreviewMask;
-// FLEX 定位：DetailCellVC.view 下 UIView (0, 792, 393, 60) 挡图
-// 这次只处理这一个属性，不做任何其他遍历，不触发循环
-static void (*_o_v44)(id, SEL) = NULL;
-static int _v44_log = 0;
+// ===== v45: 探针写沙盒文件（动态路径），dump 贴底 60pt 匿名 UIView 的子树 =====
+static void DYYYV45Log(NSString *fmt, ...) {
+    @autoreleasepool {
+        va_list ap;
+        va_start(ap, fmt);
+        NSString *s = [[NSString alloc] initWithFormat:fmt arguments:ap];
+        va_end(ap);
+        if (!s) return;
+        NSString *home = NSHomeDirectory();
+        if (home.length == 0) return;
+        NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
+                          stringByAppendingPathComponent:@"dyyy_v45.log"];
+        FILE *fp = fopen(path.UTF8String, "a");
+        if (!fp) return;
+        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
+        fclose(fp);
+    }
+}
 
-static void _m_v44(id self, SEL _cmd) {
-    if (_o_v44) _o_v44(self, _cmd);
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+static void (*_o_v45)(id, SEL) = NULL;
+static int _v45_log = 0;
 
-    @try {
-        UIView *mask = [self valueForKey:@"imagePreviewMask"];
-        if (!mask) return;
-        if (mask.hidden) return;
+static void _m_v45(id self, SEL _cmd) {
+    if (_o_v45) _o_v45(self, _cmd);
+    if (_v45_log >= 3) return;
 
-        // 隐藏 + 移出屏幕（双保险）
-        mask.hidden = YES;
-        mask.alpha = 0;
-        mask.userInteractionEnabled = NO;
-        UIView *sv = mask.superview;
-        if (sv) {
-            CGRect f = mask.frame;
-            f.origin.y = sv.bounds.size.height;
-            mask.frame = f;
+    UIView *root = ((UIViewController *)self).view;
+    if (!root || root.bounds.size.height < 800) return;
+    CGFloat svh = root.bounds.size.height;
+
+    for (UIView *sub in root.subviews) {
+        CGFloat my = sub.frame.origin.y;
+        CGFloat mh = sub.frame.size.height;
+        if (mh < 40 || mh > 100) continue;
+        if (my + mh < svh - 5) continue;
+
+        _v45_log++;
+
+        DYYYV45Log(@"[v45] ===== target %p class=%@ frame=%@ hidden=%d bg=%@ subviews=%lu",
+                   sub, NSStringFromClass([sub class]),
+                   NSStringFromCGRect(sub.frame), sub.hidden,
+                   sub.backgroundColor,
+                   (unsigned long)sub.subviews.count);
+
+        // 递归 3 层 dump
+        NSMutableArray *curLevel = [NSMutableArray arrayWithObject:sub];
+        int depth = 0;
+        int count = 0;
+        while (curLevel.count > 0 && depth < 3 && count < 80) {
+            NSMutableArray *nextLevel = [NSMutableArray array];
+            for (UIView *p in curLevel) {
+                for (UIView *child in p.subviews) {
+                    DYYYV45Log(@"[v45]   depth=%d %@ frame=%@ hidden=%d",
+                               depth, NSStringFromClass([child class]),
+                               NSStringFromCGRect(child.frame), child.hidden);
+                    count++;
+                    if (count > 80) break;
+                    [nextLevel addObject:child];
+                }
+            }
+            curLevel = nextLevel;
+            depth++;
         }
-
-        if (_v44_log < 5) {
-            NSLog(@"[DYYY-v44] hid imagePreviewMask frame=%@", NSStringFromCGRect(mask.frame));
-            _v44_log++;
-        }
-    } @catch (__unused NSException *e) {}
+    }
 }
 
 %ctor {
@@ -18075,11 +18107,8 @@ static void _m_v44(id self, SEL _cmd) {
     if (c) {
         Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
         if (m) {
-            _o_v44 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_v44);
-            NSLog(@"[DYYY-v44] installed");
+            _o_v45 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v45);
         }
-    } else {
-        NSLog(@"[DYYY-v44] class not found");
     }
 }
