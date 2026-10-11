@@ -18036,89 +18036,75 @@ static void _m_v29(id self, SEL _cmd) {
 }
 
 
-// ===== v50: hook RichContentNewListViewController 的 updateAwemeContentViewFrame: =====
-// 关键 diff（旧版 vs 新版）：
-//   旧版 AWEMultiContentImpl.RichContentNewListViewController
-//       没有 awemeContentViewFrame / updateAwemeContentViewFrame:
-//       图文内容自由撑满 852
-//   新版新增：
-//       - (CGRect)awemeContentViewFrame;
-//       - (CGRect)awemeContentViewInitFrame;
-//       - (void)updateAwemeContentViewFrame:(CGRect)a0;
-//       - (void)updateAwemeContentViewFrame:(CGRect)a0 animationDuration:(double)a1;
-//   抖音调 updateAwemeContentViewFrame:{0,0,393,792} → 内容被限到 792
-//
-// v50 拦截这两个 setter：抖音想设 792，我们改成 superview 全屏
-static void (*_o_v50_u1)(id, SEL, CGRect) = NULL;
-static void (*_o_v50_u2)(id, SEL, CGRect, double) = NULL;
-static int _v50_log = 0;
-
-static BOOL DYYYV50IsRichScene(id self) {
-    // 只处理图文：从当前 awemeModel 拿 awemeType
-    @try {
-        id model = nil;
-        if ([self respondsToSelector:NSSelectorFromString(@"currentAwemeModel")]) {
-            model = [self performSelector:NSSelectorFromString(@"currentAwemeModel")];
-        }
-        if (!model) {
-            model = [self valueForKey:@"currentAwemeModel"];
-        }
-        if (model) {
-            long long t = [[model valueForKey:@"awemeType"] longLongValue];
-            return (t == 68);
-        }
-    } @catch (__unused NSException *e) {}
-    return NO;
+// ===== v51 探针：谁把 rcView 设成 792 =====
+// 只是打日志，不改行为
+// 打印 setFrame: 调用栈 + viewDidLayoutSubviews 调用栈
+static void DYYYV51Log(NSString *fmt, ...) {
+    @autoreleasepool {
+        va_list ap;
+        va_start(ap, fmt);
+        NSString *s = [[NSString alloc] initWithFormat:fmt arguments:ap];
+        va_end(ap);
+        if (!s) return;
+        NSString *home = NSHomeDirectory();
+        if (home.length == 0) return;
+        NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
+                          stringByAppendingPathComponent:@"dyyy_v51.log"];
+        FILE *fp = fopen(path.UTF8String, "a");
+        if (!fp) return;
+        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
+        fclose(fp);
+    }
 }
 
-static CGRect DYYYV50FullFrame(id self, CGRect original) {
-    UIView *v = ((UIViewController *)self).view;
-    UIView *sv = v.superview;
-    if (!sv) return original;
-    CGFloat svh = sv.bounds.size.height;
-    CGFloat svw = sv.bounds.size.width;
-    if (svh < 800) return original;
-    // 只处理被限制到 792 的那种
-    if (original.size.height > svh - 1) return original;
+// 1. hook RichContentContainerViewController 的 setFrame:
+static void (*_o_v51_sf)(id, SEL, CGRect) = NULL;
+static int _v51_sf_count = 0;
 
-    if (_v50_log < 8) {
-        NSLog(@"[DYYY-v50] force frame %.1f -> %.1f", original.size.height, svh);
-        _v50_log++;
+static void _m_v51_sf(id self, SEL _cmd, CGRect frame) {
+    if (_v51_sf_count < 20 && frame.size.height > 700 && frame.size.height < 900) {
+        _v51_sf_count++;
+        NSArray *st = [NSThread callStackSymbols];
+        NSMutableString *s = [NSMutableString stringWithFormat:
+            @"[v51] RC.setFrame h=%.1f frame=%@ stack:\n",
+            frame.size.height, NSStringFromCGRect(frame)];
+        int n = (int)MIN((NSUInteger)15, st.count);
+        for (int i = 0; i < n; i++) {
+            [s appendFormat:@"  %d %@\n", i, st[i]];
+        }
+        DYYYV51Log(@"%@", s);
     }
-    return CGRectMake(0, 0, svw, svh);
+    if (_o_v51_sf) _o_v51_sf(self, _cmd, frame);
 }
 
-static void _m_v50_u1(id self, SEL _cmd, CGRect frame) {
-    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYYV50IsRichScene(self)) {
-        frame = DYYYV50FullFrame(self, frame);
-    }
-    if (_o_v50_u1) _o_v50_u1(self, _cmd, frame);
-}
+// 2. hook viewDidLayoutSubviews 打印最终 frame
+static void (*_o_v51_ld)(id, SEL) = NULL;
+static int _v51_ld_count = 0;
 
-static void _m_v50_u2(id self, SEL _cmd, CGRect frame, double duration) {
-    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYYV50IsRichScene(self)) {
-        frame = DYYYV50FullFrame(self, frame);
+static void _m_v51_ld(id self, SEL _cmd) {
+    if (_o_v51_ld) _o_v51_ld(self, _cmd);
+    if (_v51_ld_count < 5) {
+        _v51_ld_count++;
+        UIView *v = ((UIViewController *)self).view;
+        DYYYV51Log(@"[v51] RC.viewDidLayout end: frame=%@", NSStringFromCGRect(v.frame));
     }
-    if (_o_v50_u2) _o_v50_u2(self, _cmd, frame, duration);
 }
 
 %ctor {
-    Class c = objc_getClass("AWEMultiContentImpl.RichContentNewListViewController");
-    if (!c) { NSLog(@"[DYYY-v50] class not found"); return; }
+    Class c = objc_getClass("RichContentContainerViewController");
+    if (!c) { DYYYV51Log(@"[v51] class not found"); return; }
 
-    Method m1 = class_getInstanceMethod(c, NSSelectorFromString(@"updateAwemeContentViewFrame:"));
+    Method m1 = class_getInstanceMethod(c, @selector(setFrame:));
     if (m1) {
-        _o_v50_u1 = (void(*)(id,SEL,CGRect))method_getImplementation(m1);
-        method_setImplementation(m1, (IMP)_m_v50_u1);
-        NSLog(@"[DYYY-v50] hook updateAwemeContentViewFrame:");
+        _o_v51_sf = (void(*)(id,SEL,CGRect))method_getImplementation(m1);
+        method_setImplementation(m1, (IMP)_m_v51_sf);
+        DYYYV51Log(@"[v51] hook setFrame:");
     }
 
-    Method m2 = class_getInstanceMethod(c, NSSelectorFromString(@"updateAwemeContentViewFrame:animationDuration:"));
+    Method m2 = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
     if (m2) {
-        _o_v50_u2 = (void(*)(id,SEL,CGRect,double))method_getImplementation(m2);
-        method_setImplementation(m2, (IMP)_m_v50_u2);
-        NSLog(@"[DYYY-v50] hook updateAwemeContentViewFrame:animationDuration:");
+        _o_v51_ld = (void(*)(id,SEL))method_getImplementation(m2);
+        method_setImplementation(m2, (IMP)_m_v51_ld);
+        DYYYV51Log(@"[v51] hook viewDidLayoutSubviews");
     }
-
-    if (!m1 && !m2) NSLog(@"[DYYY-v50] no methods found");
 }
