@@ -18036,57 +18036,69 @@ static void _m_v29(id self, SEL _cmd) {
 }
 
 
-// ===== v40: AWECommentInputBackgroundView 在图文详情页移出屏幕 =====
-// FLEX 定位：rootVC.view 下有 UIView (2, 788, 393, 60) 挡图
-// 它的最终子视图里有 AWECommentInputBackgroundView
-// 用 %ctor + runtime 方式 hook，避免 %hook 编译问题
-static void (*_o_v40)(id, SEL) = NULL;
+// ===== v42: 图文详情页隐藏 imagePreviewMask + 所有贴底 60pt 匿名 UIView =====
+// AWEAwemeDetailCellViewController.h 有：
+//   @property (retain, nonatomic) UIView *imagePreviewMask;
+// FLEX 定位：DetailCellVC.view 里有匿名 UIView (0, 792, 393, 60) 挡图
+// v42 先按属性名精准隐藏，再遍历 subviews 兜底
+static void (*_o_v42)(id, SEL) = NULL;
+static int _v42_log = 0;
 
-static void _m_v40(id self, SEL _cmd) {
-    if (_o_v40) _o_v40(self, _cmd);
+static void _m_v42(id self, SEL _cmd) {
+    if (_o_v42) _o_v42(self, _cmd);
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
 
-    UIView *v = (UIView *)self;
-    UIView *sv = v.superview;
-    if (!sv) return;
-    CGFloat svh = sv.bounds.size.height;
-    if (svh < 800) return;
+    UIViewController *vc = (UIViewController *)self;
+    UIView *root = vc.view;
+    if (!root || root.bounds.size.height < 800) return;
 
-    CGFloat mh = v.frame.size.height;
-    CGFloat my = v.frame.origin.y;
-
-    // 必须是贴底的 40~100pt 小条（防止误伤键盘弹出的输入框）
-    if (mh < 40 || mh > 100) return;
-    if (my + mh < svh - 5) return;
-
-    // 往上找父 VC，必须是 AWEAwemeDetailTableViewController
-    BOOL isDetail = NO;
-    UIResponder *r = sv.nextResponder;
-    int d = 0;
-    while (r && d++ < 10) {
-        if ([r isKindOfClass:NSClassFromString(@"AWEAwemeDetailTableViewController")]) {
-            isDetail = YES;
-            break;
+    // 1. 先按属性名精准隐藏 imagePreviewMask
+    UIView *mask = nil;
+    @try { mask = [vc valueForKey:@"imagePreviewMask"]; } @catch (__unused NSException *e) {}
+    if (mask) {
+        if (!mask.hidden && _v42_log < 5) {
+            NSLog(@"[DYYY-v42] hide imagePreviewMask frame=%@",
+                  NSStringFromCGRect(mask.frame));
+            _v42_log++;
         }
-        if ([r isKindOfClass:[UIViewController class]]) break;
-        r = r.nextResponder;
+        mask.hidden = YES;
+        CGRect mf = mask.frame;
+        mf.origin.y = root.bounds.size.height;
+        mask.frame = mf;
     }
-    if (!isDetail) return;
 
-    // 移出屏幕
-    CGRect f = v.frame;
-    f.origin.y = svh;
-    v.frame = f;
-    v.hidden = YES;
+    // 2. 遍历 subviews 兜底：匿名 UIView + 40~100pt 高 + 贴底 + 宽=屏宽
+    CGFloat svh = root.bounds.size.height;
+    CGFloat svw = root.bounds.size.width;
+    for (UIView *sub in root.subviews) {
+        NSString *cls = NSStringFromClass([sub class]);
+        if (![cls isEqualToString:@"UIView"]) continue;
+        CGFloat mh = sub.frame.size.height;
+        CGFloat my = sub.frame.origin.y;
+        CGFloat mw = sub.frame.size.width;
+        if (mh < 40 || mh > 100) continue;
+        if (my + mh < svh - 5) continue;
+        if (mw < svw * 0.9) continue;
+        if (sub.hidden) continue;
+        if (_v42_log < 8) {
+            NSLog(@"[DYYY-v42] hide anonUIView frame=%@", NSStringFromCGRect(sub.frame));
+            _v42_log++;
+        }
+        sub.hidden = YES;
+        CGRect f = sub.frame;
+        f.origin.y = svh;
+        sub.frame = f;
+    }
 }
 
 %ctor {
-    Class c = objc_getClass("AWECommentInputBackgroundView");
+    Class c = objc_getClass("AWEAwemeDetailCellViewController");
     if (c) {
-        Method m = class_getInstanceMethod(c, @selector(layoutSubviews));
+        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
         if (m) {
-            _o_v40 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_v40);
+            _o_v42 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v42);
+            NSLog(@"[DYYY-v42] installed");
         }
     }
 }
