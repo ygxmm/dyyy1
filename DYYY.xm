@@ -18136,3 +18136,32 @@ static void _m_v66_ls(id self, SEL _cmd) {
         DYYYV66Log(@"[v66] hook layoutSubviews");
     }
 }
+
+// v67 探针：列出 ImageContentAdapterCellView 的所有 ivar / method
+static void DYYYV67Dump(void) {
+    @autoreleasepool {
+        Class c = objc_getClass("AWEMultiContentImpl.ImageContentAdapterCellView");
+        if (!c) { DYYYV66Log(@"[DYYY-v67] class not found"); return; }
+        unsigned int n = 0;
+        Ivar *ivars = class_copyIvarList(c, &n);
+        DYYYV66Log(@"[DYYY-v67] === ivars (%u) ===", n);
+        for (unsigned int i = 0; i < n; i++) {
+            DYYYV66Log(@"[DYYY-v67] ivar: %s type=%s", ivar_getName(ivars[i]), ivar_getTypeEncoding(ivars[i]));
+        }
+        free(ivars);
+
+        Method *methods = class_copyMethodList(c, &n);
+        DYYYV66Log(@"[DYYY-v67] === methods (%u) ===", n);
+        for (unsigned int i = 0; i < n; i++) {
+            DYYYV66Log(@"[DYYY-v67] method: %s", sel_getName(method_getName(methods[i])));
+        }
+        free(methods);
+    }
+}
+
+%ctor {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        DYYYV67Dump();
+    });
+}
