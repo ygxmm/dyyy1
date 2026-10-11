@@ -18036,94 +18036,55 @@ static void _m_v29(id self, SEL _cmd) {
 }
 
 
-// ===== v52: dump rcView 完整约束链，找 60pt 从哪来 =====
-static void DYYYV52Log(NSString *fmt, ...) {
+// ===== v53: 把 rcView 自己那条 height=792 的硬约束改成 852 =====
+// v52 dump 证据：
+//   rcView.constraints 里有：
+//     UIView(rcView).Height 0 nil.nil +792.0 prio=1000 active=1
+// 这是绝对硬编码，不是相对 superview
+// 每次 layout 都改（抖音可能重设 792），但只改 constant，不触发 setNeedsLayout
+// 改 constant 本身不触发 layout，所以不会循环
+static void (*_o_v53)(id, SEL) = NULL;
+static int _v53_log = 0;
+
+static void _m_v53(id self, SEL _cmd) {
+    if (_o_v53) _o_v53(self, _cmd);
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+
     @autoreleasepool {
-        va_list ap; va_start(ap, fmt);
-        NSString *s = [[NSString alloc] initWithFormat:fmt arguments:ap];
-        va_end(ap);
-        if (!s) return;
-        NSString *home = NSHomeDirectory();
-        if (home.length == 0) return;
-        NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
-                          stringByAppendingPathComponent:@"dyyy_v52.log"];
-        FILE *fp = fopen(path.UTF8String, "a");
-        if (!fp) return;
-        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
-        fclose(fp);
-    }
-}
+        UIViewController *vc = (UIViewController *)self;
 
-static NSString *DYYYAttrName(NSLayoutAttribute a) {
-    switch (a) {
-        case 1: return @"Left";
-        case 2: return @"Right";
-        case 3: return @"Top";
-        case 4: return @"Bottom";
-        case 5: return @"Leading";
-        case 6: return @"Trailing";
-        case 7: return @"Width";
-        case 8: return @"Height";
-        case 9: return @"CenterX";
-        case 10: return @"CenterY";
-        case 31: return @"LastBaseline";
-        case 32: return @"FirstBaseline";
-        case 33: return @"LeftMargin";
-        case 34: return @"RightMargin";
-        case 35: return @"TopMargin";
-        case 36: return @"BottomMargin";
-        case 37: return @"LeadingMargin";
-        case 38: return @"TrailingMargin";
-        case 39: return @"CenterXMargins";
-        case 40: return @"CenterYMargins";
-        default: return [NSString stringWithFormat:@"attr%ld", (long)a];
-    }
-}
+        // 只对图文
+        BOOL isRich = NO;
+        @try {
+            id model = [vc valueForKey:@"model"];
+            if (model) {
+                long long t = [[model valueForKey:@"awemeType"] longLongValue];
+                isRich = (t == 68);
+            }
+        } @catch (__unused NSException *e) {}
+        if (!isRich) return;
 
-static void DYYYV52DumpConstraints(UIView *start, NSString *label) {
-    DYYYV52Log(@"[v52] ===== %@ =====", label);
-    UIView *v = start;
-    int level = 0;
-    while (v && level < 6) {
-        DYYYV52Log(@"[v52] [%d] %@ %p frame=%@ constraints=%lu",
-                   level, NSStringFromClass([v class]), v,
-                   NSStringFromCGRect(v.frame),
-                   (unsigned long)v.constraints.count);
-        for (NSLayoutConstraint *c in v.constraints) {
-            id f = c.firstItem;
-            id s = c.secondItem;
-            // 只打印高度/宽度相关的（att 7/8/35/36/37/38 或含 rcView）
-            BOOL relevant = (c.firstAttribute == 8 || c.secondAttribute == 8 ||
-                             c.firstAttribute == 7 || c.secondAttribute == 7 ||
-                             c.firstAttribute == 4 || c.secondAttribute == 4 ||
-                             c.firstAttribute == 36 || c.secondAttribute == 36);
-            if (!relevant && f != start && s != start) continue;
-            DYYYV52Log(@"[v52]   %@(%p).%@ %ld %@(%p).%@ +%.1f prio=%.0f active=%d",
-                       NSStringFromClass([f class]), f, DYYYAttrName(c.firstAttribute),
-                       (long)c.relation,
-                       s ? NSStringFromClass([s class]) : @"nil", s,
-                       s ? DYYYAttrName(c.secondAttribute) : @"nil",
-                       c.constant, c.priority, c.active);
+        UIView *rcView = vc.view;
+        if (!rcView) return;
+
+        CGFloat target = rcView.superview.bounds.size.height;
+        if (target < 800) return;
+
+        // 遍历 rcView 自己的约束，找 Height=792 那条
+        for (NSLayoutConstraint *c in rcView.constraints) {
+            if (c.firstItem == rcView &&
+                c.firstAttribute == NSLayoutAttributeHeight &&
+                c.secondItem == nil) {
+                if (fabs(c.constant - target) > 1) {
+                    if (_v53_log < 5) {
+                        NSLog(@"[DYYY-v53] change %.1f -> %.1f", c.constant, target);
+                        _v53_log++;
+                    }
+                    c.constant = target;
+                }
+            }
         }
-        v = v.superview;
-        level++;
     }
-}
-
-static void (*_o_v52_ld)(id, SEL) = NULL;
-static int _v52_count = 0;
-
-static void _m_v52_ld(id self, SEL _cmd) {
-    if (_o_v52_ld) _o_v52_ld(self, _cmd);
-    if (_v52_count >= 3) return;
-    _v52_count++;
-
-    UIView *v = ((UIViewController *)self).view;
-    if (!v || v.bounds.size.height > 850) return;   // 只在 792 状态时 dump
-
-    DYYYV52Log(@"[v52] === run %d ===", _v52_count);
-    DYYYV52DumpConstraints(v, @"rcView chain");
-    DYYYV52DumpConstraints(v.superview, @"rcView.superview chain");
 }
 
 %ctor {
@@ -18131,11 +18092,9 @@ static void _m_v52_ld(id self, SEL _cmd) {
     if (c) {
         Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
         if (m) {
-            _o_v52_ld = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_v52_ld);
-            DYYYV52Log(@"[v52] installed");
+            _o_v53 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v53);
+            NSLog(@"[DYYY-v53] installed");
         }
-    } else {
-        DYYYV52Log(@"[v52] class not found");
     }
 }
