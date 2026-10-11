@@ -17954,22 +17954,26 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 
 
-// ===== v26: 找 table 的所有约束（不猜 attribute），改 height 那条 -60->0 =====
-static void (*_o_v26)(id, SEL) = NULL;
-static int _log_v26 = 0;
 
-static void _m_v26(id self, SEL _cmd) {
-    if (_o_v26) _o_v26(self, _cmd);
+// ===== v27: 改 table.bottom 约束 constant -60 -> 0 =====
+// 从 v23 dump 看清：
+//   att=4 (NSLayoutAttributeBottom) == att=4 const=-60.0
+//   table.bottom == superview.bottom - 60  → table 高 792
+// 改成 constant=0 → table 高 852
+static void (*_o_v27)(id, SEL) = NULL;
+static int _log_v27 = 0;
+
+static void _m_v27(id self, SEL _cmd) {
+    if (_o_v27) _o_v27(self, _cmd);
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    if (_log_v26 >= 8) return;
-    _log_v26++;
+    if (_log_v27 >= 8) return;
+    _log_v27++;
 
     @autoreleasepool {
         UIViewController *vc = (UIViewController *)self;
         UIView *rootView = vc.view;
         if (!rootView || rootView.bounds.size.height < 800) return;
 
-        // BFS 找 table
         UIView *table = nil;
         NSMutableArray *q = [NSMutableArray arrayWithObject:rootView];
         int safety = 0;
@@ -17981,43 +17985,43 @@ static void _m_v26(id self, SEL _cmd) {
             }
             for (UIView *s in v.subviews) [q addObject:s];
         }
-        if (!table) { DLog(@"[DYYY-v26] no table"); return; }
+        if (!table) return;
 
         UIView *sv = table.superview;
         if (!sv) return;
 
-        DLog(@"[DYYY-v26] table=%p sv=%p svCnst=%lu",
-              table, sv, (unsigned long)sv.constraints.count);
+        DLog(@"[DYYY-v27] table=%p sv=%p", table, sv);
 
-        // 关键：把 superview 和 table 自身、更上层都扫一遍
-        NSMutableArray *pools = [NSMutableArray array];
-        [pools addObject:sv.constraints];
+        // 扫 sv 的约束 + sv.superview 的约束，找 table.bottom 约束
+        NSMutableArray *pools = [NSMutableArray arrayWithObject:sv.constraints];
         if (sv.superview) [pools addObject:sv.superview.constraints];
-        [pools addObject:table.constraints];
 
         int hit = 0;
         for (NSArray *pool in pools) {
             for (NSLayoutConstraint *c in pool) {
-                if (c.firstItem != table && c.secondItem != table) continue;
-                if (c.firstAttribute != NSLayoutAttributeHeight &&
-                    c.secondAttribute != NSLayoutAttributeHeight) continue;
+                // 看 first 或 second 是 table，attribute 是 Bottom (4)
+                BOOL firstIsTable = (c.firstItem == table);
+                BOOL secondIsTable = (c.secondItem == table);
+                if (!firstIsTable && !secondIsTable) continue;
 
-                DLog(@"[DYYY-v26] HIT first=%@(%p) att=%ld second=%@(%p) att=%ld const=%.1f prio=%.0f",
-                      NSStringFromClass([c.firstItem class]), c.firstItem,
-                      (long)c.firstAttribute,
-                      c.secondItem ? NSStringFromClass([c.secondItem class]) : @"nil",
-                      c.secondItem,
-                      (long)c.secondAttribute,
-                      c.constant, c.priority);
-
-                if (c.constant < -1.0) {
-                    c.constant = 0;
-                    hit++;
-                    DLog(@"[DYYY-v26] -> constant 改为 0");
+                NSLayoutAttribute a1 = c.firstAttribute;
+                NSLayoutAttribute a2 = c.secondAttribute;
+                // Bottom == Bottom 或 Bottom == nil(只设常量)
+                if ((a1 == NSLayoutAttributeBottom || a2 == NSLayoutAttributeBottom)) {
+                    DLog(@"[DYYY-v27] BOTTOM first=%@ att=%ld second=%@ att=%ld const=%.1f",
+                          NSStringFromClass([c.firstItem class]), (long)a1,
+                          c.secondItem ? NSStringFromClass([c.secondItem class]) : @"nil", (long)a2,
+                          c.constant);
+                    if (fabs(c.constant) > 1.0) {
+                        CGFloat old = c.constant;
+                        c.constant = 0;
+                        hit++;
+                        DLog(@"[DYYY-v27] -> constant %.1f 改 0", old);
+                    }
                 }
             }
         }
-        DLog(@"[DYYY-v26] 改了 %d 条", hit);
+        DLog(@"[DYYY-v27] 改了 %d 条", hit);
     }
 }
 
@@ -18026,9 +18030,9 @@ static void _m_v26(id self, SEL _cmd) {
     if (c) {
         Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
         if (m) {
-            _o_v26 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_v26);
-            DLog(@"[DYYY-v26] installed");
+            _o_v27 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v27);
+            DLog(@"[DYYY-v27] installed");
         }
     }
 }
