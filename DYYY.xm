@@ -18036,62 +18036,86 @@ static void _m_v29(id self, SEL _cmd) {
 }
 
 
-// ===== v48: AWEAwemeDetailCellViewController.viewDidLayoutSubviews
-// 遍历所有直接子视图，把贴底 40~100pt 的匿名 UIView / AWECommentInputBackgroundView 全 setHidden
-// 只 setHidden，不改 frame，不触发 layout 循环
-static void (*_o_v48)(id, SEL) = NULL;
-static int _v48_log = 0;
-
-static void _m_v48(id self, SEL _cmd) {
-    if (_o_v48) _o_v48(self, _cmd);
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-
-    @autoreleasepool {
-        UIViewController *vc = (UIViewController *)self;
-
-        // 只对图文（awemeType == 68）
-        BOOL isRich = NO;
-        @try {
-            id aweme = [vc valueForKey:@"model"];
-            if (aweme) {
-                long long t = [[aweme valueForKey:@"awemeType"] longLongValue];
-                isRich = (t == 68);
-            }
-        } @catch (__unused NSException *e) {}
-        if (!isRich) return;
-
-        UIView *root = vc.view;
-        if (!root || root.bounds.size.height < 800) return;
-        CGFloat svh = root.bounds.size.height;
-
-        for (UIView *sub in root.subviews) {
-            CGFloat mh = sub.frame.size.height;
-            CGFloat my = sub.frame.origin.y;
-            if (mh < 40 || mh > 100) continue;
-            if (my + mh < svh - 5) continue;
-
-            // 只 setHidden，不动 frame
-            if (!sub.hidden) {
-                sub.hidden = YES;
-                if (_v48_log < 10) {
-                    NSLog(@"[DYYY-v48] hid %@ frame=%@",
-                          NSStringFromClass([sub class]),
-                          NSStringFromCGRect(sub.frame));
-                    _v48_log++;
+// ===== v49: 拦截 AWECommentInputBackgroundView 的 setHidden/setFrame/setAlpha =====
+// 头文件关键：
+//   - (void)refreshLayout;   抖音主动调它重排，会覆盖我们的 layoutSubviews 改动
+//   - (struct CGSize)intrinsicContentSize;  返回 60pt
+// 之前所有 hook layoutSubviews 的方案都会被 refreshLayout 覆盖
+// v49 直接拦截"设置请求本身"：抖音调 setHidden:NO、setFrame:、setAlpha:1 都被我们改掉
+static BOOL DYYYV49IsRichDetailVC(id v) {
+    UIView *sv = ((UIView *)v).superview;
+    if (!sv) return NO;
+    if (sv.bounds.size.height < 800) return NO;
+    UIResponder *r = sv.nextResponder;
+    int d = 0;
+    while (r && d++ < 10) {
+        if ([r isKindOfClass:NSClassFromString(@"AWEAwemeDetailTableViewController")]) {
+            @try {
+                id aweme = [(id)r valueForKey:@"currentDisplayingAweme"];
+                if (!aweme) aweme = [(id)r valueForKey:@"currentAweme"];
+                if (aweme) {
+                    long long t = [[aweme valueForKey:@"awemeType"] longLongValue];
+                    return (t == 68);
                 }
-            }
+            } @catch (__unused NSException *e) {}
+            return NO;
+        }
+        if ([r isKindOfClass:[UIViewController class]]) break;
+        r = r.nextResponder;
+    }
+    return NO;
+}
+
+// 1. hook setHidden: —— 抖音想 NO，我们强制 YES
+static void (*_o_v49_h)(id, SEL, BOOL) = NULL;
+static void _m_v49_h(id self, SEL _cmd, BOOL hidden) {
+    if (!hidden && DYYYV49IsRichDetailVC(self)) {
+        hidden = YES;   // 强制 YES
+    }
+    if (_o_v49_h) _o_v49_h(self, _cmd, hidden);
+}
+
+// 2. hook setAlpha: —— 抖音想 1，我们强制 0
+static void (*_o_v49_a)(id, SEL, CGFloat) = NULL;
+static void _m_v49_a(id self, SEL _cmd, CGFloat alpha) {
+    if (alpha > 0.01 && DYYYV49IsRichDetailVC(self)) {
+        alpha = 0.0;
+    }
+    if (_o_v49_a) _o_v49_a(self, _cmd, alpha);
+}
+
+// 3. hook setFrame: —— 贴底 60pt 的请求改成屏幕外
+static void (*_o_v49_f)(id, SEL, CGRect) = NULL;
+static void _m_v49_f(id self, SEL _cmd, CGRect frame) {
+    UIView *sv = ((UIView *)self).superview;
+    if (sv && DYYYV49IsRichDetailVC(self)) {
+        CGFloat svh = sv.bounds.size.height;
+        if (frame.size.height > 40 && frame.size.height < 100 &&
+            frame.origin.y + frame.size.height >= svh - 5) {
+            frame.origin.y = svh;
         }
     }
+    if (_o_v49_f) _o_v49_f(self, _cmd, frame);
 }
 
 %ctor {
-    Class c = objc_getClass("AWEAwemeDetailCellViewController");
-    if (c) {
-        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
-        if (m) {
-            _o_v48 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_v48);
-            NSLog(@"[DYYY-v48] installed");
-        }
+    Class c = objc_getClass("AWECommentInputBackgroundView");
+    if (!c) { NSLog(@"[DYYY-v49] class not found"); return; }
+
+    Method m1 = class_getInstanceMethod(c, @selector(setHidden:));
+    if (m1) {
+        _o_v49_h = (void(*)(id,SEL,BOOL))method_getImplementation(m1);
+        method_setImplementation(m1, (IMP)_m_v49_h);
     }
+    Method m2 = class_getInstanceMethod(c, @selector(setAlpha:));
+    if (m2) {
+        _o_v49_a = (void(*)(id,SEL,CGFloat))method_getImplementation(m2);
+        method_setImplementation(m2, (IMP)_m_v49_a);
+    }
+    Method m3 = class_getInstanceMethod(c, @selector(setFrame:));
+    if (m3) {
+        _o_v49_f = (void(*)(id,SEL,CGRect))method_getImplementation(m3);
+        method_setImplementation(m3, (IMP)_m_v49_f);
+    }
+    NSLog(@"[DYYY-v49] installed (h=%d a=%d f=%d)", m1?1:0, m2?1:0, m3?1:0);
 }
