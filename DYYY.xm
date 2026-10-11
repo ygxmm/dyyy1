@@ -18036,54 +18036,57 @@ static void _m_v29(id self, SEL _cmd) {
 }
 
 
-// ===== v39: 图文详情页调用抖音自带 layoutInputViewInOffScreenSceneWithHidden =====
-// AWECommentInputViewController 头文件：
-//   - (void)layoutInputViewInOffScreenScene;
-//   - (void)layoutInputViewInOffScreenSceneWithHidden:(BOOL)a0;
-//   - (BOOL)isShowingKeyboard;
-// 图文详情页抖音没触发这个逻辑，输入框背景停在 y=792 挡图
-%hook AWECommentInputViewController
+// ===== v40: AWECommentInputBackgroundView 在图文详情页移出屏幕 =====
+// FLEX 定位：rootVC.view 下有 UIView (2, 788, 393, 60) 挡图
+// 它的最终子视图里有 AWECommentInputBackgroundView
+// 用 %ctor + runtime 方式 hook，避免 %hook 编译问题
+static void (*_o_v40)(id, SEL) = NULL;
 
-- (void)viewDidLayoutSubviews {
-    %orig;
-
+static void _m_v40(id self, SEL _cmd) {
+    if (_o_v40) _o_v40(self, _cmd);
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    if ([self isShowingKeyboard]) return;      // 键盘弹出时不处理
 
-    UIViewController *parent = self.parentViewController;
-    if (!parent) return;
-    NSString *pCls = NSStringFromClass([parent class]);
-    if (![pCls isEqualToString:@"AWEAwemeDetailTableViewController"]) return;
+    UIView *v = (UIView *)self;
+    UIView *sv = v.superview;
+    if (!sv) return;
+    CGFloat svh = sv.bounds.size.height;
+    if (svh < 800) return;
 
-    // 只对图文（awemeType == 68）
-    BOOL isRich = NO;
-    @try {
-        id aweme = [parent valueForKey:@"currentDisplayingAweme"];
-        if (aweme) {
-            long long type = [[aweme valueForKey:@"awemeType"] longLongValue];
-            isRich = (type == 68);
+    CGFloat mh = v.frame.size.height;
+    CGFloat my = v.frame.origin.y;
+
+    // 必须是贴底的 40~100pt 小条（防止误伤键盘弹出的输入框）
+    if (mh < 40 || mh > 100) return;
+    if (my + mh < svh - 5) return;
+
+    // 往上找父 VC，必须是 AWEAwemeDetailTableViewController
+    BOOL isDetail = NO;
+    UIResponder *r = sv.nextResponder;
+    int d = 0;
+    while (r && d++ < 10) {
+        if ([r isKindOfClass:NSClassFromString(@"AWEAwemeDetailTableViewController")]) {
+            isDetail = YES;
+            break;
         }
-    } @catch (__unused NSException *e) {}
-    if (!isRich) return;
-
-    // 优先用带隐藏版（更强）
-    SEL sel = NSSelectorFromString(@"layoutInputViewInOffScreenSceneWithHidden:");
-    if ([self respondsToSelector:sel]) {
-        NSMethodSignature *sig = [self methodSignatureForSelector:sel];
-        NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
-        [inv setTarget:self];
-        [inv setSelector:sel];
-        BOOL yes = YES;
-        [inv setArgument:&yes atIndex:2];
-        [inv invoke];
-        return;
+        if ([r isKindOfClass:[UIViewController class]]) break;
+        r = r.nextResponder;
     }
+    if (!isDetail) return;
 
-    // 兜底：无参版
-    SEL sel2 = NSSelectorFromString(@"layoutInputViewInOffScreenScene");
-    if ([self respondsToSelector:sel2]) {
-        [self performSelector:sel2];
-    }
+    // 移出屏幕
+    CGRect f = v.frame;
+    f.origin.y = svh;
+    v.frame = f;
+    v.hidden = YES;
 }
 
-%end
+%ctor {
+    Class c = objc_getClass("AWECommentInputBackgroundView");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(layoutSubviews));
+        if (m) {
+            _o_v40 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v40);
+        }
+    }
+}
