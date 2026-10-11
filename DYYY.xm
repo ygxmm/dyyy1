@@ -15657,6 +15657,38 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
+    // v47: 图文详情页时把评论输入框背景彻底移出屏幕，避免 60pt 遮挡
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        UIView *sv = self.superview;
+        if (sv && sv.bounds.size.height > 800) {
+            BOOL isRich = NO;
+            UIResponder *r = sv.nextResponder;
+            int d = 0;
+            while (r && d++ < 10) {
+                if ([r isKindOfClass:NSClassFromString(@"AWEAwemeDetailTableViewController")]) {
+                    @try {
+                        id aweme = [(id)r valueForKey:@"currentDisplayingAweme"];
+                        if (aweme) {
+                            long long t = [[aweme valueForKey:@"awemeType"] longLongValue];
+                            isRich = (t == 68);
+                        }
+                    } @catch (__unused NSException *e) {}
+                    break;
+                }
+                if ([r isKindOfClass:[UIViewController class]]) break;
+                r = r.nextResponder;
+            }
+            if (isRich) {
+                self.hidden = YES;
+                CGRect f = self.frame;
+                f.origin.y = sv.bounds.size.height;
+                self.frame = f;
+                self.transform = CGAffineTransformIdentity;
+                return;
+            }
+        }
+    }
+
     CGAffineTransform newTransform = CGAffineTransformMakeTranslation(0, originalTabBarHeight - gCurrentTabBarHeight);
 
     if (!CGAffineTransformEqualToTransform(self.transform, newTransform)) {
@@ -18033,74 +18065,4 @@ static void _m_v29(id self, SEL _cmd) {
         }
     });
     method_setImplementation(m, newImp);
-}
-
-
-// ===== v46: AWECommentInputBackgroundView 在图文详情页移出屏幕 =====
-// v45 探针证明：DetailCellVC.view 下 60pt 遮挡就是 AWECommentInputBackgroundView
-// 它是评论输入框背景容器（里面有 CommentInputTextView）
-// 每次 layout 抖音都把它设 hidden=0 贴底 → 挡图
-// v46 hook layoutSubviews，只在贴底 60pt 时移出屏幕（不改子视图，不循环）
-static void (*_o_v46)(id, SEL) = NULL;
-static int _v46_log = 0;
-
-static void _m_v46(id self, SEL _cmd) {
-    if (_o_v46) _o_v46(self, _cmd);
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-
-    UIView *v = (UIView *)self;
-    UIView *sv = v.superview;
-    if (!sv) return;
-
-    CGFloat svh = sv.bounds.size.height;
-    if (svh < 800) return;   // 非全屏页跳过
-
-    CGFloat mh = v.frame.size.height;
-    CGFloat my = v.frame.origin.y;
-
-    // 只处理贴底的 40~100pt 小条（键盘弹出时会不同）
-    if (mh < 40 || mh > 100) return;
-    if (my + mh < svh - 5) return;
-
-    // 往上找父 VC，必须是 AWEAwemeDetailTableViewController
-    BOOL isDetail = NO;
-    UIResponder *r = sv.nextResponder;
-    int d = 0;
-    while (r && d++ < 10) {
-        if ([r isKindOfClass:NSClassFromString(@"AWEAwemeDetailTableViewController")]) {
-            isDetail = YES;
-            break;
-        }
-        if ([r isKindOfClass:[UIViewController class]]) break;
-        r = r.nextResponder;
-    }
-    if (!isDetail) return;
-
-    // 移出屏幕 + hidden（只在当前不是这样时才改，避免每帧都写）
-    if (!v.hidden) {
-        v.hidden = YES;
-        if (_v46_log < 5) {
-            NSLog(@"[DYYY-v46] hid AWECommentInputBackgroundView");
-            _v46_log++;
-        }
-    }
-    if (my < svh) {
-        CGRect f = v.frame;
-        f.origin.y = svh;
-        v.frame = f;
-    }
-}
-
-%ctor {
-    Class c = objc_getClass("AWECommentInputBackgroundView");
-    if (c) {
-        Method m = class_getInstanceMethod(c, @selector(layoutSubviews));
-        if (m) {
-            _o_v46 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_v46);
-            NSLog(@"[DYYY-v46] installed");
-        }
-    } else {
-        NSLog(@"[DYYY-v46] class not found");
-    }
 }
