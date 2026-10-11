@@ -1658,75 +1658,107 @@ static void DLog(NSString *s) {
     }
 }
 
-// 递归找 cell 内最大的 UIImageView 的图
-static UIImageView *DYYYFindBiggestImage(UIView *root) {
-    __block UIImageView *best = nil;
-    __block CGFloat bestArea = 0;
-    void (^walk)(UIView *) = ^(UIView *v) {
-        if ([v isKindOfClass:[UIImageView class]]) {
-            UIImageView *iv = (UIImageView *)v;
-            if (iv.image && iv.bounds.size.width > 100 && iv.bounds.size.height > 100) {
-                CGFloat a = iv.bounds.size.width * iv.bounds.size.height;
-                if (a > bestArea) { bestArea = a; best = iv; }
-            }
-        }
-        for (UIView *c in v.subviews) walk(c);
-    };
-    walk(root);
-    return best;
+static BOOL DYYYInDetail(id vc) {
+    @try {
+        // 新版属性名：inDetailFeed（无 is 前缀）
+        id v = [vc valueForKey:@"inDetailFeed"];
+        if (v) return [v boolValue];
+    } @catch (__unused NSException *e) {}
+    return NO;
 }
 
-// 只 hook cell.layoutSubviews，只 addSubview，不改 frame
-static void (*_o_cls)(id, SEL) = NULL;
-static int _log_cnt = 0;
-static void _m_cls(id self, SEL _cmd) {
-    if (_o_cls) _o_cls(self, _cmd);
+// 1. hook AWEAwemeDetailTableView.setFrame: —— 新版主动重写的，我们抢在它前面
+static void (*_o_tsf)(id, SEL, CGRect) = NULL;
+static int _log_tsf = 0;
+static void _m_tsf(id self, SEL _cmd, CGRect frame) {
+    UIView *sv = ((UIView *)self).superview;
+    if (sv) {
+        CGFloat svh = sv.bounds.size.height;
+        if (svh > 800 && frame.size.height < svh - 1) {
+            frame.size.height = svh;
+            if (_log_tsf < 5) { DLog([NSString stringWithFormat:@"tTable.setFrame h->%.1f", svh]); _log_tsf++; }
+        }
+    }
+    if (_o_tsf) _o_tsf(self, _cmd, frame);
+}
+
+// 2. hook baseTableViewBottomInset —— 直接把 60 归 0
+static double (*_o_bti)(id, SEL) = NULL;
+static int _log_bti = 0;
+static double _m_bti(id self, SEL _cmd) {
+    double r = _o_bti ? _o_bti(self, _cmd) : 0;
+    if (r > 30.0 && r < 100.0) {
+        if (_log_bti < 5) { DLog([NSString stringWithFormat:@"bti %.1f->0", r]); _log_bti++; }
+        return 0.0;
+    }
+    return r;
+}
+
+// 3. hook AWEPlayInteractionViewController.viewDidLayoutSubviews
+//    新版虽然头文件删了，但运行时方法可能还在，用 respondsToSelector 兜底
+static void (*_o_vdls)(id, SEL) = NULL;
+static int _log_v = 0;
+static void _m_vdls(id self, SEL _cmd) {
+    if (_o_vdls) _o_vdls(self, _cmd);
     @autoreleasepool {
-        UITableViewCell *cell = (UITableViewCell *)self;
-        UIView *cv = cell.contentView;
-        CGFloat cellH = cv.bounds.size.height;
-        CGFloat cellW = cv.bounds.size.width;
-        
-        UIView *old = [cv viewWithTag:0xDYYY];
-        
-        if (cellH < 845 || cellH > 860 || cellW < 300) {
-            if (old) [old removeFromSuperview];
-            return;
+        UIView *v = ((UIViewController *)self).view;
+        UIView *sv = v.superview;
+        if (!v || !sv) return;
+        CGFloat ph = sv.bounds.size.height;
+        CGFloat mh = v.frame.size.height;
+        if (_log_v < 10) {
+            DLog([NSString stringWithFormat:@"pi selfH=%.1f superH=%.1f", mh, ph]);
+            _log_v++;
         }
-        
-        UIImageView *target = DYYYFindBiggestImage(cv);
-        if (!target || !target.image) {
-            if (old) [old removeFromSuperview];
-            return;
+        if (ph > 800 && mh < ph - 1) {
+            CGRect f = v.frame;
+            f.origin.y = 0;
+            f.size.height = ph;
+            v.frame = f;
+            v.clipsToBounds = NO;
+            sv.clipsToBounds = NO;
+            if (sv.superview) sv.superview.clipsToBounds = NO;
         }
-        
-        UIImageView *cover = (UIImageView *)old;
-        if (!cover) {
-            cover = [[UIImageView alloc] init];
-            cover.tag = 0xDYYY;
-            cover.contentMode = UIViewContentModeBottom;
-            cover.clipsToBounds = YES;
-            cover.userInteractionEnabled = NO;
-            [cv addSubview:cover];
-            if (_log_cnt < 3) { DLog(@"vB: cover added"); _log_cnt++; }
-        }
-        cover.image = target.image;
-        cover.frame = CGRectMake(0, cellH - 60, cellW, 60);
     }
 }
 
 %ctor {
     @autoreleasepool {
-        Class c = objc_getClass("AWEAwemeDetailTableViewCell");
-        if (c) {
-            Method m = class_getInstanceMethod(c, @selector(layoutSubviews));
+        // 1. TableView.setFrame:
+        Class c1 = objc_getClass("AWEAwemeDetailTableView");
+        if (c1) {
+            Method m = class_getInstanceMethod(c1, @selector(setFrame:));
             if (m) {
-                _o_cls = (void(*)(id,SEL))method_getImplementation(m);
-                method_setImplementation(m, (IMP)_m_cls);
-                DLog(@"vB installed");
+                _o_tsf = (void(*)(id,SEL,CGRect))method_getImplementation(m);
+                method_setImplementation(m, (IMP)_m_tsf);
+                DLog(@"hook TV.setFrame:");
             }
-        } else {
-            DLog(@"no cell class");
         }
+
+        // 2. baseTableViewBottomInset
+        Class c2 = objc_getClass("AWEAwemeDetailTableViewController");
+        if (c2) {
+            Method m = class_getInstanceMethod(c2, @selector(baseTableViewBottomInset));
+            if (m) {
+                _o_bti = (double(*)(id,SEL))method_getImplementation(m);
+                method_setImplementation(m, (IMP)_m_bti);
+                DLog(@"hook bti");
+            }
+        }
+
+        // 3. 新版可能没公开声明 viewDidLayoutSubviews，但运行时可能存在
+        Class c3 = objc_getClass("AWEPlayInteractionViewController");
+        if (c3) {
+            SEL sel = @selector(viewDidLayoutSubviews);
+            Method m = class_getInstanceMethod(c3, sel);
+            if (m) {
+                _o_vdls = (void(*)(id,SEL))method_getImplementation(m);
+                method_setImplementation(m, (IMP)_m_vdls);
+                DLog(@"hook PlayInteraction.viewDidLayoutSubviews");
+            } else {
+                DLog(@"PlayInteraction 没有 viewDidLayoutSubviews");
+            }
+        }
+        DLog(@"v11 installed");
     }
 }
