@@ -18237,3 +18237,78 @@ static void _m_pall(id self, SEL _cmd) {
         }
     }
 }
+
+
+// ===== v19: 隐藏底部评论输入框背景，撑满 table =====
+// 从探针日志看到：
+//   AWEAwemeDetailTableViewController.view H=852
+//   ├─ AWEAwemeDetailTableView H=792
+//   └─ AWECommentInputBackgroundView h=60 y=792 bottom=852
+// AWECommentInputBackgroundView 独占底部 60pt → table 只能 792
+// 修复：隐藏它 + 直接撑 table 到 852
+static void (*_o_v19)(id, SEL) = NULL;
+static int _v19_log = 0;
+
+static void _m_v19(id self, SEL _cmd) {
+    if (_o_v19) _o_v19(self, _cmd);
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+
+    @autoreleasepool {
+        UIViewController *vc = (UIViewController *)self;
+        UIView *rootView = vc.view;
+        if (!rootView || rootView.bounds.size.height < 800) return;
+
+        // 1. BFS 找 AWECommentInputBackgroundView 隐藏
+        NSMutableArray *q = [NSMutableArray arrayWithObject:rootView];
+        int safety = 0;
+        BOOL hid = NO;
+        while (q.count > 0 && safety++ < 500) {
+            UIView *v = q.firstObject;
+            [q removeObjectAtIndex:0];
+            if ([NSStringFromClass([v class]) isEqualToString:@"AWECommentInputBackgroundView"]) {
+                if (!v.hidden) {
+                    v.hidden = YES;
+                    v.alpha = 0;
+                    v.userInteractionEnabled = NO;
+                    hid = YES;
+                    if (_v19_log < 5) {
+                        DLog(@"[DYYY-v19] hid CommentInput h=%.1f y=%.1f",
+                              v.frame.size.height, v.frame.origin.y);
+                        _v19_log++;
+                    }
+                }
+            }
+            for (UIView *s in v.subviews) [q addObject:s];
+        }
+
+        // 2. 找 table 并撑到 rootView 高度
+        for (UIView *v in rootView.subviews) {
+            if ([NSStringFromClass([v class]) isEqualToString:@"AWEAwemeDetailTableView"]) {
+                CGFloat target = rootView.bounds.size.height;
+                if (v.frame.size.height < target - 1) {
+                    CGRect f = v.frame;
+                    f.origin.y = 0;
+                    f.size.height = target;
+                    v.frame = f;
+                    v.clipsToBounds = NO;
+                    if (_v19_log < 10) {
+                        DLog(@"[DYYY-v19] table 792->%.1f", target);
+                        _v19_log++;
+                    }
+                }
+                break;
+            }
+        }
+    }
+}
+
+%ctor {
+    Class c = objc_getClass("AWEAwemeDetailTableViewController");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
+        if (m) {
+            _o_v19 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v19);
+        }
+    }
+}
