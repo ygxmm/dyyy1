@@ -17950,33 +17950,88 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 
 
-// ===== v22: 打印 setFrame 调用栈，找出谁把 table 设成 792 =====
-static void (*_o_tsf22)(id, SEL, CGRect) = NULL;
-static int _log22 = 0;
 
-static void _m_tsf22(id self, SEL _cmd, CGRect frame) {
-    if (_log22 < 10 && frame.size.height > 700 && frame.size.height < 850) {
-        NSArray *st = [NSThread callStackSymbols];
-        NSMutableString *s = [NSMutableString stringWithFormat:
-            @"[DYYY-v22] setFrame h=%.1f stack:\n", frame.size.height];
-        int n = (int)MIN((NSUInteger)25, st.count);
-        for (int i = 0; i < n; i++) {
-            [s appendFormat:@"  %d %@\n", i, st[i]];
+// ===== v23: 打印 rootView 上所有跟 table/评论栏相关的约束 =====
+static void (*_o_v23)(id, SEL) = NULL;
+static int _log_v23 = 0;
+
+static void _m_v23(id self, SEL _cmd) {
+    if (_o_v23) _o_v23(self, _cmd);
+    if (_log_v23 >= 3) return;
+
+    @autoreleasepool {
+        UIViewController *vc = (UIViewController *)self;
+        UIView *rootView = vc.view;
+        if (!rootView || rootView.bounds.size.height < 800) return;
+
+        // 找 table + commentInput
+        UIView *table = nil, *inputBar = nil;
+        NSMutableArray *q = [NSMutableArray arrayWithObject:rootView];
+        int safety = 0;
+        while (q.count > 0 && safety++ < 500) {
+            UIView *v = q.firstObject;
+            [q removeObjectAtIndex:0];
+            NSString *cls = NSStringFromClass([v class]);
+            if ([cls isEqualToString:@"AWEAwemeDetailTableView"]) table = v;
+            if ([cls isEqualToString:@"AWECommentInputBackgroundView"]) inputBar = v;
+            for (UIView *s in v.subviews) [q addObject:s];
         }
-        DLog(s);
-        _log22++;
+        if (!table) return;
+
+        DLog(@"[DYYY-v23] ===== constraints dump =====");
+        DLog(@"[DYYY-v23] table=%@ inputBar=%@", table, inputBar);
+
+        // 1. table 自己的约束
+        DLog(@"[DYYY-v23] -- table.constraints --");
+        for (NSLayoutConstraint *c in table.constraints) {
+            DLog(@"[DYYY-v23] %@ att=%ld rel=%ld const=%.1f prio=%f",
+                  NSStringFromClass([c.firstItem class]),
+                  (long)c.firstAttribute, (long)c.relation, c.constant, c.priority);
+        }
+
+        // 2. table.superview.constraints 里涉及 table 的
+        UIView *sv = table.superview;
+        DLog(@"[DYYY-v23] -- superview(%@).constraints 涉及 table --",
+              NSStringFromClass([sv class]));
+        for (NSLayoutConstraint *c in sv.constraints) {
+            id f = c.firstItem, s = c.secondItem;
+            if (f == table || s == table) {
+                DLog(@"[DYYY-v23] first=%@(%@) att=%ld rel=%ld second=%@(%@) att=%ld const=%.1f prio=%f",
+                      NSStringFromClass([f class]), f,
+                      (long)c.firstAttribute, (long)c.relation,
+                      NSStringFromClass([s class]), s,
+                      (long)c.secondAttribute, c.constant, c.priority);
+            }
+        }
+
+        // 3. 涉及 inputBar 的约束
+        DLog(@"[DYYY-v23] -- 涉及 inputBar 的约束 --");
+        NSMutableArray *pools = [NSMutableArray arrayWithObjects:rootView.constraints, nil];
+        if (sv != rootView) [pools addObject:sv.constraints];
+        for (NSArray *pool in pools) {
+            for (NSLayoutConstraint *c in pool) {
+                if (c.firstItem == inputBar || c.secondItem == inputBar) {
+                    DLog(@"[DYYY-v23] first=%@(%@) att=%ld second=%@(%@) att=%ld const=%.1f prio=%f",
+                          NSStringFromClass([c.firstItem class]), c.firstItem,
+                          (long)c.firstAttribute,
+                          NSStringFromClass([c.secondItem class]), c.secondItem,
+                          (long)c.secondAttribute, c.constant, c.priority);
+                }
+            }
+        }
+
+        _log_v23++;
     }
-    if (_o_tsf22) _o_tsf22(self, _cmd, frame);
 }
 
 %ctor {
-    Class c = objc_getClass("AWEAwemeDetailTableView");
+    Class c = objc_getClass("AWEAwemeDetailTableViewController");
     if (c) {
-        Method m = class_getInstanceMethod(c, @selector(setFrame:));
+        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
         if (m) {
-            _o_tsf22 = (void(*)(id,SEL,CGRect))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_tsf22);
-            DLog(@"[DYYY-v22] hook setFrame:");
+            _o_v23 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v23);
+            DLog(@"[DYYY-v23] installed");
         }
     }
 }
