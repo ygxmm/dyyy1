@@ -15657,38 +15657,6 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
-    // v47: 图文详情页时把评论输入框背景彻底移出屏幕，避免 60pt 遮挡
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIView *sv = self.superview;
-        if (sv && sv.bounds.size.height > 800) {
-            BOOL isRich = NO;
-            UIResponder *r = sv.nextResponder;
-            int d = 0;
-            while (r && d++ < 10) {
-                if ([r isKindOfClass:NSClassFromString(@"AWEAwemeDetailTableViewController")]) {
-                    @try {
-                        id aweme = [(id)r valueForKey:@"currentDisplayingAweme"];
-                        if (aweme) {
-                            long long t = [[aweme valueForKey:@"awemeType"] longLongValue];
-                            isRich = (t == 68);
-                        }
-                    } @catch (__unused NSException *e) {}
-                    break;
-                }
-                if ([r isKindOfClass:[UIViewController class]]) break;
-                r = r.nextResponder;
-            }
-            if (isRich) {
-                self.hidden = YES;
-                CGRect f = self.frame;
-                f.origin.y = sv.bounds.size.height;
-                self.frame = f;
-                self.transform = CGAffineTransformIdentity;
-                return;
-            }
-        }
-    }
-
     CGAffineTransform newTransform = CGAffineTransformMakeTranslation(0, originalTabBarHeight - gCurrentTabBarHeight);
 
     if (!CGAffineTransformEqualToTransform(self.transform, newTransform)) {
@@ -18065,4 +18033,65 @@ static void _m_v29(id self, SEL _cmd) {
         }
     });
     method_setImplementation(m, newImp);
+}
+
+
+// ===== v48: AWEAwemeDetailCellViewController.viewDidLayoutSubviews
+// 遍历所有直接子视图，把贴底 40~100pt 的匿名 UIView / AWECommentInputBackgroundView 全 setHidden
+// 只 setHidden，不改 frame，不触发 layout 循环
+static void (*_o_v48)(id, SEL) = NULL;
+static int _v48_log = 0;
+
+static void _m_v48(id self, SEL _cmd) {
+    if (_o_v48) _o_v48(self, _cmd);
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+
+    @autoreleasepool {
+        UIViewController *vc = (UIViewController *)self;
+
+        // 只对图文（awemeType == 68）
+        BOOL isRich = NO;
+        @try {
+            id aweme = [vc valueForKey:@"model"];
+            if (aweme) {
+                long long t = [[aweme valueForKey:@"awemeType"] longLongValue];
+                isRich = (t == 68);
+            }
+        } @catch (__unused NSException *e) {}
+        if (!isRich) return;
+
+        UIView *root = vc.view;
+        if (!root || root.bounds.size.height < 800) return;
+        CGFloat svh = root.bounds.size.height;
+
+        for (UIView *sub in root.subviews) {
+            CGFloat mh = sub.frame.size.height;
+            CGFloat my = sub.frame.origin.y;
+            if (mh < 40 || mh > 100) continue;
+            if (my + mh < svh - 5) continue;
+
+            // 只 setHidden，不动 frame
+            if (!sub.hidden) {
+                sub.hidden = YES;
+                if (_v48_log < 10) {
+                    NSLog(@"[DYYY-v48] hid %@ frame=%@",
+                          NSStringFromClass([sub class]),
+                          NSStringFromCGRect(sub.frame));
+                    _v48_log++;
+                }
+            }
+        }
+    }
+}
+
+%ctor {
+    Class c = objc_getClass("AWEAwemeDetailCellViewController");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
+        if (m) {
+            _o_v48 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v48);
+            NSLog(@"[DYYY-v48] installed");
+        }
+    }
 }
