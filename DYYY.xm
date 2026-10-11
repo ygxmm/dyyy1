@@ -18136,3 +18136,83 @@ static void _m_v66_ls(id self, SEL _cmd) {
         DYYYV66Log(@"[v66] hook layoutSubviews");
     }
 }
+
+
+// ===== v66: 图片查看器 isInFullPage 探针 + 强制 YES =====
+// 关键类：AWEMultiContentImpl.ImageContentAdapterCellView
+// 头文件 Swift 私有字段（通过 ObjC KVC 可读）：
+//   isInFullPage
+//   _imageContentViewInsets
+//   _imageContentViewHeightType
+//   _contentViewShrinkState
+// 这套图片高度计算完全独立于 PI.view
+
+static void DYYYV66Log(NSString *fmt, ...) {
+    @autoreleasepool {
+        va_list ap; va_start(ap, fmt);
+        NSString *s = [[NSString alloc] initWithFormat:fmt arguments:ap];
+        va_end(ap);
+        if (!s) return;
+        NSString *home = NSHomeDirectory();
+        if (home.length == 0) return;
+        NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
+                          stringByAppendingPathComponent:@"dyyy_v66.log"];
+        FILE *fp = fopen(path.UTF8String, "a");
+        if (!fp) return;
+        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
+        fclose(fp);
+    }
+}
+
+// --- isInFullPage getter 强制 YES ---
+static BOOL (*_o_v66_fp)(id, SEL) = NULL;
+static BOOL _m_v66_fp(id self, SEL _cmd) {
+    BOOL orig = _o_v66_fp ? _o_v66_fp(self, _cmd) : NO;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return orig;
+    return YES;
+}
+
+// --- layoutSubviews 探针 ---
+static void (*_o_v66_ls)(id, SEL) = NULL;
+static int _v66_log = 0;
+static void _m_v66_ls(id self, SEL _cmd) {
+    if (_o_v66_ls) _o_v66_ls(self, _cmd);
+    if (_v66_log >= 8) return;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+
+    @try {
+        id fp = [self valueForKey:@"isInFullPage"];
+        id insets = [self valueForKey:@"imageContentViewInsets"];
+        id ht = [self valueForKey:@"imageContentViewHeightType"];
+        id shrink = [self valueForKey:@"contentViewShrinkState"];
+        _v66_log++;
+        DYYYV66Log(@"[v66] fp=%@ insets=%@ ht=%@ shrink=%@ frame=%@",
+                   fp, insets, ht, shrink, NSStringFromCGRect(((UIView *)self).frame));
+    } @catch (__unused NSException *e) {
+        DYYYV66Log(@"[v66] KVC fail: %@", e);
+    }
+}
+
+%ctor {
+    Class c = objc_getClass("AWEMultiContentImpl.ImageContentAdapterCellView");
+    if (!c) {
+        DYYYV66Log(@"[v66] class not found");
+        return;
+    }
+
+    Method m1 = class_getInstanceMethod(c, NSSelectorFromString(@"isInFullPage"));
+    if (m1) {
+        _o_v66_fp = (BOOL(*)(id,SEL))method_getImplementation(m1);
+        method_setImplementation(m1, (IMP)_m_v66_fp);
+        DYYYV66Log(@"[v66] hook isInFullPage");
+    } else {
+        DYYYV66Log(@"[v66] no isInFullPage");
+    }
+
+    Method m2 = class_getInstanceMethod(c, @selector(layoutSubviews));
+    if (m2) {
+        _o_v66_ls = (void(*)(id,SEL))method_getImplementation(m2);
+        method_setImplementation(m2, (IMP)_m_v66_ls);
+        DYYYV66Log(@"[v66] hook layoutSubviews");
+    }
+}
