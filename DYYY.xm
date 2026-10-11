@@ -17996,3 +17996,82 @@ static void _m_dcls_v15(id self, SEL _cmd) {
         }
     }
 }
+
+
+// ===== v16: 直接 hook PlayInteractionVC.viewDidMoveToWindow =====
+// 用户主页进图文不经过 AWEAwemeDetailTableView / DetailCellViewController
+// 只能从 PlayInteractionVC 本身入手
+// viewDidMoveToWindow 实例挂载时一次，零帧开销
+static void (*_o_pi_vdmtw)(id, SEL) = NULL;
+static int _v16_log = 0;
+
+static void _m_pi_vdmtw(id self, SEL _cmd) {
+    if (_o_pi_vdmtw) _o_pi_vdmtw(self, _cmd);
+    
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    
+    @autoreleasepool {
+        UIViewController *vc = (UIViewController *)self;
+        
+        // 构造 parentVC 链字符串，一次遍历
+        NSMutableString *chain = [NSMutableString string];
+        UIViewController *p = vc.parentViewController;
+        int d = 0;
+        while (p && d++ < 8) {
+            [chain appendFormat:@"%@ > ", NSStringFromClass([p class])];
+            p = p.parentViewController;
+        }
+        
+        if (_v16_log < 15) {
+            DLog_v16([NSString stringWithFormat:@"vdmtw chain=%@", chain]);
+            _v16_log++;
+        }
+        
+        // 判断：图文详情
+        // 条件：父链含 RichContent 相关关键词（主页 feed 没有）
+        if (!([chain containsString:@"RichContent"] ||
+              [chain containsString:@"AWEAwemeDetailCellViewController"])) {
+            return;
+        }
+        
+        // 下一 runloop 处理，避开抖音自身 layout
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIView *v = vc.view;
+            UIView *sv = v.superview;
+            if (!v || !sv) return;
+            CGFloat ph = sv.bounds.size.height;
+            if (ph < 800) return;
+            if (v.frame.size.height >= ph - 1) return;
+            CGRect f = v.frame;
+            f.origin.y = 0;
+            f.size.height = ph;
+            v.frame = f;
+            v.clipsToBounds = NO;
+            sv.clipsToBounds = NO;
+            if (sv.superview) sv.superview.clipsToBounds = NO;
+        });
+    }
+}
+
+// 简单日志（复用 DYYY.xm 已有的文件日志工具，或直接用 NSLOG）
+static void DLog_v16(NSString *s) {
+    @autoreleasepool {
+        NSArray *p = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+        if (!p.count) return;
+        FILE *fp = fopen([[p.firstObject stringByAppendingPathComponent:@"dyyy_fs.log"] UTF8String], "a");
+        if (!fp) return;
+        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
+        fclose(fp);
+    }
+}
+
+%ctor {
+    Class c = objc_getClass("AWEPlayInteractionViewController");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(viewDidMoveToWindow));
+        if (m) {
+            _o_pi_vdmtw = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_pi_vdmtw);
+        }
+    }
+}
