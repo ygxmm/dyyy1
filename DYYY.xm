@@ -17951,76 +17951,60 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 
 
-// ===== v23: 打印 rootView 上所有跟 table/评论栏相关的约束 =====
-static void (*_o_v23)(id, SEL) = NULL;
-static int _log_v23 = 0;
 
-static void _m_v23(id self, SEL _cmd) {
-    if (_o_v23) _o_v23(self, _cmd);
-    if (_log_v23 >= 3) return;
+// ===== v24: 改 table.height 约束 constant -60 -> 0 =====
+// 从 v23 dump 找到致命约束：
+//   first=AWEAwemeDetailTableView att=4 (Height)
+//   second=UIView att=4 const=-60.0
+// 即：table.height = superview.height + (-60) = 792
+// 把 constant 改成 0 -> table 自动变 852
+// 改约束不改 frame，Auto Layout 自己算，零循环
+static void (*_o_v24)(id, SEL) = NULL;
+static int _log_v24 = 0;
+
+static void _m_v24(id self, SEL _cmd) {
+    if (_o_v24) _o_v24(self, _cmd);
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
 
     @autoreleasepool {
         UIViewController *vc = (UIViewController *)self;
         UIView *rootView = vc.view;
         if (!rootView || rootView.bounds.size.height < 800) return;
 
-        // 找 table + commentInput
-        UIView *table = nil, *inputBar = nil;
+        // BFS 找 table
+        UIView *table = nil;
         NSMutableArray *q = [NSMutableArray arrayWithObject:rootView];
         int safety = 0;
         while (q.count > 0 && safety++ < 500) {
             UIView *v = q.firstObject;
             [q removeObjectAtIndex:0];
-            NSString *cls = NSStringFromClass([v class]);
-            if ([cls isEqualToString:@"AWEAwemeDetailTableView"]) table = v;
-            if ([cls isEqualToString:@"AWECommentInputBackgroundView"]) inputBar = v;
+            if ([NSStringFromClass([v class]) isEqualToString:@"AWEAwemeDetailTableView"]) {
+                table = v;
+                break;
+            }
             for (UIView *s in v.subviews) [q addObject:s];
         }
         if (!table) return;
 
-        DLog(@"[DYYY-v23] ===== constraints dump =====");
-        DLog(@"[DYYY-v23] table=%@ inputBar=%@", table, inputBar);
-
-        // 1. table 自己的约束
-        DLog(@"[DYYY-v23] -- table.constraints --");
-        for (NSLayoutConstraint *c in table.constraints) {
-            DLog(@"[DYYY-v23] %@ att=%ld rel=%ld const=%.1f prio=%f",
-                  NSStringFromClass([c.firstItem class]),
-                  (long)c.firstAttribute, (long)c.relation, c.constant, c.priority);
-        }
-
-        // 2. table.superview.constraints 里涉及 table 的
         UIView *sv = table.superview;
-        DLog(@"[DYYY-v23] -- superview(%@).constraints 涉及 table --",
-              NSStringFromClass([sv class]));
-        for (NSLayoutConstraint *c in sv.constraints) {
-            id f = c.firstItem, s = c.secondItem;
-            if (f == table || s == table) {
-                DLog(@"[DYYY-v23] first=%@(%@) att=%ld rel=%ld second=%@(%@) att=%ld const=%.1f prio=%f",
-                      NSStringFromClass([f class]), f,
-                      (long)c.firstAttribute, (long)c.relation,
-                      NSStringFromClass([s class]), s,
-                      (long)c.secondAttribute, c.constant, c.priority);
-            }
-        }
+        if (!sv) return;
 
-        // 3. 涉及 inputBar 的约束
-        DLog(@"[DYYY-v23] -- 涉及 inputBar 的约束 --");
-        NSMutableArray *pools = [NSMutableArray arrayWithObjects:rootView.constraints, nil];
-        if (sv != rootView) [pools addObject:sv.constraints];
-        for (NSArray *pool in pools) {
-            for (NSLayoutConstraint *c in pool) {
-                if (c.firstItem == inputBar || c.secondItem == inputBar) {
-                    DLog(@"[DYYY-v23] first=%@(%@) att=%ld second=%@(%@) att=%ld const=%.1f prio=%f",
-                          NSStringFromClass([c.firstItem class]), c.firstItem,
-                          (long)c.firstAttribute,
-                          NSStringFromClass([c.secondItem class]), c.secondItem,
-                          (long)c.secondAttribute, c.constant, c.priority);
+        // 遍历 superview 的约束，找 table.height 约束
+        for (NSLayoutConstraint *c in sv.constraints) {
+            if (c.firstItem == table &&
+                c.firstAttribute == NSLayoutAttributeHeight &&
+                c.secondItem == sv &&
+                c.secondAttribute == NSLayoutAttributeHeight) {
+                if (c.constant < -1.0) {
+                    CGFloat old = c.constant;
+                    c.constant = 0;
+                    if (_log_v24 < 5) {
+                        DLog(@"[DYYY-v24] table.height constant %.1f -> 0", old);
+                        _log_v24++;
+                    }
                 }
             }
         }
-
-        _log_v23++;
     }
 }
 
@@ -18029,9 +18013,9 @@ static void _m_v23(id self, SEL _cmd) {
     if (c) {
         Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
         if (m) {
-            _o_v23 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_v23);
-            DLog(@"[DYYY-v23] installed");
+            _o_v24 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v24);
+            DLog(@"[DYYY-v24] installed");
         }
     }
 }
