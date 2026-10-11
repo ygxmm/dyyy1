@@ -18055,13 +18055,14 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
-// ===== v73: 精准针对搜索页图文，挪走底栏并安全恢复 =====
+// ===== v73_fix: 纯 Runtime 版，精准针对搜索页图文挪走底栏并安全恢复 =====
 #import <objc/runtime.h>
 
-%hook RichContentContainerViewController
+static void (*orig_RCC_viewDidLayoutSubviews)(id, SEL);
+static void (*orig_RCC_viewWillDisappear)(id, SEL, BOOL);
 
-- (void)viewDidLayoutSubviews {
-    %orig;
+static void new_RCC_viewDidLayoutSubviews(id self, SEL _cmd) {
+    if (orig_RCC_viewDidLayoutSubviews) orig_RCC_viewDidLayoutSubviews(self, _cmd);
     
     // 仅针对搜索来源的图文
     BOOL isSearch = NO;
@@ -18105,8 +18106,7 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
-- (void)viewWillDisappear:(BOOL)animated {
-    %orig;
+static void new_RCC_viewWillDisappear(id self, SEL _cmd, BOOL animated) {
     // 恢复底栏
     UIWindow *keyWindow = nil;
     if (@available(iOS 13.0, *)) {
@@ -18137,6 +18137,23 @@ static void DYYYV54Log(NSString *fmt, ...) {
             }
         }
     }
+    
+    if (orig_RCC_viewWillDisappear) orig_RCC_viewWillDisappear(self, _cmd, animated);
 }
 
-%end
+%ctor {
+    Class c = objc_getClass("RichContentContainerViewController");
+    if (!c) return;
+
+    Method m1 = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
+    if (m1) {
+        orig_RCC_viewDidLayoutSubviews = (void (*)(id, SEL))method_getImplementation(m1);
+        method_setImplementation(m1, (IMP)new_RCC_viewDidLayoutSubviews);
+    }
+
+    Method m2 = class_getInstanceMethod(c, @selector(viewWillDisappear:));
+    if (m2) {
+        orig_RCC_viewWillDisappear = (void (*)(id, SEL, BOOL))method_getImplementation(m2);
+        method_setImplementation(m2, (IMP)new_RCC_viewWillDisappear);
+    }
+}
