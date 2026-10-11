@@ -18055,28 +18055,25 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
-// ===== v72: 物理挪走图文页的底栏，逼迫Swift布局引擎将内容算成852 =====
-%hook AWEAwemeDetailTableViewController
+// ===== v73: 精准针对搜索页图文，挪走底栏并安全恢复 =====
+#import <objc/runtime.h>
+
+%hook RichContentContainerViewController
 
 - (void)viewDidLayoutSubviews {
     %orig;
     
-    // 只在图文页执行
-    BOOL isImageAlbum = NO;
-    id currentAweme = [self performSelector:@selector(currentAweme)];
-    if (currentAweme) {
-        // 简单判断：如果当前有 RichContentContainerViewController 就是图文
-        for (UIView *sub in self.view.subviews) {
-            if ([NSStringFromClass([sub class]) containsString:@"RichContentContainer"]) {
-                isImageAlbum = YES;
-                break;
-            }
+    // 仅针对搜索来源的图文
+    BOOL isSearch = NO;
+    if ([self respondsToSelector:@selector(referString)]) {
+        NSString *refer = [self performSelector:@selector(referString)];
+        if (refer && ([refer containsString:@"search"] || [refer containsString:@"Search"])) {
+            isSearch = YES;
         }
     }
+    if (!isSearch) return;
     
-    if (!isImageAlbum) return;
-    
-    // 寻找并挪走 TabBar
+    // 寻找全局底栏并挪走
     UIWindow *keyWindow = nil;
     if (@available(iOS 13.0, *)) {
         for (UIWindowScene *scene in UIApplication.sharedApplication.connectedScenes) {
@@ -18095,7 +18092,10 @@ static void DYYYV54Log(NSString *fmt, ...) {
             if ([NSStringFromClass([sub class]) containsString:@"TabBarController"]) {
                 for (UIView *tabBar in sub.subviews) {
                     if ([NSStringFromClass([tabBar class]) containsString:@"TabBar"]) {
-                        // 核心操作：把底栏高度设为 0，或挪到屏幕外
+                        // 记录原 frame，防止恢复时找不到
+                        if (!objc_getAssociatedObject(tabBar, @selector(viewDidLayoutSubviews))) {
+                            objc_setAssociatedObject(tabBar, @selector(viewDidLayoutSubviews), [NSValue valueWithCGRect:tabBar.frame], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                        }
                         tabBar.frame = CGRectMake(0, 852, tabBar.frame.size.width, 0);
                         tabBar.hidden = YES;
                     }
@@ -18104,4 +18104,39 @@ static void DYYYV54Log(NSString *fmt, ...) {
         }
     }
 }
+
+- (void)viewWillDisappear:(BOOL)animated {
+    %orig;
+    // 恢复底栏
+    UIWindow *keyWindow = nil;
+    if (@available(iOS 13.0, *)) {
+        for (UIWindowScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if (scene.activationState == UISceneActivationStateForegroundActive) {
+                for (UIWindow *window in scene.windows) {
+                    if (window.isKeyWindow) { keyWindow = window; break; }
+                }
+            }
+        }
+    } else {
+        keyWindow = UIApplication.sharedApplication.keyWindow;
+    }
+    
+    if (keyWindow) {
+        for (UIView *sub in keyWindow.subviews) {
+            if ([NSStringFromClass([sub class]) containsString:@"TabBarController"]) {
+                for (UIView *tabBar in sub.subviews) {
+                    if ([NSStringFromClass([tabBar class]) containsString:@"TabBar"]) {
+                        NSValue *val = objc_getAssociatedObject(tabBar, @selector(viewDidLayoutSubviews));
+                        if (val) {
+                            tabBar.frame = [val CGRectValue];
+                            tabBar.hidden = NO;
+                            objc_setAssociatedObject(tabBar, @selector(viewDidLayoutSubviews), nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 %end
