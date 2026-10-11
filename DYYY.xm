@@ -18157,29 +18157,3 @@ static void new_RCC_viewWillDisappear(id self, SEL _cmd, BOOL animated) {
         method_setImplementation(m2, (IMP)new_RCC_viewWillDisappear);
     }
 }
-
-// ===== v75: 把图文页互动UI整体上移，避免被792裁剪 =====
-%hook AWEPlayInteractionViewController
-
-- (void)viewDidLayoutSubviews {
-    %orig;
-    
-    CGFloat limitY = 792.0;
-    for (UIView *sub in self.view.subviews) {
-        CGRect f = sub.frame;
-        CGFloat maxY = CGRectGetMaxY(f);
-        CGFloat minY = CGRectGetMinY(f);
-        
-        if (maxY > limitY && minY < limitY) {
-            // 跨越裁剪线，往上移，使其底部刚好在792
-            f.origin.y -= (maxY - limitY);
-            sub.frame = f;
-        } else if (minY >= limitY) {
-            // 完全在裁剪线以下，整体移进可见区
-            f.origin.y = limitY - f.size.height;
-            sub.frame = f;
-        }
-    }
-}
-
-%end
