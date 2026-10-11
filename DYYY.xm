@@ -18023,7 +18023,6 @@ static void _m_pi_vdmtw(id self, SEL _cmd) {
         }
         
         if (_v16_log < 15) {
-            DLog_v16([NSString stringWithFormat:@"vdmtw chain=%@", chain]);
             _v16_log++;
         }
         
@@ -18054,7 +18053,6 @@ static void _m_pi_vdmtw(id self, SEL _cmd) {
 }
 
 // 简单日志（复用 DYYY.xm 已有的文件日志工具，或直接用 NSLOG）
-static void DLog_v16(NSString *s) {
     @autoreleasepool {
         NSArray *p = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
         if (!p.count) return;
