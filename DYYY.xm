@@ -15193,6 +15193,9 @@ static Class tabBarButtonClass = nil;
     BOOL hidePlus = DYYYGetBool(@"DYYYHidePlusButton");
     BOOL isPad = (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad);
 
+    // perf: 只有在需要隐藏按钮或 iPad 布局时才执行遍历/排序/重排
+    BOOL needReorder = (hideShop || hideMsg || hideFri || hideMe || hidePlus || isPad);
+    if (needReorder) {
     NSMutableArray *visibleButtons = [NSMutableArray array];
     UIView *ipadContainerView = nil;
 
@@ -15238,6 +15241,7 @@ static Class tabBarButtonClass = nil;
         UIView *button = visibleButtons[i];
         button.frame = CGRectMake(offsetX + i * buttonWidth, button.frame.origin.y, buttonWidth, button.frame.size.height);
     }
+    } // end if (needReorder)
 
     // 禁用首页刷新功能
     if (DYYYGetBool(@"DYYYDisableHomeRefresh")) {
