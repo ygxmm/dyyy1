@@ -18055,23 +18055,48 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
-// ===== v69: 尝试修复图文详情页底部 60pt 黑边 =====
-%hook RichContentContainerViewController
+// ===== v69_fix: 使用 Runtime 修正图文详情页底部 60pt 黑边 =====
+#import <objc/runtime.h>
 
-- (struct UIEdgeInsets)getImageContentInsets {
-    struct UIEdgeInsets insets = %orig;
+static UIEdgeInsets (*orig_getImageContentInsets)(id, SEL);
+static void (*orig_setImageContentInsets)(id, SEL, UIEdgeInsets, BOOL, double);
+static void (*orig_updateShrinkState)(id, SEL, BOOL, UIEdgeInsets, BOOL);
+
+static UIEdgeInsets hook_getImageContentInsets(id self, SEL _cmd) {
+    UIEdgeInsets insets = orig_getImageContentInsets(self, _cmd);
     insets.bottom = 0;
     return insets;
 }
 
-- (void)setImageContentInsets:(struct UIEdgeInsets)insets animated:(BOOL)animated duration:(double)duration {
+static void hook_setImageContentInsets(id self, SEL _cmd, UIEdgeInsets insets, BOOL animated, double duration) {
     insets.bottom = 0;
-    %orig(insets, animated, duration);
+    orig_setImageContentInsets(self, _cmd, insets, animated, duration);
 }
 
-- (void)updateShrinkState:(BOOL)state insets:(struct UIEdgeInsets)insets animated:(BOOL)animated {
+static void hook_updateShrinkState(id self, SEL _cmd, BOOL state, UIEdgeInsets insets, BOOL animated) {
     insets.bottom = 0;
-    %orig(state, insets, animated);
+    orig_updateShrinkState(self, _cmd, state, insets, animated);
 }
 
-%end
+%ctor {
+    Class c = objc_getClass("RichContentContainerViewController");
+    if (!c) return;
+
+    Method m1 = class_getInstanceMethod(c, @selector(getImageContentInsets));
+    if (m1) {
+        orig_getImageContentInsets = (void *)method_getImplementation(m1);
+        method_setImplementation(m1, (IMP)hook_getImageContentInsets);
+    }
+
+    Method m2 = class_getInstanceMethod(c, @selector(setImageContentInsets:animated:duration:));
+    if (m2) {
+        orig_setImageContentInsets = (void *)method_getImplementation(m2);
+        method_setImplementation(m2, (IMP)hook_setImageContentInsets);
+    }
+
+    Method m3 = class_getInstanceMethod(c, @selector(updateShrinkState:insets:animated:));
+    if (m3) {
+        orig_updateShrinkState = (void *)method_getImplementation(m3);
+        method_setImplementation(m3, (IMP)hook_updateShrinkState);
+    }
+}
