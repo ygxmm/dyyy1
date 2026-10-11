@@ -18075,3 +18075,66 @@ static void DLog_v16(NSString *s) {
         }
     }
 }
+
+
+// ===== v17: 用户主页进图文的独立路径 =====
+// 推荐流：table 852，只需撑 PlayInteractionVC
+// 用户主页：table 792，整条链都 792，需要从 DetailCellVC.view 往下撑
+static void (*_o_dc_vdls_v17)(id, SEL) = NULL;
+static int _v17_log = 0;
+
+static void _m_dc_vdls_v17(id self, SEL _cmd) {
+    if (_o_dc_vdls_v17) _o_dc_vdls_v17(self, _cmd);
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    
+    @autoreleasepool {
+        UIViewController *vc = (UIViewController *)self;
+        UIView *v = vc.view;
+        UIView *sv = v.superview;
+        if (!v || !sv) return;
+        
+        CGFloat ph = sv.bounds.size.height;
+        CGFloat mh = v.frame.size.height;
+        
+        if (_v17_log < 10) {
+            NSLog(@"[DYYY-v17] DetailCellVC selfH=%.1f superH=%.1f", mh, ph);
+            _v17_log++;
+        }
+        
+        // superview 是 792（用户主页路径），撑不到 852 就跳过
+        if (ph < 800) return;
+        if (mh >= ph - 1) return;
+        
+        // 从自己开始，逐层往下撑（BFS 找所有 792 子视图）
+        NSMutableArray *q = [NSMutableArray arrayWithObject:v];
+        int safety = 0;
+        while (q.count > 0 && safety++ < 500) {
+            UIView *sub = q.firstObject;
+            [q removeObjectAtIndex:0];
+            if (sub.frame.size.height < ph - 1 && sub.frame.size.height > 100) {
+                CGRect f = sub.frame;
+                f.origin.y = 0;
+                f.size.height = ph;
+                sub.frame = f;
+                sub.clipsToBounds = NO;
+            }
+            [q addObjectsFromArray:sub.subviews];
+        }
+        v.frame = CGRectMake(0, 0, v.frame.size.width, ph);
+        v.clipsToBounds = NO;
+        sv.clipsToBounds = NO;
+        if (sv.superview) sv.superview.clipsToBounds = NO;
+        if (sv.superview.superview) sv.superview.superview.clipsToBounds = NO;
+    }
+}
+
+%ctor {
+    Class c = objc_getClass("AWEAwemeDetailCellViewController");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
+        if (m) {
+            _o_dc_vdls_v17 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_dc_vdls_v17);
+        }
+    }
+}
