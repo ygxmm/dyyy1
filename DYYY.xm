@@ -18056,101 +18056,37 @@ static void DYYYV54Log(NSString *fmt, ...) {
 }
 
 
-// ===== v64: 把 AWEPlayInteractionViewController.view 从 792 撑到 852 =====
-// dump 铁证（v63 后）：
-//   RichContentContainerVC.view           852  clips=0  ✅
-//     AWEDPlayerViewController.view       852  ✅  图片层
-//     AWEPlayInteractionViewController.view 792  ❌  UI 层（点赞/文案）
-// v64 只针对 PlayInteractionVC.view，加严判条件：
-//  - superview 高度 > 800（详情页）
-//  - self.view 高度 < superview 高度 - 1（矮了）
-//  - superview 的父链里有 RichContentContainerViewController（图文页特征）
-// 用 associatedObject 标记，防止每帧都改导致的循环
+// ===== v65: 综合方案 =====
+// 目标：
+//   1. 把所有 792 的容器/view 撑到 852
+//   2. 把底部 60pt 的"占位条/底栏"往后塞（移出屏幕 / setHidden）
+//   3. 带日志，写沙盒 dyyy_v65.log
+// 只要 superview 高度 >= 800 且父链含 RichContent → 全处理
+// associatedObject 只处理一次，防循环
 
-static const void *kDYYYV64Done = &kDYYYV64Done;
-
-static void (*_o_v64)(id, SEL) = NULL;
-
-static BOOL DYYYV64IsRichDetail(UIView *view) {
-    UIResponder *r = view.nextResponder;
-    int d = 0;
-    while (r && d++ < 15) {
-        Class c = [r class];
-        NSString *name = NSStringFromClass(c);
-        if ([name isEqualToString:@"RichContentContainerViewController"]) {
-            return YES;
-        }
-        if ([name isEqualToString:@"AWEAwemeDetailTableViewController"]) {
-            return NO;
-        }
-        if ([r isKindOfClass:[UIView class]]) {
-            r = ((UIView *)r).superview;
-        } else {
-            r = r.nextResponder;
-        }
-    }
-    return NO;
-}
-
-static void _m_v64(id self, SEL _cmd) {
-    if (_o_v64) _o_v64(self, _cmd);
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-
+static void DYYYV65Log(NSString *fmt, ...) {
     @autoreleasepool {
-        UIViewController *vc = (UIViewController *)self;
-        UIView *v = vc.view;
-        UIView *sv = v.superview;
-        if (!v || !sv) return;
-
-        CGFloat svh = sv.bounds.size.height;
-        CGFloat vh = v.frame.size.height;
-
-        if (svh < 800) return;
-        if (vh >= svh - 1) return;
-
-        if (!DYYYV64IsRichDetail(sv)) return;
-        if (objc_getAssociatedObject(v, kDYYYV64Done)) return;
-
-        objc_setAssociatedObject(v, kDYYYV64Done, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
-        NSLog(@"[DYYY-v64] PlayInteractionVC.view %.1f -> %.1f", vh, svh);
-
-        CGRect f = v.frame;
-        f.origin.y = 0;
-        f.size.height = svh;
-        v.frame = f;
-        v.clipsToBounds = NO;
+        va_list ap; va_start(ap, fmt);
+        NSString *s = [[NSString alloc] initWithFormat:fmt arguments:ap];
+        va_end(ap);
+        if (!s) return;
+        NSString *home = NSHomeDirectory();
+        if (home.length == 0) return;
+        NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
+                          stringByAppendingPathComponent:@"dyyy_v65.log"];
+        FILE *fp = fopen(path.UTF8String, "a");
+        if (!fp) return;
+        fputs(([s stringByAppendingString:@"
+"]).UTF8String, fp);
+        fclose(fp);
     }
 }
 
-%ctor {
-    Class c = objc_getClass("AWEPlayInteractionViewController");
-    if (c) {
-        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
-        if (m) {
-            _o_v64 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_v64);
-            NSLog(@"[DYYY-v64] installed");
-        }
-    }
-}
-
-
-// ===== v64: 撑 AWEPlayInteractionViewController.view 到 superview 高度 =====
-// dump 铁证（详情页 7030）：
-//   RichContentContainerVC.view 852  ✅
-//     AWEDPlayerViewController   852  ✅  图片层
-//     AWEPlayInteractionViewController.view 792  ❌  UI（点赞/文案）
-// 修：只对图文详情页，把 UI 层撑到 superview 高度
-// 用 superview 链匹配 RichContent 类名（不靠 nextResponder）
-// associatedObject 只改一次，防循环
-
-static const void *kDYYYV64Done = &kDYYYV64Done;
-
-static BOOL DYYYV64InRichContent(UIView *view) {
+// 判断一个 view 的祖先链上有没有 RichContent 类
+static BOOL DYYYV65InRichContent(UIView *view) {
     UIView *p = view.superview;
     int d = 0;
-    while (p && d++ < 15) {
+    while (p && d++ < 20) {
         NSString *name = NSStringFromClass([p class]);
         if ([name containsString:@"RichContent"]) return YES;
         if ([name isEqualToString:@"AWEAwemeDetailTableViewController"]) return NO;
@@ -18159,10 +18095,13 @@ static BOOL DYYYV64InRichContent(UIView *view) {
     return NO;
 }
 
-static void (*_o_v64)(id, SEL) = NULL;
+static const void *kDYYYV65Expanded = &kDYYYV65Expanded;
+static const void *kDYYYV65Moved = &kDYYYV65Moved;
 
-static void _m_v64(id self, SEL _cmd) {
-    if (_o_v64) _o_v64(self, _cmd);
+// ==== 1. hook PlayInteractionVC.viewDidLayoutSubviews 撑 UI 层 ====
+static void (*_o_v65_pi)(id, SEL) = NULL;
+static void _m_v65_pi(id self, SEL _cmd) {
+    if (_o_v65_pi) _o_v65_pi(self, _cmd);
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
 
     @autoreleasepool {
@@ -18170,20 +18109,14 @@ static void _m_v64(id self, SEL _cmd) {
         UIView *v = vc.view;
         UIView *sv = v.superview;
         if (!v || !sv) return;
-
         CGFloat svh = sv.bounds.size.height;
         CGFloat vh = v.frame.size.height;
-
         if (svh < 800) return;
         if (vh >= svh - 1) return;
-
-        if (!DYYYV64InRichContent(v)) return;
-        if (objc_getAssociatedObject(v, kDYYYV64Done)) return;
-
-        objc_setAssociatedObject(v, kDYYYV64Done, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
-        NSLog(@"[DYYY-v64] PlayInteractionVC.view %.1f -> %.1f", vh, svh);
-
+        if (!DYYYV65InRichContent(v)) return;
+        if (objc_getAssociatedObject(v, kDYYYV65Expanded)) return;
+        objc_setAssociatedObject(v, kDYYYV65Expanded, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        DYYYV65Log(@"[v65] PI.view %.1f -> %.1f", vh, svh);
         CGRect f = v.frame;
         f.origin.y = 0;
         f.size.height = svh;
@@ -18192,14 +18125,58 @@ static void _m_v64(id self, SEL _cmd) {
     }
 }
 
-%ctor {
-    Class c = objc_getClass("AWEPlayInteractionViewController");
-    if (c) {
-        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
-        if (m) {
-            _o_v64 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_v64);
-            NSLog(@"[DYYY-v64] installed");
+// ==== 2. hook 通用 UIView.setFrame，把"贴底 60pt 条"移出屏幕 ====
+// 只对富文本详情页 + 只有高度 40~100 + 贴底
+static void (*_o_v65_sf)(id, SEL, CGRect) = NULL;
+static void _m_v65_sf(id self, SEL _cmd, CGRect frame) {
+    UIView *v = (UIView *)self;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        UIView *sv = v.superview;
+        if (sv) {
+            CGFloat svh = sv.bounds.size.height;
+            CGFloat mh = frame.size.height;
+            CGFloat my = frame.origin.y;
+            // 40~100 高 + 贴底
+            if (svh >= 800 && mh >= 40 && mh <= 100 && my + mh >= svh - 5) {
+                NSString *name = NSStringFromClass([v class]);
+                // 跳过 table / 背景 / 图片 / 系统层
+                BOOL skip = [name containsString:@"TableView"]
+                          || [name containsString:@"VisualEffect"]
+                          || [name containsString:@"UIImageView"]
+                          || [name containsString:@"TabBar"]
+                          || [name containsString:@"AWEFeed"];
+                if (!skip && DYYYV65InRichContent(v)) {
+                    // 标记一下避免重复日志
+                    if (!objc_getAssociatedObject(v, kDYYYV65Moved)) {
+                        objc_setAssociatedObject(v, kDYYYV65Moved, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                        DYYYV65Log(@"[v65] move out: %@ %p h=%.1f y=%.1f",
+                                   name, v, mh, my);
+                    }
+                    frame.origin.y = svh;  // 塞到屏幕外
+                    // 同时设 hidden（双保险）
+                    v.hidden = YES;
+                }
+            }
         }
+    }
+    if (_o_v65_sf) _o_v65_sf(self, _cmd, frame);
+}
+
+%ctor {
+    Class c1 = objc_getClass("AWEPlayInteractionViewController");
+    if (c1) {
+        Method m = class_getInstanceMethod(c1, @selector(viewDidLayoutSubviews));
+        if (m) {
+            _o_v65_pi = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v65_pi);
+            DYYYV65Log(@"[v65] hook PI.vdls");
+        }
+    }
+
+    Method sf = class_getInstanceMethod([UIView class], @selector(setFrame:));
+    if (sf) {
+        _o_v65_sf = (void(*)(id,SEL,CGRect))method_getImplementation(sf);
+        method_setImplementation(sf, (IMP)_m_v65_sf);
+        DYYYV65Log(@"[v65] hook UIView.setFrame:");
     }
 }
