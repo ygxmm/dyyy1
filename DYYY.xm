@@ -99,27 +99,6 @@ static NSURL *DYYYLoginBypassURLByReplacingBundleIdentifier(NSURL *url) {
 
 %group DYYYLoginBypassCore
 
-// ===== 统一日志（动态沙盒路径，不写死）=====
-static NSString *DLogPath(void) {
-    @autoreleasepool {
-        // 当前进程沙盒根，拼 Documents/dyyy_fs.log
-        NSString *home = NSHomeDirectory();
-        if (home.length == 0) return nil;
-        NSString *docs = [home stringByAppendingPathComponent:@"Documents"];
-        if (docs.length == 0) return nil;
-        return [docs stringByAppendingPathComponent:@"dyyy_fs.log"];
-    }
-}
-
-// ===== 统一日志（变参，动态沙盒路径）=====
-static NSString *DLogPath(void) {
-    NSString *home = NSHomeDirectory();
-    if (home.length == 0) return nil;
-    return [[home stringByAppendingPathComponent:@"Documents"]
-            stringByAppendingPathComponent:@"dyyy_fs.log"];
-}
-
-
 
 // ===== DYYY 统一日志（变参，动态沙盒路径）=====
 static NSString *DYYYLogPath(void) {
@@ -17967,9 +17946,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
         }
     }
 }
-
-
-
 
 
 // ===== v15: 覆盖所有进详情路径（推荐/搜索/用户主页）=====
