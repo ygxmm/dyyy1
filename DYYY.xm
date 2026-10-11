@@ -18055,48 +18055,54 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
-// ===== v69_fix: 使用 Runtime 修正图文详情页底部 60pt 黑边 =====
+// ===== v71: 针对真正的 Swift 布局类 RichContentNewListViewController =====
 #import <objc/runtime.h>
 
 static UIEdgeInsets (*orig_getImageContentInsets)(id, SEL);
-static void (*orig_setImageContentInsets)(id, SEL, UIEdgeInsets, BOOL, double);
-static void (*orig_updateShrinkState)(id, SEL, BOOL, UIEdgeInsets, BOOL);
+static CGRect (*orig_awemeContentViewFrame)(id, SEL);
+static CGRect (*orig_awemeContentViewInitFrame)(id, SEL);
 
 static UIEdgeInsets hook_getImageContentInsets(id self, SEL _cmd) {
     UIEdgeInsets insets = orig_getImageContentInsets(self, _cmd);
-    insets.bottom = 0;
+    insets.bottom = 0; 
     return insets;
 }
 
-static void hook_setImageContentInsets(id self, SEL _cmd, UIEdgeInsets insets, BOOL animated, double duration) {
-    insets.bottom = 0;
-    orig_setImageContentInsets(self, _cmd, insets, animated, duration);
+static CGRect hook_awemeContentViewFrame(id self, SEL _cmd) {
+    CGRect frame = orig_awemeContentViewFrame(self, _cmd);
+    if (frame.size.height < 800 && frame.size.height > 0) {
+        frame.size.height = 852;
+    }
+    return frame;
 }
 
-static void hook_updateShrinkState(id self, SEL _cmd, BOOL state, UIEdgeInsets insets, BOOL animated) {
-    insets.bottom = 0;
-    orig_updateShrinkState(self, _cmd, state, insets, animated);
+static CGRect hook_awemeContentViewInitFrame(id self, SEL _cmd) {
+    CGRect frame = orig_awemeContentViewInitFrame(self, _cmd);
+    if (frame.size.height < 800 && frame.size.height > 0) {
+        frame.size.height = 852;
+    }
+    return frame;
 }
 
 %ctor {
-    Class c = objc_getClass("RichContentContainerViewController");
+    Class c = objc_getClass("AWEMultiContentImpl.RichContentNewListViewController");
     if (!c) return;
 
-    Method m1 = class_getInstanceMethod(c, @selector(getImageContentInsets));
+    Method m1 = class_getInstanceMethod(c, NSSelectorFromString(@"getImageContentInsets"));
     if (m1) {
         orig_getImageContentInsets = (UIEdgeInsets (*)(id, SEL))method_getImplementation(m1);
         method_setImplementation(m1, (IMP)hook_getImageContentInsets);
     }
 
-    Method m2 = class_getInstanceMethod(c, @selector(setImageContentInsets:animated:duration:));
+    Method m2 = class_getInstanceMethod(c, NSSelectorFromString(@"awemeContentViewFrame"));
     if (m2) {
-        orig_setImageContentInsets = (void (*)(id, SEL, UIEdgeInsets, BOOL, double))method_getImplementation(m2);
-        method_setImplementation(m2, (IMP)hook_setImageContentInsets);
+        orig_awemeContentViewFrame = (CGRect (*)(id, SEL))method_getImplementation(m2);
+        method_setImplementation(m2, (IMP)hook_awemeContentViewFrame);
     }
 
-    Method m3 = class_getInstanceMethod(c, @selector(updateShrinkState:insets:animated:));
+    Method m3 = class_getInstanceMethod(c, NSSelectorFromString(@"awemeContentViewInitFrame"));
     if (m3) {
-        orig_updateShrinkState = (void (*)(id, SEL, BOOL, UIEdgeInsets, BOOL))method_getImplementation(m3);
-        method_setImplementation(m3, (IMP)hook_updateShrinkState);
+        orig_awemeContentViewInitFrame = (CGRect (*)(id, SEL))method_getImplementation(m3);
+        method_setImplementation(m3, (IMP)hook_awemeContentViewInitFrame);
     }
 }
