@@ -18036,6 +18036,25 @@ static void _m_v29(id self, SEL _cmd) {
 }
 
 
+
+// 写沙盒日志（动态路径，不写死）
+static void DYYYV54Log(NSString *fmt, ...) {
+    @autoreleasepool {
+        va_list ap; va_start(ap, fmt);
+        NSString *s = [[NSString alloc] initWithFormat:fmt arguments:ap];
+        va_end(ap);
+        if (!s) return;
+        NSString *home = NSHomeDirectory();
+        if (home.length == 0) return;
+        NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
+                          stringByAppendingPathComponent:@"dyyy_v54.log"];
+        FILE *fp = fopen(path.UTF8String, "a");
+        if (!fp) return;
+        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
+        fclose(fp);
+    }
+}
+
 // ===== v54: 拦截 RichContentContainerViewController 的 updateShrinkState =====
 // 头文件关键：
 //   - (void)updateShrinkState:(BOOL)a0 insets:(UIEdgeInsets)a1 animated:(BOOL)a2;
@@ -18056,7 +18075,7 @@ static void _m_v54_us1(id self, SEL _cmd, BOOL state, UIEdgeInsets insets, BOOL 
                 long long t = [[model valueForKey:@"awemeType"] longLongValue];
                 if (t == 68) {
                     if (_v54_log < 5) {
-                        NSLog(@"[DYYY-v54] us1 state=%d insets=(%.1f,%.1f,%.1f,%.1f) -> NO + Zero",
+                        DYYYV54Log(@"[DYYY-v54] us1 state=%d insets=(%.1f,%.1f,%.1f,%.1f) -> NO + Zero",
                               state, insets.top, insets.left, insets.bottom, insets.right);
                         _v54_log++;
                     }
@@ -18108,26 +18127,26 @@ static void _m_v54_sfs(id self, SEL _cmd, BOOL value) {
 
 %ctor {
     Class c = objc_getClass("RichContentContainerViewController");
-    if (!c) { NSLog(@"[DYYY-v54] class not found"); return; }
+    if (!c) { DYYYV54Log(@"[DYYY-v54] class not found"); return; }
 
     Method m1 = class_getInstanceMethod(c, NSSelectorFromString(@"updateShrinkState:insets:animated:"));
     if (m1) {
         _o_v54_us1 = (void(*)(id,SEL,BOOL,UIEdgeInsets,BOOL))method_getImplementation(m1);
         method_setImplementation(m1, (IMP)_m_v54_us1);
-        NSLog(@"[DYYY-v54] hook updateShrinkState:insets:animated:");
+        DYYYV54Log(@"[DYYY-v54] hook updateShrinkState:insets:animated:");
     }
 
     Method m2 = class_getInstanceMethod(c, NSSelectorFromString(@"updateShrinkState:insets:animated:animationDuration:"));
     if (m2) {
         _o_v54_us2 = (void(*)(id,SEL,BOOL,UIEdgeInsets,BOOL,double))method_getImplementation(m2);
         method_setImplementation(m2, (IMP)_m_v54_us2);
-        NSLog(@"[DYYY-v54] hook updateShrinkState:...:duration:");
+        DYYYV54Log(@"[DYYY-v54] hook updateShrinkState:...:duration:");
     }
 
     Method m3 = class_getInstanceMethod(c, NSSelectorFromString(@"setIsFullScreen:"));
     if (m3) {
         _o_v54_sfs = (void(*)(id,SEL,BOOL))method_getImplementation(m3);
         method_setImplementation(m3, (IMP)_m_v54_sfs);
-        NSLog(@"[DYYY-v54] hook setIsFullScreen:");
+        DYYYV54Log(@"[DYYY-v54] hook setIsFullScreen:");
     }
 }
