@@ -18134,3 +18134,72 @@ static void _m_v64(id self, SEL _cmd) {
         }
     }
 }
+
+
+// ===== v64: 撑 AWEPlayInteractionViewController.view 到 superview 高度 =====
+// dump 铁证（详情页 7030）：
+//   RichContentContainerVC.view 852  ✅
+//     AWEDPlayerViewController   852  ✅  图片层
+//     AWEPlayInteractionViewController.view 792  ❌  UI（点赞/文案）
+// 修：只对图文详情页，把 UI 层撑到 superview 高度
+// 用 superview 链匹配 RichContent 类名（不靠 nextResponder）
+// associatedObject 只改一次，防循环
+
+static const void *kDYYYV64Done = &kDYYYV64Done;
+
+static BOOL DYYYV64InRichContent(UIView *view) {
+    UIView *p = view.superview;
+    int d = 0;
+    while (p && d++ < 15) {
+        NSString *name = NSStringFromClass([p class]);
+        if ([name containsString:@"RichContent"]) return YES;
+        if ([name isEqualToString:@"AWEAwemeDetailTableViewController"]) return NO;
+        p = p.superview;
+    }
+    return NO;
+}
+
+static void (*_o_v64)(id, SEL) = NULL;
+
+static void _m_v64(id self, SEL _cmd) {
+    if (_o_v64) _o_v64(self, _cmd);
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+
+    @autoreleasepool {
+        UIViewController *vc = (UIViewController *)self;
+        UIView *v = vc.view;
+        UIView *sv = v.superview;
+        if (!v || !sv) return;
+
+        CGFloat svh = sv.bounds.size.height;
+        CGFloat vh = v.frame.size.height;
+
+        if (svh < 800) return;
+        if (vh >= svh - 1) return;
+
+        if (!DYYYV64InRichContent(v)) return;
+        if (objc_getAssociatedObject(v, kDYYYV64Done)) return;
+
+        objc_setAssociatedObject(v, kDYYYV64Done, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+        NSLog(@"[DYYY-v64] PlayInteractionVC.view %.1f -> %.1f", vh, svh);
+
+        CGRect f = v.frame;
+        f.origin.y = 0;
+        f.size.height = svh;
+        v.frame = f;
+        v.clipsToBounds = NO;
+    }
+}
+
+%ctor {
+    Class c = objc_getClass("AWEPlayInteractionViewController");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
+        if (m) {
+            _o_v64 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_v64);
+            NSLog(@"[DYYY-v64] installed");
+        }
+    }
+}
