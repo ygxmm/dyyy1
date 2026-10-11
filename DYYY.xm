@@ -17948,411 +17948,77 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 }
 
 
-// ===== v15: 覆盖所有进详情路径（推荐/搜索/用户主页）=====
-// 之前只从 AWEAwemeDetailTableView.layoutSubviews 触发，
-// 用户主页进图文走别的容器，覆盖不到。
-// 改成 hook AWEAwemeDetailCellViewController.viewDidLayoutSubviews：
-// 该 VC 在所有进详情场景都出现，主页 feed 没有 → 精准覆盖
-// 稳态用 __weak cache 跳过 BFS，零开销
 
-static void (*_o_dcls_v15)(id, SEL) = NULL;
-static __weak UIView *_dyyyCachedPIView = nil;
+// ===== v21: 只改查询方法返回值，让抖音自己决定不预留 =====
+// 头文件里这几个都是"状态查询"，抖音在 layout 前问：
+//   isCommentHideOnBottom      —— 评论栏藏在底部吗？
+//   canShowFixedBottomBar      —— 允许固定底栏吗？
+//   tableViewBottomMargin      —— 底部预留多少？
+// 只要对图文(68)返回"不需要预留"，抖音就自己把 table 算成 852
 
-static void _m_dcls_v15(id self, SEL _cmd) {
-    if (_o_dcls_v15) _o_dcls_v15(self, _cmd);
-    
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    
-    UIView *cached = _dyyyCachedPIView;
-    if (cached) {
-        UIView *sv = cached.superview;
-        if (sv && cached.frame.size.height >= sv.bounds.size.height - 1) {
-            return;  // 已撑满，零开销返回
-        }
-    }
-    
-    UIView *root = ((UIViewController *)self).view;
-    if (!root) return;
-    Class playCls = NSClassFromString(@"AWEPlayInteractionViewController");
-    if (!playCls) return;
-    
-    NSMutableArray *q = [NSMutableArray arrayWithObject:root];
-    int safety = 0;
-    UIView *found = nil;
-    while (q.count > 0 && safety++ < 300) {
-        UIView *v = q.firstObject;
-        [q removeObjectAtIndex:0];
-        UIResponder *r = v.nextResponder;
-        int d = 0;
-        while (r && d++ < 10) {
-            if ([r isKindOfClass:playCls]) {
-                found = ((UIViewController *)r).view;
-                break;
-            }
-            if ([r isKindOfClass:[UIViewController class]]) break;
-            r = r.nextResponder;
-        }
-        if (found) break;
-        [q addObjectsFromArray:v.subviews];
-    }
-    if (!found) return;
-    _dyyyCachedPIView = found;
-    UIView *sv = found.superview;
-    if (sv && found.frame.size.height < sv.bounds.size.height - 1) {
-        CGRect f = found.frame;
-        f.origin.y = 0;
-        f.size.height = sv.bounds.size.height;
-        found.frame = f;
-        found.clipsToBounds = NO;
-        sv.clipsToBounds = NO;
-    }
-}
-
-%ctor {
-    Class c = objc_getClass("AWEAwemeDetailCellViewController");
-    if (c) {
-        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
-        if (m) {
-            _o_dcls_v15 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_dcls_v15);
-        }
-    }
-}
-
-
-// ===== v17: 用户主页进图文的独立路径 =====
-// 推荐流：table 852，只需撑 PlayInteractionVC
-// 用户主页：table 792，整条链都 792，需要从 DetailCellVC.view 往下撑
-static void (*_o_dc_vdls_v17)(id, SEL) = NULL;
-static int _v17_log = 0;
-
-static void _m_dc_vdls_v17(id self, SEL _cmd) {
-    if (_o_dc_vdls_v17) _o_dc_vdls_v17(self, _cmd);
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    
-    @autoreleasepool {
-        UIViewController *vc = (UIViewController *)self;
-        UIView *v = vc.view;
-        UIView *sv = v.superview;
-        if (!v || !sv) return;
-        
-        CGFloat ph = sv.bounds.size.height;
-        CGFloat mh = v.frame.size.height;
-        
-        if (_v17_log < 10) {
-            DLog(@"[DYYY-v17] DetailCellVC selfH=%.1f superH=%.1f", mh, ph);
-            _v17_log++;
-        }
-        
-        // superview 是 792（用户主页路径），撑不到 852 就跳过
-        if (ph < 800) return;
-        if (mh >= ph - 1) return;
-        
-        // 从自己开始，逐层往下撑（BFS 找所有 792 子视图）
-        NSMutableArray *q = [NSMutableArray arrayWithObject:v];
-        int safety = 0;
-        while (q.count > 0 && safety++ < 500) {
-            UIView *sub = q.firstObject;
-            [q removeObjectAtIndex:0];
-            if (sub.frame.size.height < ph - 1 && sub.frame.size.height > 100) {
-                CGRect f = sub.frame;
-                f.origin.y = 0;
-                f.size.height = ph;
-                sub.frame = f;
-                sub.clipsToBounds = NO;
-            }
-            [q addObjectsFromArray:sub.subviews];
-        }
-        v.frame = CGRectMake(0, 0, v.frame.size.width, ph);
-        v.clipsToBounds = NO;
-        sv.clipsToBounds = NO;
-        if (sv.superview) sv.superview.clipsToBounds = NO;
-        if (sv.superview.superview) sv.superview.superview.clipsToBounds = NO;
-    }
-}
-
-%ctor {
-    Class c = objc_getClass("AWEAwemeDetailCellViewController");
-    if (c) {
-        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
-        if (m) {
-            _o_dc_vdls_v17 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_dc_vdls_v17);
-        }
-    }
-}
-
-
-// ===== 探针：找 60pt 预留栏 =====
-static void (*_o_dtvc_vdls_p60)(id, SEL) = NULL;
-static int _p60_log = 0;
-
-static void _m_dtvc_vdls_p60(id self, SEL _cmd) {
-    if (_o_dtvc_vdls_p60) _o_dtvc_vdls_p60(self, _cmd);
-    if (_p60_log >= 20) return;
-    
-    @autoreleasepool {
-        UIViewController *vc = (UIViewController *)self;
-        UIView *rootView = vc.view;
-        if (!rootView) return;
-        if (rootView.bounds.size.height < 800) return;
-        
-        // 找 table
-        UIView *table = nil;
-        for (UIView *v in rootView.subviews) {
-            if ([NSStringFromClass([v class]) isEqualToString:@"AWEAwemeDetailTableView"]) {
-                table = v;
-                break;
-            }
-        }
-        if (!table) return;
-        if (table.frame.size.height >= 800) return;  // 已经是 852，不探
-        
-        CGFloat rootH = rootView.bounds.size.height;
-        DLog(@"[DYYY-p60] === root H=%.1f table H=%.1f ===", rootH, table.frame.size.height);
-        for (UIView *v in rootView.subviews) {
-            if (v == table) continue;
-            CGFloat h = v.frame.size.height;
-            CGFloat y = v.frame.origin.y;
-            CGFloat bottom = y + h;
-            // 只打印可能相关的（>30pt 高 + 贴底部）
-            if (h > 30 && bottom >= rootH - 20) {
-                DLog(@"[DYYY-p60]   %@ h=%.1f y=%.1f bottom=%.1f hidden=%d",
-                      NSStringFromClass([v class]), h, y, bottom, v.hidden);
-            }
-        }
-        _p60_log++;
-    }
-}
-
-%ctor {
-    Class c = objc_getClass("AWEAwemeDetailTableViewController");
-    if (c) {
-        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
-        if (m) {
-            _o_dtvc_vdls_p60 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_dtvc_vdls_p60);
-        }
-    }
-}
-
-
-// ===== v18: 隐藏评论输入框预留栏，让抖音自己重排 =====
-// 思路：不告诉抖音"答案"，而是改变输入条件（隐藏预留栏），
-// 让抖音自己把 table 重算到 852
-static void (*_o_dtvc_vdls_v18)(id, SEL) = NULL;
-static int _v18_log = 0;
-
-static void _m_dtvc_vdls_v18(id self, SEL _cmd) {
-    if (_o_dtvc_vdls_v18) _o_dtvc_vdls_v18(self, _cmd);
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    
-    @autoreleasepool {
-        UIViewController *vc = (UIViewController *)self;
-        UIView *rootView = vc.view;
-        if (!rootView || rootView.bounds.size.height < 800) return;
-        
-        // 找 AWECommentInputBackgroundView，隐藏它
-        BOOL changed = NO;
-        for (UIView *v in rootView.subviews) {
-            NSString *cls = NSStringFromClass([v class]);
-            if ([cls isEqualToString:@"AWECommentInputBackgroundView"]) {
-                if (!v.hidden) {
-                    v.hidden = YES;
-                    changed = YES;
-                    if (_v18_log < 10) {
-                        DLog(@"[DYYY-v18] hid CommentInputBackgroundView h=%.1f",
-                              v.frame.size.height);
-                        _v18_log++;
-                    }
-                }
-            }
-        }
-        
-        // 如果有变化，让 table 重排
-        if (changed) {
-            for (UIView *v in rootView.subviews) {
-                if ([NSStringFromClass([v class]) isEqualToString:@"AWEAwemeDetailTableView"]) {
-                    [v setNeedsLayout];
-                    [v layoutIfNeeded];
-                    break;
-                }
-            }
-        }
-    }
-}
-
-%ctor {
-    Class c = objc_getClass("AWEAwemeDetailTableViewController");
-    if (c) {
-        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
-        if (m) {
-            _o_dtvc_vdls_v18 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_dtvc_vdls_v18);
-        }
-    }
-}
-
-
-// ===== 三入口探针 =====
-// 打印每个 PlayInteractionVC 挂载时的父链 + 高度
-// 用户分别在推荐流/搜索/用户主页进图文，日志显示真实路径
-static void (*_o_pall)(id, SEL) = NULL;
-static int _pall_log = 0;
-
-static void _m_pall(id self, SEL _cmd) {
-    if (_o_pall) _o_pall(self, _cmd);
-    if (_pall_log >= 60) return;
-    
-    @autoreleasepool {
-        UIViewController *vc = (UIViewController *)self;
-        UIView *v = vc.view;
-        UIView *sv = v.superview;
-        if (!v || !sv) return;
-        
-        NSMutableString *chain = [NSMutableString string];
-        UIViewController *p = vc.parentViewController;
-        int d = 0;
-        while (p && d++ < 8) {
-            [chain appendFormat:@"%@>", NSStringFromClass([p class])];
-            p = p.parentViewController;
-        }
-        
-        DLog(@"[DYYY-pall] super=%@ selfH=%.1f superH=%.1f chain=%@",
-              NSStringFromClass([sv class]),
-              v.frame.size.height,
-              sv.bounds.size.height,
-              chain);
-        _pall_log++;
-    }
-}
-
-%ctor {
-    Class c = objc_getClass("AWEPlayInteractionViewController");
-    if (c) {
-        Method m = class_getInstanceMethod(c, @selector(viewDidMoveToWindow));
-        if (m) {
-            _o_pall = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_pall);
-        }
-    }
-}
-
-
-// ===== v19: 隐藏底部评论输入框背景，撑满 table =====
-// 从探针日志看到：
-//   AWEAwemeDetailTableViewController.view H=852
-//   ├─ AWEAwemeDetailTableView H=792
-//   └─ AWECommentInputBackgroundView h=60 y=792 bottom=852
-// AWECommentInputBackgroundView 独占底部 60pt → table 只能 792
-// 修复：隐藏它 + 直接撑 table 到 852
-static void (*_o_v19)(id, SEL) = NULL;
-static int _v19_log = 0;
-
-static void _m_v19(id self, SEL _cmd) {
-    if (_o_v19) _o_v19(self, _cmd);
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-
-    @autoreleasepool {
-        UIViewController *vc = (UIViewController *)self;
-        UIView *rootView = vc.view;
-        if (!rootView || rootView.bounds.size.height < 800) return;
-
-        // 1. BFS 找 AWECommentInputBackgroundView 隐藏
-        NSMutableArray *q = [NSMutableArray arrayWithObject:rootView];
-        int safety = 0;
-        BOOL hid = NO;
-        while (q.count > 0 && safety++ < 500) {
-            UIView *v = q.firstObject;
-            [q removeObjectAtIndex:0];
-            if ([NSStringFromClass([v class]) isEqualToString:@"AWECommentInputBackgroundView"]) {
-                if (!v.hidden) {
-                    v.hidden = YES;
-                    v.alpha = 0;
-                    v.userInteractionEnabled = NO;
-                    hid = YES;
-                    if (_v19_log < 5) {
-                        DLog(@"[DYYY-v19] hid CommentInput h=%.1f y=%.1f",
-                              v.frame.size.height, v.frame.origin.y);
-                        _v19_log++;
-                    }
-                }
-            }
-            for (UIView *s in v.subviews) [q addObject:s];
-        }
-
-        // 2. 找 table 并撑到 rootView 高度
-        for (UIView *v in rootView.subviews) {
-            if ([NSStringFromClass([v class]) isEqualToString:@"AWEAwemeDetailTableView"]) {
-                CGFloat target = rootView.bounds.size.height;
-                if (v.frame.size.height < target - 1) {
-                    CGRect f = v.frame;
-                    f.origin.y = 0;
-                    f.size.height = target;
-                    v.frame = f;
-                    v.clipsToBounds = NO;
-                    if (_v19_log < 10) {
-                        DLog(@"[DYYY-v19] table 792->%.1f", target);
-                        _v19_log++;
-                    }
-                }
-                break;
-            }
-        }
-    }
-}
-
-%ctor {
-    Class c = objc_getClass("AWEAwemeDetailTableViewController");
-    if (c) {
-        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
-        if (m) {
-            _o_v19 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_v19);
-        }
-    }
-}
-
-
-// ===== v20: 让抖音自己算 852（不改 frame）=====
-// hook tableViewBottomInsetForAllPlatform 返回值
-// 关键：只对 awemeType==68 图文页返回 0
-// 视频页/主页 feed 不受影响
-static double (*_o_bi_v20)(id, SEL) = NULL;
-static int _log_v20 = 0;
-
-static double _m_bi_v20(id self, SEL _cmd) {
-    double orig = _o_bi_v20 ? _o_bi_v20(self, _cmd) : 0;
+static BOOL DYYYIsRichAweme(id self) {
     @try {
         id m = [self valueForKey:@"currentDisplayingAweme"];
         if (!m) m = [self valueForKey:@"currentAweme"];
-        if (m) {
-            long long t = [[m valueForKey:@"awemeType"] longLongValue];
-            if (t == 68) {
-                if (_log_v20 < 20) {
-                    DLog(@"[DYYY-v20] 图文 inset %.1f -> 0", orig);
-                    _log_v20++;
-                }
-                return 0.0;
-            }
-        }
+        if (!m) return NO;
+        long long t = [[m valueForKey:@"awemeType"] longLongValue];
+        return (t == 68);
     } @catch (__unused NSException *e) {}
+    return NO;
+}
+
+// 1. isCommentHideOnBottom -> YES (仅图文)
+static BOOL (*_o_v21_chb)(id, SEL) = NULL;
+static int _log_v21 = 0;
+static BOOL _m_v21_chb(id self, SEL _cmd) {
+    BOOL orig = _o_v21_chb ? _o_v21_chb(self, _cmd) : NO;
+    if (DYYYIsRichAweme(self)) {
+        if (_log_v21 < 5) { DLog(@"[DYYY-v21] isCommentHideOnBottom %d->1", orig); _log_v21++; }
+        return YES;
+    }
+    return orig;
+}
+
+// 2. canShowFixedBottomBar -> NO (仅图文)
+static BOOL (*_o_v21_cfb)(id, SEL) = NULL;
+static BOOL _m_v21_cfb(id self, SEL _cmd) {
+    BOOL orig = _o_v21_cfb ? _o_v21_cfb(self, _cmd) : NO;
+    if (DYYYIsRichAweme(self)) return NO;
+    return orig;
+}
+
+// 3. tableViewBottomMargin -> 0 (仅图文)
+static double (*_o_v21_tbm)(id, SEL) = NULL;
+static double _m_v21_tbm(id self, SEL _cmd) {
+    double orig = _o_v21_tbm ? _o_v21_tbm(self, _cmd) : 0;
+    if (DYYYIsRichAweme(self)) {
+        if (_log_v21 < 10) { DLog(@"[DYYY-v21] tableViewBottomMargin %.1f->0", orig); _log_v21++; }
+        return 0.0;
+    }
+    return orig;
+}
+
+// 4. shouldShowCommentInputViewForAweme: -> NO (仅图文)
+static BOOL (*_o_v21_ssc)(id, SEL, id) = NULL;
+static BOOL _m_v21_ssc(id self, SEL _cmd, id aweme) {
+    BOOL orig = _o_v21_ssc ? _o_v21_ssc(self, _cmd, aweme) : NO;
+    if (DYYYIsRichAweme(self)) return NO;
     return orig;
 }
 
 %ctor {
-    Class c = objc_getClass("AWEAwemeDetailTableViewController");
-    if (c) {
-        Method m = class_getInstanceMethod(c, @selector(tableViewBottomInsetForAllPlatform));
-        if (m) {
-            _o_bi_v20 = (double(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_bi_v20);
-        }
-        // 备用：如果上面那个不存在，试 baseTableViewBottomInset
-        Method m2 = class_getInstanceMethod(c, @selector(baseTableViewBottomInset));
-        if (m2 && !_o_bi_v20) {
-            _o_bi_v20 = (double(*)(id,SEL))method_getImplementation(m2);
-            method_setImplementation(m2, (IMP)_m_bi_v20);
-        }
+    @autoreleasepool {
+        Class c = objc_getClass("AWEAwemeDetailTableViewController");
+        if (!c) { DLog(@"[DYYY-v21] no class"); return; }
+        Method m;
+        m = class_getInstanceMethod(c, @selector(isCommentHideOnBottom));
+        if (m) { _o_v21_chb = (BOOL(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v21_chb); DLog(@"[DYYY-v21] hook chb"); }
+        m = class_getInstanceMethod(c, @selector(canShowFixedBottomBar));
+        if (m) { _o_v21_cfb = (BOOL(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v21_cfb); DLog(@"[DYYY-v21] hook cfb"); }
+        m = class_getInstanceMethod(c, @selector(tableViewBottomMargin));
+        if (m) { _o_v21_tbm = (double(*)(id,SEL))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v21_tbm); DLog(@"[DYYY-v21] hook tbm"); }
+        m = class_getInstanceMethod(c, @selector(shouldShowCommentInputViewForAweme:));
+        if (m) { _o_v21_ssc = (BOOL(*)(id,SEL,id))method_getImplementation(m); method_setImplementation(m, (IMP)_m_v21_ssc); DLog(@"[DYYY-v21] hook ssc"); }
+        DLog(@"[DYYY-v21] installed");
     }
 }
