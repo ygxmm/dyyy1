@@ -18055,97 +18055,23 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
+// ===== v69: 尝试修复图文详情页底部 60pt 黑边 =====
+%hook RichContentContainerViewController
 
-// ===== v68: hook 图片 cell 的 CGRect 返回方法 =====
-// 从 v67 ivar 列表看：isInFullPage / _imageContentViewInsets / _imageContentViewHeightType
-// 全是 Swift private，无法 KVC 访问
-// 但方法列表里有这几个返回 CGRect 的方法（这些是 ObjC 可见）：
-//   - (CGRect)imagePlayerFrame
-//   - (CGRect)currentContentRect
-//   - (CGRect)customContainerRectForCalculateVideoFrame
-// 可能是图片实际显示区域的来源
-
-static void DYYYV68Log(NSString *fmt, ...) {
-    @autoreleasepool {
-        va_list ap; va_start(ap, fmt);
-        NSString *s = [[NSString alloc] initWithFormat:fmt arguments:ap];
-        va_end(ap);
-        if (!s) return;
-        NSString *home = NSHomeDirectory();
-        if (home.length == 0) return;
-        NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
-                          stringByAppendingPathComponent:@"dyyy_v68.log"];
-        FILE *fp = fopen(path.UTF8String, "a");
-        if (!fp) return;
-        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
-        fclose(fp);
-    }
+- (struct UIEdgeInsets)getImageContentInsets {
+    struct UIEdgeInsets insets = %orig;
+    insets.bottom = 0;
+    return insets;
 }
 
-static BOOL DYYYV68IsRich(id view) {
-    UIView *v = (UIView *)view;
-    UIView *sv = v.superview;
-    int d = 0;
-    while (sv && d++ < 15) {
-        NSString *name = NSStringFromClass([sv class]);
-        if ([name containsString:@"RichContent"]) return YES;
-        if ([name isEqualToString:@"AWEAwemeDetailTableViewController"]) return NO;
-        sv = sv.superview;
-    }
-    return NO;
+- (void)setImageContentInsets:(struct UIEdgeInsets)insets animated:(BOOL)animated duration:(double)duration {
+    insets.bottom = 0;
+    %orig(insets, animated, duration);
 }
 
-// --- imagePlayerFrame ---
-static CGRect (*_o_v68_ipf)(id, SEL) = NULL;
-static int _v68_log = 0;
-static CGRect _m_v68_ipf(id self, SEL _cmd) {
-    CGRect orig = _o_v68_ipf ? _o_v68_ipf(self, _cmd) : CGRectZero;
-    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYYV68IsRich(self)) {
-        UIView *sv = ((UIView *)self).superview;
-        CGFloat svh = sv ? sv.bounds.size.height : 852;
-        if (svh < 800) return orig;
-        if (_v68_log < 5) {
-            DYYYV68Log(@"[v68] imagePlayerFrame orig=%@ -> 852", NSStringFromCGRect(orig));
-            _v68_log++;
-        }
-        // 返回全屏 rect
-        return CGRectMake(0, 0, orig.size.width > 0 ? orig.size.width : 393, svh);
-    }
-    return orig;
+- (void)updateShrinkState:(BOOL)state insets:(struct UIEdgeInsets)insets animated:(BOOL)animated {
+    insets.bottom = 0;
+    %orig(state, insets, animated);
 }
 
-// --- currentContentRect ---
-static CGRect (*_o_v68_ccr)(id, SEL) = NULL;
-static CGRect _m_v68_ccr(id self, SEL _cmd) {
-    CGRect orig = _o_v68_ccr ? _o_v68_ccr(self, _cmd) : CGRectZero;
-    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYYV68IsRich(self)) {
-        UIView *sv = ((UIView *)self).superview;
-        CGFloat svh = sv ? sv.bounds.size.height : 852;
-        if (svh < 800) return orig;
-        if (_v68_log < 10) {
-            DYYYV68Log(@"[v68] currentContentRect orig=%@", NSStringFromCGRect(orig));
-            _v68_log++;
-        }
-        return CGRectMake(0, 0, orig.size.width > 0 ? orig.size.width : 393, svh);
-    }
-    return orig;
-}
-
-%ctor {
-    Class c = objc_getClass("AWEMultiContentImpl.ImageContentAdapterCellView");
-    if (!c) { DYYYV68Log(@"[v68] class not found"); return; }
-
-    Method m1 = class_getInstanceMethod(c, NSSelectorFromString(@"imagePlayerFrame"));
-    if (m1) {
-        _o_v68_ipf = (CGRect(*)(id,SEL))method_getImplementation(m1);
-        method_setImplementation(m1, (IMP)_m_v68_ipf);
-        DYYYV68Log(@"[v68] hook imagePlayerFrame");
-    }
-
-    Method m2 = class_getInstanceMethod(c, NSSelectorFromString(@"currentContentRect"));
-    if (m2) {
-        _o_v68_ccr = (CGRect(*)(id,SEL))method_getImplementation(m2);
-        method_setImplementation(m2, (IMP)_m_v68_ccr);
-        DYYYV68Log(@"[v68] hook currentContentRect");
-    }
-}
+%end
