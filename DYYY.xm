@@ -18138,3 +18138,57 @@ static void _m_dc_vdls_v17(id self, SEL _cmd) {
         }
     }
 }
+
+
+// ===== 探针：找 60pt 预留栏 =====
+static void (*_o_dtvc_vdls_p60)(id, SEL) = NULL;
+static int _p60_log = 0;
+
+static void _m_dtvc_vdls_p60(id self, SEL _cmd) {
+    if (_o_dtvc_vdls_p60) _o_dtvc_vdls_p60(self, _cmd);
+    if (_p60_log >= 20) return;
+    
+    @autoreleasepool {
+        UIViewController *vc = (UIViewController *)self;
+        UIView *rootView = vc.view;
+        if (!rootView) return;
+        if (rootView.bounds.size.height < 800) return;
+        
+        // 找 table
+        UIView *table = nil;
+        for (UIView *v in rootView.subviews) {
+            if ([NSStringFromClass([v class]) isEqualToString:@"AWEAwemeDetailTableView"]) {
+                table = v;
+                break;
+            }
+        }
+        if (!table) return;
+        if (table.frame.size.height >= 800) return;  // 已经是 852，不探
+        
+        CGFloat rootH = rootView.bounds.size.height;
+        NSLog(@"[DYYY-p60] === root H=%.1f table H=%.1f ===", rootH, table.frame.size.height);
+        for (UIView *v in rootView.subviews) {
+            if (v == table) continue;
+            CGFloat h = v.frame.size.height;
+            CGFloat y = v.frame.origin.y;
+            CGFloat bottom = y + h;
+            // 只打印可能相关的（>30pt 高 + 贴底部）
+            if (h > 30 && bottom >= rootH - 20) {
+                NSLog(@"[DYYY-p60]   %@ h=%.1f y=%.1f bottom=%.1f hidden=%d",
+                      NSStringFromClass([v class]), h, y, bottom, v.hidden);
+            }
+        }
+        _p60_log++;
+    }
+}
+
+%ctor {
+    Class c = objc_getClass("AWEAwemeDetailTableViewController");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
+        if (m) {
+            _o_dtvc_vdls_p60 = (void(*)(id,SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)_m_dtvc_vdls_p60);
+        }
+    }
+}
