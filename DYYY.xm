@@ -17285,6 +17285,38 @@ static void DYYYRemoveAppLifecycleObservers(void) {
 
 %end
 
+static void DYYYExpandPlayInteraction(UIView *root) {
+    if (!root) return;
+    Class playCls = NSClassFromString(@"AWEPlayInteractionViewController");
+    if (!playCls) return;
+    NSMutableArray *q = [NSMutableArray arrayWithObject:root];
+    int safety = 0;
+    while (q.count > 0 && safety++ < 500) {
+        UIView *v = q.firstObject;
+        [q removeObjectAtIndex:0];
+        UIResponder *r = v.nextResponder;
+        int d = 0;
+        while (r && d++ < 10) {
+            if ([r isKindOfClass:playCls]) {
+                UIView *vv = ((UIViewController *)r).view;
+                UIView *sv = vv.superview;
+                if (sv && vv.frame.size.height < sv.bounds.size.height - 1) {
+                    CGRect f = vv.frame;
+                    f.origin.y = 0;
+                    f.size.height = sv.bounds.size.height;
+                    vv.frame = f;
+                    vv.clipsToBounds = NO;
+                    sv.clipsToBounds = NO;
+                }
+                break;
+            }
+            if ([r isKindOfClass:[UIViewController class]]) break;
+            r = r.nextResponder;
+        }
+        [q addObjectsFromArray:v.subviews];
+    }
+}
+
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
@@ -17297,6 +17329,7 @@ static void DYYYRemoveAppLifecycleObservers(void) {
     // 关键：解除 TableView 的裁剪，让 cell 内撑到 852 的视频溢出显示
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         self.clipsToBounds = NO;
+        DYYYExpandPlayInteraction(self);
     }
 }
 
