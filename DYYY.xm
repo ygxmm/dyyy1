@@ -5256,6 +5256,10 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
 %hook AWEPlayInteractionProgressContainerView
 - (void)layoutSubviews {
     %orig;
+    // v100: transform 上移 60（约束无法覆盖 transform）
+    if (self.frame.origin.y > 400.0 && self.frame.origin.y < 850.0) {
+        self.transform = CGAffineTransformMakeTranslation(0, -60);
+    }
     DYYYApplyFloatClearProgressStateToView(self);
 
     if (![[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYEnableFullScreen"]) {
@@ -5280,20 +5284,6 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
     }
 }
 
-
-// v96: AWEPlayInteractionProgressContainerView 上移 60pt（底边从 792 → 732）
-- (void)setFrame:(CGRect)frame {
-    if (frame.origin.y > 400.0 && frame.origin.y < 850.0 && frame.size.height > 0) {
-        CGFloat _sh = self.window.bounds.size.height;
-        if (_sh < 100.0) _sh = [UIScreen mainScreen].bounds.size.height;
-        // 目标: 底部 TabBar 上 60 + 再抬高 60 = 底边 792-60 = 732
-        CGFloat _targetY = _sh - 60.0 - 60.0 - frame.size.height;
-        if (_targetY > 0 && fabs(frame.origin.y - _targetY) > 1.0) {
-            frame.origin.y = _targetY;
-        }
-    }
-    %orig(frame);
-}
 
 %end
 
@@ -16929,18 +16919,6 @@ static void DYYYRemoveAppLifecycleObservers(void) {
     return originalSubviews;
 }
 
-
-// v97: 互动栏（文案/点赞名称）上移 60pt
-- (void)setFrame:(CGRect)frame {
-    if (frame.origin.y > 400.0 && frame.origin.y < 850.0 && frame.size.height > 0) {
-        static char kDYV97Flag;
-        if (!objc_getAssociatedObject(self, &kDYV97Flag)) {
-            frame.origin.y -= 60.0;
-            objc_setAssociatedObject(self, &kDYV97Flag, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-    }
-    %orig(frame);
-}
 
 %end
 
