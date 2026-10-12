@@ -18027,36 +18027,62 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
-// ===== v126: 干掉 AWEAwemeDetailTableViewController 里 60pt 隐藏占位 =====
-static void (*orig_detailVC_viewDidLayoutSubviews)(id, SEL);
+// ===== v131: 搜索页 cell 高度 = 屏幕高 + 60 (912) =====
+static double (*orig_h4r_v131)(id, SEL, id, id);
 
-static void new_detailVC_viewDidLayoutSubviews(id self, SEL _cmd) {
-    orig_detailVC_viewDidLayoutSubviews(self, _cmd);
+static double new_h4r_v131(id self, SEL _cmd, id tableView, id indexPath) {
+    double orig = orig_h4r_v131(self, _cmd, tableView, indexPath);
     
-    UIView *v = [self valueForKey:@"view"];
-    if (!v) return;
-    
-    for (UIView *sub in v.subviews) {
-        CGFloat y = sub.frame.origin.y;
-        CGFloat h = sub.frame.size.height;
-        // 找: y≈792, h≈60, 隐藏的, 无子视图
-        if (y > 780.0 && y < 800.0 && h > 55.0 && h < 65.0 &&
-            sub.hidden && sub.subviews.count == 0) {
-            CGRect f = sub.frame;
-            f.size.height = 0.0;
-            sub.frame = f;
+    // 判断是否搜索页
+    BOOL isSearch = NO;
+    @try {
+        UINavigationController *nav = [self valueForKey:@"navigationController"];
+        if (nav) {
+            UIViewController *top = nav.topViewController;
+            while (top && top.presentedViewController) {
+                top = top.presentedViewController;
+            }
+            if (top) {
+                // 试 context.referString
+                @try {
+                    id ctx = [top valueForKey:@"context"];
+                    if (ctx) {
+                        NSString *ref = [ctx valueForKey:@"referString"];
+                        if ([ref isKindOfClass:[NSString class]] &&
+                            [(NSString *)ref containsString:@"search"]) {
+                            isSearch = YES;
+                        }
+                    }
+                } @catch (NSException *e) {}
+                // 试 self.referString
+                if (!isSearch) {
+                    @try {
+                        NSString *ref = [top valueForKey:@"referString"];
+                        if ([ref isKindOfClass:[NSString class]] &&
+                            [(NSString *)ref containsString:@"search"]) {
+                            isSearch = YES;
+                        }
+                    } @catch (NSException *e) {}
+                }
+            }
         }
+    } @catch (NSException *e) {}
+    
+    if (isSearch) {
+        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+        return screenH + 60.0;   // 852 + 60 = 912
     }
+    return orig;
 }
 
 %ctor {
-    Class cls = objc_getClass("AWEAwemeDetailTableViewController");
-    if (cls) {
-        Method m = class_getInstanceMethod(cls, @selector(viewDidLayoutSubviews));
+    Class c = objc_getClass("AWEAwemeDetailTableViewController");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(tableView:heightForRowAtIndexPath:));
         if (m) {
-            orig_detailVC_viewDidLayoutSubviews =
-                (void (*)(id, SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)new_detailVC_viewDidLayoutSubviews);
+            orig_h4r_v131 = (double (*)(id, SEL, id, id))method_getImplementation(m);
+            method_setImplementation(m, (IMP)new_h4r_v131);
+            NSLog(@"[DYYY] v131 heightForRow hook installed");
         }
     }
 }
