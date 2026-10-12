@@ -17672,30 +17672,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
             return;
         }
     }
-    
-    // v102: 用 enableEnterProfile 区分首页/图文页
-    //   首页: enableEnterProfile = YES → 不动
-    //   图文页: enableEnterProfile = nil/NO → 撑满
-    id _enp = nil;
-    @try {
-        _enp = [self valueForKey:@"enableEnterProfile"];
-    } @catch (NSException *e) {
-        _enp = nil;
-    }
-    BOOL _isHome = (_enp != nil && [_enp boolValue]);
-    
-    if (!_isHome) {
-        UIView *_sup = self.superview;
-        if (_sup) {
-            CGFloat _supH = _sup.bounds.size.height;
-            if (_supH > 800.0 &&
-                fabs(frame.size.height - (_supH - 60.0)) < 2.0 &&
-                frame.origin.y == 0) {
-                frame.size.height = _supH;
-            }
-        }
-    }
-    
     %orig(frame);
 }
 
