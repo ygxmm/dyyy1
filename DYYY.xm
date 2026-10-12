@@ -18070,3 +18070,51 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
+
+// ===== v118: 干掉搜索页底部 60pt 空占位（对详情页顶层 VC）=====
+%hook AWEAwemeDetailTableViewController
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+
+    NSString *refer = @"";
+    @try {
+        id model = [self valueForKey:@"model"];
+        if (model) {
+            @try { refer = [NSString stringWithFormat:@"%@", [model valueForKey:@"referString"]]; } @catch (NSException *e) {}
+        }
+    } @catch (NSException *e) {}
+    // 后备：从子 VC 拿
+    if (refer.length == 0) {
+        @try {
+            id nav = self.navigationController;
+            if (nav) {
+                id top = [nav valueForKey:@"topViewController"];
+                if (top) {
+                    @try {
+                        id ctx = [top valueForKey:@"context"];
+                        if (ctx) {
+                            @try { refer = [NSString stringWithFormat:@"%@", [ctx valueForKey:@"referString"]]; } @catch (NSException *e) {}
+                        }
+                    } @catch (NSException *e) {}
+                }
+            }
+        } @catch (NSException *e) {}
+    }
+
+    if ([refer containsString:@"search"]) {
+        UIView *v = self.view;
+        for (UIView *sub in v.subviews) {
+            CGFloat h = sub.frame.size.height;
+            CGFloat y = sub.frame.origin.y;
+            if (sub.hidden && sub.subviews.count == 0 &&
+                h > 55.0 && h < 65.0 && y > 780.0 && y < 800.0) {
+                CGRect f = sub.frame;
+                f.size.height = 0.0;
+                sub.frame = f;
+            }
+        }
+    }
+}
+
+%end
