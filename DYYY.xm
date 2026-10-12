@@ -18028,17 +18028,16 @@ static void DYYYV54Log(NSString *fmt, ...) {
 }
 
 
-// ===== v123: 搜索页图片底部 insets 清零（用官方 API）=====
-%hook RichContentContainerViewController
 
-- (UIEdgeInsets)getImageContentInsets {
-    UIEdgeInsets insets = %orig;
+// ===== v124: getImageContentInsets 纯 runtime 替换（绕过 Logos）=====
+static UIEdgeInsets (*orig_getImageContentInsets)(id, SEL);
+
+static UIEdgeInsets new_getImageContentInsets(id self, SEL _cmd) {
+    UIEdgeInsets insets = orig_getImageContentInsets(self, _cmd);
     NSString *refer = @"";
     @try {
         id r = [self valueForKey:@"referString"];
-        if ([r isKindOfClass:[NSString class]]) {
-            refer = (NSString *)r;
-        }
+        if ([r isKindOfClass:[NSString class]]) refer = (NSString *)r;
     } @catch (NSException *e) {}
     if ([refer containsString:@"search"]) {
         insets.bottom = 0.0;
@@ -18046,4 +18045,13 @@ static void DYYYV54Log(NSString *fmt, ...) {
     return insets;
 }
 
-%end
+%ctor {
+    Class cls = objc_getClass("RichContentContainerViewController");
+    if (cls) {
+        Method m = class_getInstanceMethod(cls, @selector(getImageContentInsets));
+        if (m) {
+            orig_getImageContentInsets = (void *)method_getImplementation(m);
+            method_setImplementation(m, (IMP)new_getImageContentInsets);
+        }
+    }
+}
