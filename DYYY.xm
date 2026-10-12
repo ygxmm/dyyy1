@@ -16250,54 +16250,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
     // DYYY修复：全屏开关打开时，强制走 if 分支，UI层撑满852
     // 详情页原生走 else 是 732，比推荐页少120pt，这里统一到 852
-    if (useFullHeight || DYYYGetBool(@"DYYYEnableFullScreen")) {
-        if ([currentReferString isEqualToString:@"general_search"] ||
-            [currentReferString isEqualToString:@"search_result"] ||
-            [currentReferString isEqualToString:@"search_ecommerce"] ||
-            [currentReferString isEqualToString:@"general_search_scan"]) {
-            frame.size.height = [UIScreen mainScreen].bounds.size.height; // 强制 852
-        } else {
-            frame.size.height = superviewHeight;
-        }
-    } else {
-        frame.size.height = superviewHeight - gCurrentTabBarHeight;
-    }
-
-    // DYYY修复：UI层撑满屏幕时，若父链里有 TableView，则强制为 792
-    // 推荐页/详情页对齐到 792，但搜索页保持原生的 852（否则整体上移60pt）
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        NSString *dyyyRefer = [self valueForKey:@"referString"];
-        BOOL dyyyIsSearchPage = [dyyyRefer isEqualToString:@"general_search"] ||
-                                [dyyyRefer isEqualToString:@"search_result"] ||
-                                [dyyyRefer isEqualToString:@"search_ecommerce"] ||
-                                [dyyyRefer isEqualToString:@"general_search_scan"];
-        if (!dyyyIsSearchPage) {
-            UIView *dyyyAnc = self.view.superview;
-            while (dyyyAnc) {
-                NSString *dyyyCls = NSStringFromClass([dyyyAnc class]);
-                if ([dyyyCls isEqualToString:@"AWEFeedTableView"] || [dyyyCls isEqualToString:@"AWEAwemeDetailTableView"]) {
-                    frame.size.height = [UIScreen mainScreen].bounds.size.height - 60.0;
-                    break;
-                }
-                dyyyAnc = dyyyAnc.superview;
-            }
-        }
-    }
-
-    // DYYY修复：搜索页强制撑高到父视图高度（852），整体UI下移60pt
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        NSString *refer = [self valueForKey:@"referString"];
-        BOOL isSearchPage = [refer isEqualToString:@"general_search"] ||
-                            [refer isEqualToString:@"search_result"] ||
-                            [refer isEqualToString:@"search_ecommerce"] ||
-                            [refer isEqualToString:@"general_search_scan"];
-        if (isSearchPage && self.view.superview) {
-            CGFloat parentHeight = self.view.superview.frame.size.height;
-            if (parentHeight > 800) {
-                frame.size.height = parentHeight;
-            }
-        }
-    }
+    frame.size.height = superviewHeight;
 
     if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
         self.view.frame = frame;
