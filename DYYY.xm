@@ -18160,3 +18160,136 @@ static void new_cell_v134(id self, SEL _cmd) {
         }
     }
 }
+
+// ===================================================================
+// v138: cell 高度 (首次推算 TabBar 高度 + 缓存,之后直接读)
+// -------------------------------------------------------------------
+// 首次调用:
+//   遍历窗口找 AWENormalModeTabBar / UITabBarController
+//   读到真实 TabBar 高度 → 存 NSUserDefaults
+//
+// 后续调用:
+//   直接读 NSUserDefaults → 不遍历不计算,零开销
+//
+// 屏幕尺寸变化时:
+//   key 里带屏幕高,尺寸变了自动重推
+// ===================================================================
+
+#define DYYY_V138_KEY(screenH) [NSString stringWithFormat:@"DYYYv138TabBarH_%d", (int)(screenH)]
+
+// 首次推算 TabBar 高度(只在缓存缺失时调用一次)
+static CGFloat DYYYv138CalcTabBarHeight(void) {
+    // ① UITabBarController.tabBar
+    @try {
+        UIWindow *keyWin = nil;
+        for (UIWindow *w in [UIApplication sharedApplication].windows) {
+            if (w.isKeyWindow) { keyWin = w; break; }
+        }
+        if (keyWin) {
+            UIViewController *root = keyWin.rootViewController;
+            if ([root isKindOfClass:[UITabBarController class]]) {
+                UITabBar *tb = ((UITabBarController *)root).tabBar;
+                CGFloat h = tb.frame.size.height;
+                if (h > 30 && h < 150) return h;
+            }
+        }
+    } @catch (NSException *e) {}
+
+    // ② 遍历窗口找 AWENormalModeTabBar
+    @try {
+        NSMutableArray *queue = [NSMutableArray array];
+        for (UIWindow *w in [UIApplication sharedApplication].windows) {
+            [queue addObject:w];
+        }
+        int depth = 0;
+        while (queue.count > 0 && depth++ < 3000) {
+            UIView *v = queue.firstObject;
+            [queue removeObjectAtIndex:0];
+            if ([NSStringFromClass([v class]) isEqualToString:@"AWENormalModeTabBar"]) {
+                CGFloat h = v.frame.size.height;
+                if (h > 30 && h < 150) return h;
+            }
+            [queue addObjectsFromArray:v.subviews];
+        }
+    } @catch (NSException *e) {}
+
+    // ③ safeAreaInsets + 49
+    for (UIWindow *w in [UIApplication sharedApplication].windows) {
+        if (w.isKeyWindow) {
+            CGFloat sa = w.safeAreaInsets.bottom;
+            if (sa > 0) return sa + 49.0;
+        }
+    }
+
+    return 60.0;  // 兜底
+}
+
+// 读取 TabBar 高度(优先缓存,首次自动推算)
+static CGFloat DYYYv138GetTabBarHeight(void) {
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    NSString *key = DYYY_V138_KEY(screenH);
+    NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
+    CGFloat cached = [ud doubleForKey:key];
+    
+    if (cached > 30 && cached < 150) {
+        return cached;  // 有缓存,直接返回(不计算)
+    }
+    
+    // 首次:推算 + 缓存
+    CGFloat h = DYYYv138CalcTabBarHeight();
+    [ud setDouble:h forKey:key];
+    [ud synchronize];
+    NSLog(@"[DYYY] v138 first-time calc: screen=%.0f tabBar=%.0f (cached)", screenH, h);
+    return h;
+}
+
+// 检查 cell 里有没有 RichContent
+static BOOL DYYYv138HasRichContent(UIView *root, int depth) {
+    if (!root || depth > 30) return NO;
+    UIResponder *r = root.nextResponder;
+    int d = 0;
+    while (r && d++ < 10) {
+        NSString *cls = NSStringFromClass([r class]);
+        if ([cls containsString:@"RichContentContainer"] ||
+            [cls containsString:@"RichContentNewList"]) {
+            return YES;
+        }
+        r = [r nextResponder];
+    }
+    for (UIView *sub in root.subviews) {
+        if (DYYYv138HasRichContent(sub, depth + 1)) return YES;
+    }
+    return NO;
+}
+
+static void (*orig_cell_v138)(id, SEL);
+
+static void new_cell_v138(id self, SEL _cmd) {
+    orig_cell_v138(self, _cmd);
+    
+    UIView *cell = (UIView *)self;
+    BOOL isImagePage = DYYYv138HasRichContent(cell, 0);
+    
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    CGFloat tabBarH = DYYYv138GetTabBarHeight();  // 有缓存则零开销
+    
+    CGFloat targetH = isImagePage ? (screenH + tabBarH) : screenH;
+    
+    CGRect f = cell.frame;
+    if (fabs(f.size.height - targetH) > 1.0) {
+        f.size.height = targetH;
+        cell.frame = f;
+    }
+}
+
+%ctor {
+    Class c = objc_getClass("AWEAwemeDetailTableViewCell");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(layoutSubviews));
+        if (m) {
+            orig_cell_v138 = (void (*)(id, SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)new_cell_v138);
+            NSLog(@"[DYYY] v138 installed");
+        }
+    }
+}
