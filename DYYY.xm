@@ -18075,3 +18075,60 @@ static double new_desiredHeight(id self, SEL _cmd) {
         method_setImplementation(m, (IMP)new_desiredHeight);
     }
 }
+
+// ===== DYYY_V97_DEBUG_HOOK (临时调试用，定位 60pt 来源) =====
+%hook AWEStoryContainerCollectionView
+
+- (void)setFrame:(CGRect)frame {
+    CGRect old = self.frame;
+    %orig(frame);
+    CGFloat dh = frame.size.height - old.size.height;
+    if (fabs(dh) > 0.5 && frame.size.height < 850 && frame.size.height > 100) {
+        NSString *home = NSHomeDirectory();
+        if (home.length > 0) {
+            NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
+                              stringByAppendingPathComponent:@"dyyy_v97.log"];
+            FILE *fp = fopen(path.UTF8String, "a");
+            if (fp) {
+                NSString *head = [NSString stringWithFormat:
+                    @"\n=== AWEStoryContainerCollectionView setFrame %.1f -> %.1f (super=%@) ===\n",
+                    old.size.height, frame.size.height,
+                    NSStringFromClass([self.superview class])];
+                fputs(head.UTF8String, fp);
+                NSArray *stack = [NSThread callStackSymbols];
+                NSUInteger n = MIN(stack.count, (NSUInteger)25);
+                for (NSUInteger i = 0; i < n; i++) {
+                    NSString *line = [stack[i] stringByAppendingString:@"\n"];
+                    fputs(line.UTF8String, fp);
+                }
+                fclose(fp);
+            }
+        }
+    }
+}
+
+- (void)layoutSubviews {
+    %orig;
+    // 额外记录 layoutSubviews 后的状态（只记一次）
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSString *home = NSHomeDirectory();
+        if (home.length > 0) {
+            NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
+                              stringByAppendingPathComponent:@"dyyy_v97.log"];
+            FILE *fp = fopen(path.UTF8String, "a");
+            if (fp) {
+                NSString *info = [NSString stringWithFormat:
+                    @"\n=== LAYOUT: self=%.1f super=%.1f superCls=%@ ===\n",
+                    self.frame.size.height,
+                    self.superview ? self.superview.frame.size.height : -1,
+                    self.superview ? NSStringFromClass([self.superview class]) : @"nil"];
+                fputs(info.UTF8String, fp);
+                fclose(fp);
+            }
+        }
+    });
+}
+
+%end
+// ===== DYYY_V97_DEBUG_HOOK END =====
