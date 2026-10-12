@@ -16162,51 +16162,32 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 - (void)viewDidLayoutSubviews {
     %orig;
     
-    // >>> DYYY_DIAG_START
+    // >>> DYYY_V134_START
+    // 只对搜索页的视频下移 60（图文不动）
     @try {
         NSString *refer = [self valueForKey:@"referString"] ?: @"";
-        if ([refer isEqualToString:@"homepage_hot"] || [refer containsString:@"search"]) {
-            static NSMutableSet *logged = nil;
-            static dispatch_once_t initOnce;
-            dispatch_once(&initOnce, ^{ logged = [NSMutableSet set]; });
-            @synchronized (logged) {
-                if ([logged containsObject:refer]) return;
-                [logged addObject:refer];
-            }
+        if ([refer containsString:@"search"]) {
+            // 检查是否图文（awemeType == 68 = 图文）
+            id model = [self valueForKey:@"model"];
+            long long awemeType = 0;
+            @try { awemeType = [[model valueForKey:@"awemeType"] longLongValue]; } @catch (NSException *e) {}
             
-            UIView *v = self.view;
-            NSMutableString *s = [NSMutableString string];
-            [s appendFormat:@"\n=== refer=%@ ===", refer];
-            [s appendFormat:@"\n  view.frame=(%.1f, %.1f, %.1f, %.1f)  transform.ty=%.1f  layer.m42=%.1f",
-             v.frame.origin.x, v.frame.origin.y, v.frame.size.width, v.frame.size.height,
-             v.transform.ty, v.layer.transform.m42];
-            [s appendFormat:@"\n  superview.frame=(%.1f, %.1f, %.1f, %.1f)  cls=%@",
-             v.superview.frame.origin.x, v.superview.frame.origin.y,
-             v.superview.frame.size.width, v.superview.frame.size.height,
-             NSStringFromClass([v.superview class])];
-            for (UIView *sub in v.subviews) {
-                NSString *cls = NSStringFromClass([sub class]);
-                if ([cls containsString:@"Progress"] ||
-                    [cls containsString:@"ElementStack"] ||
-                    [cls containsString:@"StoryContainer"]) {
-                    [s appendFormat:@"\n    %@  frame=(%.1f, %.1f, %.1f, %.1f)",
-                     cls, sub.frame.origin.x, sub.frame.origin.y,
-                     sub.frame.size.width, sub.frame.size.height];
+            // 只视频（非图文）下移
+            if (awemeType != 68) {
+                if (fabs(self.view.transform.ty - 60.0) > 0.5) {
+                    self.view.transform = CGAffineTransformMakeTranslation(0, 60);
                 }
             }
-            NSString *home = NSHomeDirectory();
-            if (home.length > 0) {
-                NSString *p = [[home stringByAppendingPathComponent:@"Documents"]
-                               stringByAppendingPathComponent:@"dyyy_diag.log"];
-                FILE *fp = fopen(p.UTF8String, "a");
-                if (fp) {
-                    fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
-                    fclose(fp);
-                }
+        } else {
+            // 非搜索页：归零
+            if (!CGAffineTransformIsIdentity(self.view.transform)) {
+                self.view.transform = CGAffineTransformIdentity;
             }
         }
     } @catch (NSException *e) {}
-    // <<< DYYY_DIAG_END
+    // <<< DYYY_V134_END
+
+    
 
     
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
