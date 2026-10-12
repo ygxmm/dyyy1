@@ -16930,14 +16930,13 @@ static void DYYYRemoveAppLifecycleObservers(void) {
 }
 
 
-// v94: 互动栏（文案/点赞名称）底边对齐屏幕底部往上 60pt
+// v97: 互动栏（文案/点赞名称）上移 60pt
 - (void)setFrame:(CGRect)frame {
     if (frame.origin.y > 400.0 && frame.origin.y < 850.0 && frame.size.height > 0) {
-        CGFloat _sh = self.window.bounds.size.height;
-        if (_sh < 100.0) _sh = [UIScreen mainScreen].bounds.size.height;
-        CGFloat _targetY = _sh - 60.0 - frame.size.height;
-        if (_targetY > 0 && fabs(frame.origin.y - _targetY) > 1.0) {
-            frame.origin.y = _targetY;
+        static char kDYV97Flag;
+        if (!objc_getAssociatedObject(self, &kDYV97Flag)) {
+            frame.origin.y -= 60.0;
+            objc_setAssociatedObject(self, &kDYV97Flag, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
     }
     %orig(frame);
