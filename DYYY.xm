@@ -16162,28 +16162,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 - (void)viewDidLayoutSubviews {
     %orig;
 
-    // v102: 搜索页互动层撑满（图文+视频，只对搜索入口）
-    {
-        NSString *refer = @"";
-        @try {
-            id ctx = [self valueForKey:@"context"];
-            if (ctx) {
-                @try { refer = [NSString stringWithFormat:@"%@", [ctx valueForKey:@"referString"]]; } @catch (NSException *e) {}
-            }
-        } @catch (NSException *e) {}
-        
-        if ([refer containsString:@"search"]) {
-            UIView *v = self.view;
-            UIView *sv = v.superview;
-            if (sv && v.frame.size.height > 100.0 &&
-                fabs(v.frame.size.height - sv.bounds.size.height) > 5.0) {
-                CGRect f = v.frame;
-                f.size.height = sv.bounds.size.height;
-                v.frame = f;
-            }
-        }
-    }
-
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
         DYYYHideVideoAIParseBar(self.view);
     }
@@ -16998,42 +16976,6 @@ static void DYYYRemoveAppLifecycleObservers(void) {
 %hook AWEStoryContainerCollectionView
 - (void)layoutSubviews {
     %orig;
-    
-    // v101: 搜索页互动层撑满（732→792，只对搜索入口）
-    {
-        NSString *refer = @"";
-        UIResponder *r = self.nextResponder;
-        int d = 0;
-        while (r && d++ < 30) {
-            NSString *cls = NSStringFromClass([r class]);
-            if ([cls containsString:@"InteractionViewController"] ||
-                [cls containsString:@"RichContentNewList"]) {
-                @try {
-                    id ctx = [r valueForKey:@"context"];
-                    if (ctx) {
-                        @try {
-                            refer = [NSString stringWithFormat:@"%@", [ctx valueForKey:@"referString"]];
-                        } @catch (NSException *e) {}
-                    }
-                } @catch (NSException *e) {}
-                if (refer.length > 0) break;
-            }
-            r = [r nextResponder];
-        }
-        if ([refer containsString:@"search"]) {
-            CGFloat targetH = self.bounds.size.height;
-            for (UIView *sub in self.subviews) {
-                CGFloat h = sub.frame.size.height;
-                CGFloat y = sub.frame.origin.y;
-                if (y == 0.0 && h > 720.0 && h < 740.0) {
-                    CGRect f = sub.frame;
-                    f.size.height = targetH;
-                    sub.frame = f;
-                }
-            }
-        }
-    }
-    
     if ([self.subviews count] == 2)
         return;
 
