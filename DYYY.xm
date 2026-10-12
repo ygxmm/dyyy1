@@ -18027,3 +18027,17 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
+
+// ===== v123: 搜索页图片底部 insets 清零（用官方 API）=====
+%hook RichContentContainerViewController
+
+- (UIEdgeInsets)getImageContentInsets {
+    UIEdgeInsets insets = %orig;
+    NSString *refer = self.referString ?: @"";
+    if ([refer containsString:@"search"]) {
+        insets.bottom = 0.0;
+    }
+    return insets;
+}
+
+%end
