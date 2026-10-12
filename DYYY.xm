@@ -16179,6 +16179,49 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         }
     }
 
+    // ===== 只读 dump：记录本 VC 的视图树 =====
+    {
+        static char kDumpTree2;
+        if (!objc_getAssociatedObject(self, &kDumpTree2)) {
+            objc_setAssociatedObject(self, &kDumpTree2, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                NSMutableString *s = [NSMutableString string];
+                [s appendFormat:@"\n===== VC %p refer=%@ view=%p frame=%s trans=%s =====\n",
+                 self, self.referString, self.view,
+                 NSStringFromCGRect(self.view.frame).UTF8String,
+                 NSStringFromCGAffineTransform(self.view.transform).UTF8String];
+                
+                NSMutableArray *queue = [NSMutableArray arrayWithObject:self.view];
+                int depth = 0;
+                while (queue.count > 0 && depth++ < 2000) {
+                    UIView *v = queue.firstObject;
+                    [queue removeObjectAtIndex:0];
+                    NSString *cls = NSStringFromClass([v class]);
+                    BOOL isKey = [cls containsString:@"Stack"] ||
+                                 [cls containsString:@"Progress"] ||
+                                 [cls containsString:@"Story"] ||
+                                 [cls containsString:@"Element"];
+                    if (isKey) {
+                        [s appendFormat:@"  %@ %p  frame=%s  trans=%.1f,%.1f  clips=%d  sup=%@\n",
+                         cls, v,
+                         NSStringFromCGRect(v.frame).UTF8String,
+                         v.transform.tx, v.transform.ty,
+                         v.clipsToBounds ? 1 : 0,
+                         NSStringFromClass([v.superview class])];
+                    }
+                    [queue addObjectsFromArray:v.subviews];
+                }
+                
+                NSString *home = NSHomeDirectory();
+                NSString *p = [[home stringByAppendingPathComponent:@"Documents"]
+                               stringByAppendingPathComponent:@"dyyy_tree2.log"];
+                FILE *fp = fopen(p.UTF8String, "a");
+                if (fp) { fputs(s.UTF8String, fp); fclose(fp); }
+            });
+        }
+    }
+
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
         DYYYHideVideoAIParseBar(self.view);
     }
