@@ -16906,6 +16906,60 @@ static void DYYYRemoveAppLifecycleObservers(void) {
         else if (hasScalableLeftElement) {
             DYYYApplyPlayInteractionLeftStackElementTransforms(self);
         }
+        
+        // v110: 搜索页互动 stack 底边对齐首页（叠加在已有 transform 上）
+        {
+            NSString *dyyyV110Refer = @"";
+            UIResponder *dyyyV110R = self.nextResponder;
+            int dyyyV110D = 0;
+            while (dyyyV110R && dyyyV110D++ < 20) {
+                NSString *cls = NSStringFromClass([dyyyV110R class]);
+                if ([cls containsString:@"InteractionViewController"]) {
+                    @try {
+                        id ctx = [dyyyV110R valueForKey:@"context"];
+                        if (ctx) {
+                            @try { dyyyV110Refer = [NSString stringWithFormat:@"%@", [ctx valueForKey:@"referString"]]; } @catch (NSException *e) {}
+                        }
+                    } @catch (NSException *e) {}
+                    break;
+                }
+                dyyyV110R = [dyyyV110R nextResponder];
+            }
+            
+            CGFloat dyyyV110Dy = 0;
+            CGFloat dyyyV110W = self.bounds.size.width;
+            CGFloat dyyyV110H = self.bounds.size.height;
+            if ([dyyyV110Refer containsString:@"search"] &&
+                dyyyV110W >= 60.0 && dyyyV110W <= 300.0 &&
+                dyyyV110H >= 50.0 && dyyyV110H <= 500.0) {
+                CGFloat dyyyV110ScreenH = self.window.bounds.size.height;
+                if (dyyyV110ScreenH < 100.0) dyyyV110ScreenH = [UIScreen mainScreen].bounds.size.height;
+                CGFloat dyyyV110TargetBottom = dyyyV110ScreenH - 83.34;
+                CGFloat dyyyV110BaseBottom = self.center.y + self.bounds.size.height / 2.0;
+                dyyyV110Dy = dyyyV110TargetBottom - dyyyV110BaseBottom;
+            }
+            
+            if (isRightStack) {
+                // 右侧：前面已重置 transform，直接叠 ty
+                if (fabs(dyyyV110Dy) > 0.5) {
+                    CGAffineTransform t = self.transform;
+                    t.ty += dyyyV110Dy;
+                    self.transform = t;
+                }
+            } else if (hasScalableLeftElement) {
+                // 左侧：用 associatedObject 防累积
+                static char kLastDyKey;
+                NSNumber *lastNum = objc_getAssociatedObject(self, &kLastDyKey);
+                CGFloat lastDy = lastNum ? lastNum.doubleValue : 0;
+                CGFloat delta = dyyyV110Dy - lastDy;
+                if (fabs(delta) > 0.5) {
+                    CGAffineTransform t = self.transform;
+                    t.ty += delta;
+                    self.transform = t;
+                    objc_setAssociatedObject(self, &kLastDyKey, @(dyyyV110Dy), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                }
+            }
+        }
     }
 }
 
