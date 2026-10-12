@@ -17673,12 +17673,33 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
         }
     }
     
-    // v98: 拦截 AwemeCore 内部把图文页 collectionView 高度从 852 压到 792
-    UIView *_dyyyV98Sup = self.superview;
-    if (_dyyyV98Sup) {
-        CGFloat _dyyyV98SupH = _dyyyV98Sup.bounds.size.height;
-        if (_dyyyV98SupH > 800.0 && fabs(frame.size.height - (_dyyyV98SupH - 60.0)) < 2.0) {
-            frame.size.height = _dyyyV98SupH;
+    // v99: 只在图文页生效（沿 responder 链找 RichContent 父 VC）
+    UIView *_dyyyV99Sup = self.superview;
+    if (_dyyyV99Sup) {
+        CGFloat _dyyyV99SupH = _dyyyV99Sup.bounds.size.height;
+        BOOL _dyyyV99IsRichContent = NO;
+        if (_dyyyV99SupH > 800.0 && fabs(frame.size.height - (_dyyyV99SupH - 60.0)) < 2.0) {
+            UIResponder *_r = self.nextResponder;
+            int _d = 0;
+            while (_r && _d++ < 30) {
+                NSString *_cls = NSStringFromClass([_r class]);
+                if ([_cls containsString:@"RichContentContainer"] ||
+                    [_cls containsString:@"AWEMultiContentImpl.RichContent"] ||
+                    [_cls containsString:@"RichContentNewList"]) {
+                    _dyyyV99IsRichContent = YES;
+                    break;
+                }
+                if ([_cls containsString:@"FeedRootViewController"] ||
+                    [_cls containsString:@"AWEFeedTableViewController"] ||
+                    [_cls containsString:@"AWEFeedContainerViewController"]) {
+                    // 明确是首页 → 不命中
+                    break;
+                }
+                _r = [_r nextResponder];
+            }
+        }
+        if (_dyyyV99IsRichContent) {
+            frame.size.height = _dyyyV99SupH;
             frame.origin.y = 0;
         }
     }
