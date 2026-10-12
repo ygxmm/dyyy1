@@ -18018,30 +18018,43 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
-// >>> DYYY_V136_START
-// 搜索页 cell 高度撑到 912，让 RichContent 容器到 852
-static double (*orig_h4r_v136)(id, SEL, id, id);
+// >>> DYYY_V137_START
+// 搜索页 RichContent 容器填满父 view（修复 cell 912 时 RichContent 只到 792）
 
-static double new_h4r_v136(id self, SEL _cmd, id tableView, id indexPath) {
-    double orig = orig_h4r_v136(self, _cmd, tableView, indexPath);
+static void (*orig_RCC_v137)(id, SEL);
+
+static void new_RCC_v137(id self, SEL _cmd) {
+    orig_RCC_v137(self, _cmd);
     @try {
         NSString *refer = [self valueForKey:@"referString"] ?: @"";
-        if (![refer containsString:@"search"]) return orig;
-        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-        return screenH + 60.0;  // 852 + 60 = 912
+        if (![refer containsString:@"search"]) return;
+        
+        UIView *v = [(UIViewController *)self view];
+        UIView *sv = v.superview;
+        if (!sv) return;
+        
+        CGFloat targetH = sv.bounds.size.height;
+        // 如果 superview 也是 912 或更高，才撑
+        if (targetH < 800.0) return;
+        
+        if (fabs(v.frame.size.height - targetH) > 1.0) {
+            CGRect f = v.frame;
+            f.origin.y = 0;
+            f.size.height = targetH;
+            v.frame = f;
+        }
     } @catch (NSException *e) {}
-    return orig;
 }
 
 %ctor {
-    Class c = objc_getClass("AWEAwemeDetailTableViewController");
+    Class c = objc_getClass("RichContentContainerViewController");
     if (c) {
-        Method m = class_getInstanceMethod(c, @selector(tableView:heightForRowAtIndexPath:));
+        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
         if (m) {
-            orig_h4r_v136 = (double (*)(id, SEL, id, id))method_getImplementation(m);
-            method_setImplementation(m, (IMP)new_h4r_v136);
-            NSLog(@"[DYYY] v136 installed");
+            orig_RCC_v137 = (void (*)(id, SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)new_RCC_v137);
+            NSLog(@"[DYYY] v137 installed");
         }
     }
 }
-// <<< DYYY_V136_END
+// <<< DYYY_V137_END
