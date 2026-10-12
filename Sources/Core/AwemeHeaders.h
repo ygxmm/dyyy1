@@ -2409,6 +2409,7 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 
 // ===== 图文页原生方法声明（来自 classdump，补齐 ObjC 类）=====
 @interface RichContentContainerViewController : UIViewController
+@property (nonatomic, copy) NSString *referString;
 @property (nonatomic) BOOL isFullScreen;
 @property (nonatomic) BOOL shouldAdaptFullScreen;
 @property (nonatomic) BOOL shouldAdaptFullScreenThree;
