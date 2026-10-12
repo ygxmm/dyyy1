@@ -16269,12 +16269,8 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
     // DYYY修复：全屏开关打开时，强制走 if 分支，UI层撑满852
     // 详情页原生走 else 是 732，比推荐页少120pt，这里统一到 852
-    // v93: 视频页（superview 852）减 60 保留底栏；图文页（superview 792）不减
-    if (superviewHeight >= 800.0) {
-        frame.size.height = superviewHeight - 60.0;
-    } else {
-        frame.size.height = superviewHeight;
-    }
+    // v95: UI 层高度完全跟随 superview（视频页 852，图文页 792）
+    frame.size.height = superviewHeight;
 
     if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
         self.view.frame = frame;
