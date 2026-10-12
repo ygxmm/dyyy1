@@ -16162,21 +16162,20 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 - (void)viewDidLayoutSubviews {
     %orig;
     
-    // >>> DYYY_V134_START
-    // 搜索页 UI 下移 60（transform 不触发 layout 递归）
-    @try {
-        NSString *refer = [self valueForKey:@"referString"] ?: @"";
-        if ([refer containsString:@"search"]) {
-            if (fabs(self.view.transform.ty - 60.0) > 0.5) {
+    // >>> DYYY_V135_START
+    // 搜索页 UI 下移 60（每实例只算一次，避免 KYC 卡帧）
+    {
+        static char kDYYYV135AppliedKey;
+        if (!objc_getAssociatedObject(self, &kDYYYV135AppliedKey)) {
+            objc_setAssociatedObject(self, &kDYYYV135AppliedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            NSString *refer = @"";
+            @try { refer = [self valueForKey:@"referString"] ?: @""; } @catch (NSException *e) {}
+            if ([refer containsString:@"search"]) {
                 self.view.transform = CGAffineTransformMakeTranslation(0, 60);
             }
-        } else {
-            if (!CGAffineTransformIsIdentity(self.view.transform)) {
-                self.view.transform = CGAffineTransformIdentity;
-            }
         }
-    } @catch (NSException *e) {}
-    // <<< DYYY_V134_END
+    }
+    // <<< DYYY_V135_END
 
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
         DYYYHideVideoAIParseBar(self.view);
