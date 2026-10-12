@@ -18010,3 +18010,68 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
+
+// ===== 诊断：打印详情页来源信息 =====
+%hook AWEPlayInteractionViewController
+
+- (void)viewDidLoad {
+    %orig;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        NSMutableString *s = [NSMutableString string];
+        [s appendFormat:@"\n===== AWEPlayInteractionViewController %p =====\n", self];
+
+        // 1. nextResponder 链
+        [s appendString:@"\n-- responder 链 --\n"];
+        UIResponder *r = self;
+        int d = 0;
+        while (r && d++ < 20) {
+            [s appendFormat:@"  %@\n", NSStringFromClass([r class])];
+            r = [r nextResponder];
+        }
+
+        // 2. 业务属性
+        [s appendString:@"\n-- 业务属性 --\n"];
+        @try {
+            id ctx = [self valueForKey:@"context"];
+            [s appendFormat:@"context = %@\n", ctx];
+            for (NSString *k in @[@"referString", @"enterFrom", @"pageType", @"reactId", @"adEventName"]) {
+                @try {
+                    id v = [ctx valueForKey:k];
+                    [s appendFormat:@"context.%@ = %@\n", k, v];
+                } @catch (NSException *e) {}
+            }
+        } @catch (NSException *e) {
+            [s appendFormat:@"context 拿不到: %@\n", e.reason];
+        }
+
+        @try {
+            id model = [self valueForKey:@"model"];
+            for (NSString *k in @[@"referString", @"enterFrom", @"awemeType", @"desc"]) {
+                @try {
+                    id v = [model valueForKey:k];
+                    [s appendFormat:@"model.%@ = %@\n", k, v];
+                } @catch (NSException *e) {}
+            }
+        } @catch (NSException *e) {}
+
+        // 3. 导航栈
+        [s appendString:@"\n-- 导航栈 --\n"];
+        UINavigationController *nav = self.navigationController;
+        if (nav) {
+            for (UIViewController *vc in nav.viewControllers) {
+                [s appendFormat:@"  %@\n", NSStringFromClass([vc class])];
+            }
+        } else {
+            [s appendString:@"(无 nav)\n"];
+        }
+
+        NSString *home = NSHomeDirectory();
+        NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
+                          stringByAppendingPathComponent:@"dyyy_search_diag.log"];
+        FILE *fp = fopen(path.UTF8String, "a");
+        if (fp) { fputs(s.UTF8String, fp); fclose(fp); }
+    });
+}
+
+%end
