@@ -18040,9 +18040,10 @@ static void new_probe_cellVC(id self, SEL _cmd) {
     dispatch_once(&once, ^{
         NSString *refer = @"";
         @try { refer = [self valueForKey:@"referString"] ?: @""; } @catch (NSException *e) {}
-        UIView *cell = self.view.superview;
+        UIView *selfView = [(UIViewController *)self view];
+        UIView *cell = selfView.superview;
         CGFloat cellH = cell ? cell.bounds.size.height : -1;
-        CGFloat selfH = self.view.bounds.size.height;
+        CGFloat selfH = selfView ? selfView.bounds.size.height : -1;
         
         NSLog(@"[DYYY PROBE cell] refer=%@ selfH=%.0f cellH=%.0f superCls=%@",
               refer, selfH, cellH, cell ? NSStringFromClass([cell class]) : @"nil");
@@ -18059,6 +18060,58 @@ static void new_probe_cellVC(id self, SEL _cmd) {
         }
     }
     
+    Class c2 = objc_getClass("AWEAwemeDetailCellViewController");
+    if (c2) {
+        Method m = class_getInstanceMethod(c2, @selector(viewDidLayoutSubviews));
+        if (m) {
+            orig_probe_cellVC = (void (*)(id, SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)new_probe_cellVC);
+        }
+    }
+}
+// <<< DYYY_PROBE_END
+
+// >>> DYYY_PROBE_START
+// 探查：抖音自己的 tableViewBottomMargin 和 cellVC 的实际值
+static void (*orig_probe_tableVC)(id, SEL);
+static void new_probe_tableVC(id self, SEL _cmd) {
+    orig_probe_tableVC(self, _cmd);
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+        NSString *refer = @"";
+        double margin = 0;
+        @try { refer = [self valueForKey:@"referString"] ?: @""; } @catch (NSException *e) {}
+        @try { margin = [[self valueForKey:@"tableViewBottomMargin"] doubleValue]; } @catch (NSException *e) {}
+        NSLog(@"[DYYY PROBE] screenH=%.0f refer=%@ tableViewBottomMargin=%.1f",
+              screenH, refer, margin);
+    });
+}
+
+static void (*orig_probe_cellVC)(id, SEL);
+static void new_probe_cellVC(id self, SEL _cmd) {
+    orig_probe_cellVC(self, _cmd);
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSString *refer = @"";
+        @try { refer = [self valueForKey:@"referString"] ?: @""; } @catch (NSException *e) {}
+        UIView *cell = self.view.superview;
+        CGFloat cellH = cell ? cell.bounds.size.height : -1;
+        CGFloat selfH = self.view.bounds.size.height;
+        NSLog(@"[DYYY PROBE cell] refer=%@ selfH=%.0f cellH=%.0f superCls=%@",
+              refer, selfH, cellH, cell ? NSStringFromClass([cell class]) : @"nil");
+    });
+}
+
+%ctor {
+    Class c1 = objc_getClass("AWEAwemeDetailTableViewController");
+    if (c1) {
+        Method m = class_getInstanceMethod(c1, @selector(viewDidLayoutSubviews));
+        if (m) {
+            orig_probe_tableVC = (void (*)(id, SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)new_probe_tableVC);
+        }
+    }
     Class c2 = objc_getClass("AWEAwemeDetailCellViewController");
     if (c2) {
         Method m = class_getInstanceMethod(c2, @selector(viewDidLayoutSubviews));
