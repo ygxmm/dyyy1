@@ -16227,7 +16227,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
     BOOL useFullHeight = [currentReferString isEqualToString:@"general_search"] || [currentReferString isEqualToString:@"search_result"] || [currentReferString isEqualToString:@"search_ecommerce"] ||
                          [currentReferString isEqualToString:@"close_friends_moment"] || [currentReferString isEqualToString:@"offline_mode"] || [currentReferString isEqualToString:@"challenge"] ||
-                         [currentReferString isEqualToString:@"general_search_scan"] || isShowingRelatedMixViewController;
+                         [currentReferString isEqualToString:@"general_search_scan"] || currentReferString == nil || isShowingRelatedMixViewController;
 
     if (!useFullHeight && [currentReferString isEqualToString:@"co_play_watch"]) {
         Class richContentVCClass = NSClassFromString(@"AWEFriendsImpl.RichContentNewListViewController");
@@ -16248,13 +16248,13 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         }
     }
 
-    // 修复：只有 useFullHeight 的页面才撑高，首页保持原生 769
-    if (useFullHeight) {
-        frame.size.height = superviewHeight - 60.0;
+    // DYYY修复：全屏开关打开时，强制走 if 分支，UI层撑满852
+    // 详情页原生走 else 是 732，比推荐页少120pt，这里统一到 852
+    // v92: UI 层保留底栏 60pt，进度条不再贴屏底
+    frame.size.height = superviewHeight - 60.0;
 
-        if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
-            self.view.frame = frame;
-        }
+    if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
+        self.view.frame = frame;
     }
 
 }
@@ -16905,60 +16905,6 @@ static void DYYYRemoveAppLifecycleObservers(void) {
         // 左侧昵称/文案元素按子元素分别缩放
         else if (hasScalableLeftElement) {
             DYYYApplyPlayInteractionLeftStackElementTransforms(self);
-        }
-        
-        // v110: 搜索页互动 stack 底边对齐首页（叠加在已有 transform 上）
-        {
-            NSString *dyyyV110Refer = @"";
-            UIResponder *dyyyV110R = self.nextResponder;
-            int dyyyV110D = 0;
-            while (dyyyV110R && dyyyV110D++ < 20) {
-                NSString *cls = NSStringFromClass([dyyyV110R class]);
-                if ([cls containsString:@"InteractionViewController"]) {
-                    @try {
-                        id ctx = [dyyyV110R valueForKey:@"context"];
-                        if (ctx) {
-                            @try { dyyyV110Refer = [NSString stringWithFormat:@"%@", [ctx valueForKey:@"referString"]]; } @catch (NSException *e) {}
-                        }
-                    } @catch (NSException *e) {}
-                    break;
-                }
-                dyyyV110R = [dyyyV110R nextResponder];
-            }
-            
-            CGFloat dyyyV110Dy = 0;
-            CGFloat dyyyV110W = self.bounds.size.width;
-            CGFloat dyyyV110H = self.bounds.size.height;
-            if ([dyyyV110Refer containsString:@"search"] &&
-                dyyyV110W >= 60.0 && dyyyV110W <= 300.0 &&
-                dyyyV110H >= 50.0 && dyyyV110H <= 500.0) {
-                CGFloat dyyyV110ScreenH = self.window.bounds.size.height;
-                if (dyyyV110ScreenH < 100.0) dyyyV110ScreenH = [UIScreen mainScreen].bounds.size.height;
-                CGFloat dyyyV110TargetBottom = dyyyV110ScreenH - 83.34;
-                CGFloat dyyyV110BaseBottom = self.center.y + self.bounds.size.height / 2.0;
-                dyyyV110Dy = dyyyV110TargetBottom - dyyyV110BaseBottom;
-            }
-            
-            if (isRightStack) {
-                // 右侧：前面已重置 transform，直接叠 ty
-                if (fabs(dyyyV110Dy) > 0.5) {
-                    CGAffineTransform t = self.transform;
-                    t.ty += dyyyV110Dy;
-                    self.transform = t;
-                }
-            } else if (hasScalableLeftElement) {
-                // 左侧：用 associatedObject 防累积
-                static char kLastDyKey;
-                NSNumber *lastNum = objc_getAssociatedObject(self, &kLastDyKey);
-                CGFloat lastDy = lastNum ? lastNum.doubleValue : 0;
-                CGFloat delta = dyyyV110Dy - lastDy;
-                if (fabs(delta) > 0.5) {
-                    CGAffineTransform t = self.transform;
-                    t.ty += delta;
-                    self.transform = t;
-                    objc_setAssociatedObject(self, &kLastDyKey, @(dyyyV110Dy), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                }
-            }
         }
     }
 }
@@ -18064,4 +18010,3 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
-// CI touch 1791794874
