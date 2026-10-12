@@ -5256,6 +5256,32 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
 %hook AWEPlayInteractionProgressContainerView
 - (void)layoutSubviews {
     %orig;
+    
+    // v113: 搜索页进度条容器也下移 12（跟 stack 对齐）
+    {
+        NSString *dyyyRefer = @"";
+        UIResponder *r = self.nextResponder;
+        int d = 0;
+        while (r && d++ < 20) {
+            NSString *cls = NSStringFromClass([r class]);
+            if ([cls containsString:@"InteractionViewController"]) {
+                @try {
+                    id vc = (id)r;
+                    if ([vc respondsToSelector:@selector(referString)]) {
+                        dyyyRefer = [vc performSelector:@selector(referString)] ?: @"";
+                    }
+                } @catch (NSException *e) {}
+                break;
+            }
+            r = [r nextResponder];
+        }
+        if ([dyyyRefer containsString:@"search"]) {
+            self.transform = CGAffineTransformMakeTranslation(0, 12);
+        } else if (!CGAffineTransformIsIdentity(self.transform)) {
+            self.transform = CGAffineTransformIdentity;
+        }
+    }
+    
     DYYYApplyFloatClearProgressStateToView(self);
 
     if (![[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYEnableFullScreen"]) {
