@@ -14497,10 +14497,6 @@ static void DYYYProbeLog(NSString *fmt, ...) {
 // 原理：抖音自己用 transform 做布局，我们在其基础上再 +60pt
 // 幂等：transform 已达标则跳过，不触发重排 → 不卡帧
 // ============================================================
-@interface AWEPlayInteractionViewController (DYYYSearchShift)
-- (void)dyyy_applySearchShiftIfNeeded;
-@end
-
 @implementation AWEPlayInteractionViewController (DYYYSearchShift)
 
 - (void)dyyy_applySearchShiftIfNeeded {
@@ -14544,6 +14540,51 @@ static void DYYYProbeLog(NSString *fmt, ...) {
 }
 
 @end
+
+// ============================================================
+// DYYY v141: 搜索页 UI 下移 60pt（幂等 transform，静态函数版）
+// ============================================================
+static char kDYYYSearchHitKey;
+static char kDYYYOrigTransformKey;
+
+static void DYYYApplySearchShiftIfNeeded(id vc) {
+    if (!vc) return;
+
+    @try {
+        UIView *v = [vc valueForKey:@"view"];
+        if (!v) return;
+
+        // 1) referString 只读一次
+        NSNumber *isSearch = objc_getAssociatedObject(vc, &kDYYYSearchHitKey);
+        if (!isSearch) {
+            NSString *refer = [vc valueForKey:@"referString"];
+            if (![refer isKindOfClass:[NSString class]] || refer.length == 0) return;
+            BOOL hit = [refer containsString:@"search"];
+            objc_setAssociatedObject(vc, &kDYYYSearchHitKey, @(hit), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            isSearch = @(hit);
+            if (hit) DYYYProbeLog(@"v141: 命中搜索页");
+        }
+        if (!isSearch.boolValue) return;
+
+        // 2) 缓存首次 transform
+        NSValue *origVal = objc_getAssociatedObject(vc, &kDYYYOrigTransformKey);
+        if (!origVal) {
+            origVal = [NSValue valueWithCGAffineTransform:v.transform];
+            objc_setAssociatedObject(vc, &kDYYYOrigTransformKey, origVal, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        CGAffineTransform orig = origVal.CGAffineTransformValue;
+        CGAffineTransform target = orig;
+        target.ty += 60.0;
+
+        // 3) 幂等
+        if (CGAffineTransformEqualToTransform(v.transform, target)) return;
+
+        // 4) 应用
+        v.transform = target;
+    } @catch (NSException *e) {
+        DYYYProbeLog(@"v141 异常: %@", e.reason);
+    }
+}
 
 static BOOL DYYYIsSearchVC(id self) {
     @try {
@@ -16265,7 +16306,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    [self dyyy_applySearchShiftIfNeeded];
+    DYYYApplySearchShiftIfNeeded(self);
     
 
     
