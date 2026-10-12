@@ -5038,6 +5038,27 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
             }
         }
         
+        // 诊断：每次都打日志
+        {
+            NSString *h = NSHomeDirectory();
+            NSString *p = [[h stringByAppendingPathComponent:@"Documents"]
+                           stringByAppendingPathComponent:@"dyyy_v102.log"];
+            FILE *f = fopen(p.UTF8String, "a");
+            if (f) {
+                NSString *info = [NSString stringWithFormat:
+                    @"[v102] refer=%@ fromSearch=%d\n  homeStackY=%.1f homeStackH=%.1f\n  curStackY=%.1f curStackH=%.1f\n  homeProgY=%.1f homeProgH=%.1f\n  curProgY=%.1f curProgH=%.1f\n\n",
+                    refer, fromSearch,
+                    gHomeStackFrame.origin.y, gHomeStackFrame.size.height,
+                    stackView ? stackView.frame.origin.y : -1,
+                    stackView ? stackView.frame.size.height : -1,
+                    gHomeProgressFrame.origin.y, gHomeProgressFrame.size.height,
+                    progressView ? progressView.frame.origin.y : -1,
+                    progressView ? progressView.frame.size.height : -1];
+                fputs(info.UTF8String, f);
+                fclose(f);
+            }
+        }
+        
         if (fromSearch) {
             if (stackView && gHomeStackFrame.size.height > 0 && stackView.frame.origin.y > 100.0) {
                 CGFloat dy = gHomeStackFrame.origin.y - stackView.frame.origin.y;
