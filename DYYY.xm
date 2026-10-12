@@ -17188,6 +17188,13 @@ static void DYYYRemoveAppLifecycleObservers(void) {
             center.y -= gCurrentTabBarHeight;
         }
     }
+    // v94: 进度条容器贴到屏幕底部往上 60pt
+    if (center.y > 500.0 && center.y < 850.0) {
+        CGFloat _h = self.window.bounds.size.height;
+        if (_h < 100.0) _h = [UIScreen mainScreen].bounds.size.height;
+        CGFloat _half = self.bounds.size.height / 2.0;
+        center.y = _h - 60.0 - _half;
+    }
     %orig(center);
 }
 
