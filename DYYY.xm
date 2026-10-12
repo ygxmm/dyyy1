@@ -16162,23 +16162,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 - (void)viewDidLayoutSubviews {
     %orig;
 
-    // v116: 搜索页整层互动内容下移 60（视频层是兄弟，不受影响）
-    {
-        NSString *dyyyRefer = self.referString ?: @"";
-        BOOL dyyyFromSearch = [dyyyRefer containsString:@"search"];
-        if (dyyyFromSearch) {
-            if (fabs(self.view.transform.ty - 60.0) > 0.5 ||
-                fabs(self.view.transform.tx) > 0.5 ||
-                fabs(self.view.transform.a - 1.0) > 0.01) {
-                self.view.transform = CGAffineTransformMakeTranslation(0, 60);
-            }
-        } else {
-            if (!CGAffineTransformIsIdentity(self.view.transform)) {
-                self.view.transform = CGAffineTransformIdentity;
-            }
-        }
-    }
-
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
         DYYYHideVideoAIParseBar(self.view);
     }
