@@ -5012,6 +5012,20 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
 %hook AWEBaseListViewController
 - (void)viewDidLayoutSubviews {
     %orig;
+
+    // v122: 搜索页把 self.view 撑高到 superview（异步，避免死循环）
+    if ([self.referString containsString:@"search"]) {
+        AWEPlayInteractionViewController *vcRef = self;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIView *v = vcRef.view;
+            UIView *sv = v.superview;
+            if (sv && fabs(v.frame.size.height - sv.bounds.size.height) > 1.0) {
+                CGRect f = v.frame;
+                f.size.height = sv.bounds.size.height;
+                v.frame = f;
+            }
+        });
+    }
     [self applyBlurEffectIfNeeded];
 }
 
