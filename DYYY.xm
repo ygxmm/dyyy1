@@ -18029,6 +18029,11 @@ static void DYYYV54Log(NSString *fmt, ...) {
 
 
 // ===== v123: 搜索页图片底部 insets 清零（用官方 API）=====
+// DYYY: v123 内联声明（不用 import 头文件）
+@interface RichContentContainerViewController : UIViewController
+- (UIEdgeInsets)getImageContentInsets;
+@end
+
 %hook RichContentContainerViewController
 
 - (UIEdgeInsets)getImageContentInsets {

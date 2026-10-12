@@ -2430,6 +2430,3 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 
 // 注意：AWEStoryContainerCollectionView 在 662 行已经声明过了（类型是 UIView，先不动）
-
-// DYYY: 为 v123 添加的头文件
-#import "RichContentContainerViewController.h"
