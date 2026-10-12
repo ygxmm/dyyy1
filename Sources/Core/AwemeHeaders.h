@@ -2407,21 +2407,6 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 
 
 
-// ===== 图文页原生方法声明（来自 classdump，补齐 ObjC 类）=====
-@interface RichContentContainerViewController : UIViewController
-@property (nonatomic, copy) NSString *referString;
-@property (nonatomic) BOOL isFullScreen;
-@property (nonatomic) BOOL shouldAdaptFullScreen;
-@property (nonatomic) BOOL shouldAdaptFullScreenThree;
-- (struct CGRect)awemeContentViewFrame;
-- (struct CGRect)awemeContentViewInitFrame;
-- (void)updateAwemeContentViewFrame:(CGRect)frame;
-- (void)updateAwemeContentViewFrame:(CGRect)frame animationDuration:(double)d;
-- (UIEdgeInsets)getImageContentInsets;
-- (double)getImageContentTopInset;
-- (void)updateShrinkState:(BOOL)state insets:(UIEdgeInsets)insets animated:(BOOL)animated;
-- (void)viewWillLayoutSubviews;
-@end
 
 @interface AFDImageContentView : UIView
 @property (nonatomic) BOOL isInFullPage;
