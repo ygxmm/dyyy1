@@ -16914,6 +16914,20 @@ static void DYYYRemoveAppLifecycleObservers(void) {
     return originalSubviews;
 }
 
+
+// v94: 互动栏（文案/点赞名称）底边对齐屏幕底部往上 60pt
+- (void)setFrame:(CGRect)frame {
+    if (frame.origin.y > 400.0 && frame.origin.y < 850.0 && frame.size.height > 0) {
+        CGFloat _sh = self.window.bounds.size.height;
+        if (_sh < 100.0) _sh = [UIScreen mainScreen].bounds.size.height;
+        CGFloat _targetY = _sh - 60.0 - frame.size.height;
+        if (_targetY > 0 && fabs(frame.origin.y - _targetY) > 1.0) {
+            frame.origin.y = _targetY;
+        }
+    }
+    %orig(frame);
+}
+
 %end
 
 %hook IESLiveStackView
@@ -17188,12 +17202,12 @@ static void DYYYRemoveAppLifecycleObservers(void) {
             center.y -= gCurrentTabBarHeight;
         }
     }
-    // v94: 进度条容器贴到屏幕底部往上 60pt
+    // v94: 底边对齐屏幕底部往上 60pt
     if (center.y > 500.0 && center.y < 850.0) {
         CGFloat _h = self.window.bounds.size.height;
         if (_h < 100.0) _h = [UIScreen mainScreen].bounds.size.height;
         CGFloat _half = self.bounds.size.height / 2.0;
-        center.y = _h - 60.0 - _half;
+        if (_half > 0) center.y = _h - 60.0 - _half;
     }
     %orig(center);
 }
@@ -17209,20 +17223,6 @@ static void DYYYRemoveAppLifecycleObservers(void) {
     %orig(forceHide ? YES : hidden);
 }
 
-// v94: 底部进度条容器贴到屏幕底部往上 60pt（图文/视频详情页）
-- (void)setFrame:(CGRect)frame {
-    if (frame.origin.y > 500.0 && frame.origin.y < 850.0) {
-        CGFloat _dyyyV94ScreenH = self.window.bounds.size.height;
-        if (_dyyyV94ScreenH < 100.0) {
-            _dyyyV94ScreenH = [UIScreen mainScreen].bounds.size.height;
-        }
-        CGFloat _dyyyV94TargetY = _dyyyV94ScreenH - 60.0 - frame.size.height;
-        if (_dyyyV94TargetY > 0) {
-            frame.origin.y = _dyyyV94TargetY;
-        }
-    }
-    %orig(frame);
-}
 
 %end
 
