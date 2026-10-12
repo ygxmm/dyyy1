@@ -14497,49 +14497,6 @@ static void DYYYProbeLog(NSString *fmt, ...) {
 // 原理：抖音自己用 transform 做布局，我们在其基础上再 +60pt
 // 幂等：transform 已达标则跳过，不触发重排 → 不卡帧
 // ============================================================
-@implementation AWEPlayInteractionViewController (DYYYSearchShift)
-
-- (void)dyyy_applySearchShiftIfNeeded {
-    static char kIsSearchKey;
-    static char kOrigTransformKey;
-
-    if (!self.isViewLoaded) return;
-
-    // 1) referString 只读一次，缓存命中结果
-    NSNumber *isSearch = objc_getAssociatedObject(self, &kIsSearchKey);
-    if (!isSearch) {
-        NSString *refer = nil;
-        @try { refer = [self valueForKey:@"referString"]; } @catch (NSException *e) {}
-        if (![refer isKindOfClass:[NSString class]] || refer.length == 0) {
-            return;  // 还没准备好，下次再试
-        }
-        BOOL hit = [refer containsString:@"search"];
-        objc_setAssociatedObject(self, &kIsSearchKey, @(hit), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        isSearch = @(hit);
-        if (hit) {
-            DYYYProbeLog(@"v141: 命中搜索页，将启动 +60 位移");
-        }
-    }
-    if (!isSearch.boolValue) return;
-
-    // 2) 缓存抖音的原始 transform（第一次记录后不再变）
-    NSValue *origVal = objc_getAssociatedObject(self, &kOrigTransformKey);
-    if (!origVal) {
-        origVal = [NSValue valueWithCGAffineTransform:self.view.transform];
-        objc_setAssociatedObject(self, &kOrigTransformKey, origVal, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    CGAffineTransform orig = origVal.CGAffineTransformValue;
-    CGAffineTransform target = orig;
-    target.ty += 60.0;
-
-    // 3) 幂等检查：已达标直接返回
-    if (CGAffineTransformEqualToTransform(self.view.transform, target)) return;
-
-    // 4) 应用
-    self.view.transform = target;
-}
-
-@end
 
 // ============================================================
 // DYYY v141: 搜索页 UI 下移 60pt（幂等 transform，静态函数版）
