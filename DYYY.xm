@@ -18397,3 +18397,106 @@ static void new_cell_v140(id self, SEL _cmd) {
         }
     }
 }
+
+// ===================================================================
+// v141: cell 高度（用 heightForRowAtIndexPath，绝不冻屏）
+// -------------------------------------------------------------------
+// 关键：heightForRowAtIndexPath 是 UITableView 的只读 API
+// 只决定 cell 高度，不触发 layout 递归 → 不会死循环
+// ===================================================================
+
+static CGFloat DYYYv141TabBarHeight(void) {
+    // ① 抖音官方 API
+    @try {
+        Class cls = objc_getClass("IESECSystemHeightImpl");
+        if (cls && [cls respondsToSelector:@selector(getHostTabBarHeight)]) {
+            double h = ((double (*)(id, SEL))[cls methodForSelector:@selector(getHostTabBarHeight)])(cls, @selector(getHostTabBarHeight));
+            if (h > 30 && h < 150) return (CGFloat)h;
+        }
+    } @catch (NSException *e) {}
+    
+    // ② safeAreaInsets + 49
+    for (UIWindow *w in [UIApplication sharedApplication].windows) {
+        if (w.isKeyWindow) {
+            CGFloat sa = w.safeAreaInsets.bottom;
+            if (sa > 0) return sa + 49.0;
+        }
+    }
+    return 60.0;
+}
+
+// 检查 nav.topViewController 是图片页还是视频页
+static BOOL DYYYv141IsImagePage(UIViewController *detailVC) {
+    // 遍历子 VC 找 RichContent
+    for (UIViewController *child in detailVC.childViewControllers) {
+        NSString *cls = NSStringFromClass([child class]);
+        if ([cls containsString:@"RichContent"] ||
+            [cls containsString:@"AWEMultiContentImpl"]) {
+            return YES;
+        }
+        // 递归找
+        if (DYYYv141IsImagePage(child)) return YES;
+    }
+    return NO;
+}
+
+// ====== hook heightForRowAtIndexPath ======
+static double (*orig_h4r_v141)(id, SEL, id, id);
+
+static double new_h4r_v141(id self, SEL _cmd, id tableView, id indexPath) {
+    double orig = orig_h4r_v141(self, _cmd, tableView, indexPath);
+    
+    // self = AWEAwemeDetailTableViewController
+    @try {
+        // 检查顶部 VC 是不是搜索页
+        UINavigationController *nav = [self valueForKey:@"navigationController"];
+        UIViewController *top = nav.topViewController;
+        while (top && top.presentedViewController) {
+            top = top.presentedViewController;
+        }
+        
+        BOOL fromSearch = NO;
+        if (top) {
+            @try {
+                id ctx = [top valueForKey:@"context"];
+                NSString *ref = [ctx valueForKey:@"referString"];
+                if ([ref isKindOfClass:[NSString class]] &&
+                    [(NSString *)ref containsString:@"search"]) {
+                    fromSearch = YES;
+                }
+            } @catch (NSException *e) {}
+            if (!fromSearch) {
+                @try {
+                    NSString *ref = [top valueForKey:@"referString"];
+                    if ([ref isKindOfClass:[NSString class]] &&
+                        [(NSString *)ref containsString:@"search"]) {
+                        fromSearch = YES;
+                    }
+                } @catch (NSException *e) {}
+            }
+        }
+        
+        if (!fromSearch) return orig;
+        
+        // 搜索页：判断图片/视频
+        BOOL isImage = DYYYv141IsImagePage(top);
+        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+        CGFloat tabBarH = DYYYv141TabBarHeight();
+        
+        return isImage ? (screenH + tabBarH) : screenH;
+    } @catch (NSException *e) {}
+    
+    return orig;
+}
+
+%ctor {
+    Class c = objc_getClass("AWEAwemeDetailTableViewController");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(tableView:heightForRowAtIndexPath:));
+        if (m) {
+            orig_h4r_v141 = (double (*)(id, SEL, id, id))method_getImplementation(m);
+            method_setImplementation(m, (IMP)new_h4r_v141);
+            NSLog(@"[DYYY] v141 heightForRow hook installed");
+        }
+    }
+}
