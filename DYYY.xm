@@ -5256,10 +5256,6 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
 %hook AWEPlayInteractionProgressContainerView
 - (void)layoutSubviews {
     %orig;
-    // v100: transform 上移 60（约束无法覆盖 transform）
-    if (self.frame.origin.y > 400.0 && self.frame.origin.y < 850.0) {
-        self.transform = CGAffineTransformMakeTranslation(0, -60);
-    }
     DYYYApplyFloatClearProgressStateToView(self);
 
     if (![[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYEnableFullScreen"]) {
@@ -5283,7 +5279,6 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
         v.backgroundColor = [UIColor clearColor];
     }
 }
-
 
 %end
 
@@ -16919,7 +16914,6 @@ static void DYYYRemoveAppLifecycleObservers(void) {
     return originalSubviews;
 }
 
-
 %end
 
 %hook IESLiveStackView
@@ -17207,8 +17201,6 @@ static void DYYYRemoveAppLifecycleObservers(void) {
     BOOL forceHide = DYYYGetBool(@"DYYYHideDotsIndicator");
     %orig(forceHide ? YES : hidden);
 }
-
-
 %end
 
 %hook AWELandscapeFeedEntryView
@@ -18017,3 +18009,4 @@ static void DYYYV54Log(NSString *fmt, ...) {
         fclose(fp);
     }
 }
+
