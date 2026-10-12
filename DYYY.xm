@@ -16335,7 +16335,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 }
 
 
-
 %end
 
 %hook AWEAwemePlayVideoViewController
@@ -17999,7 +17998,6 @@ static void _m_v29(id self, SEL _cmd) {
 }
 
 
-
 // 写沙盒日志（动态路径，不写死）
 static void DYYYV54Log(NSString *fmt, ...) {
     @autoreleasepool {
@@ -18018,30 +18016,40 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
-// >>> DYYY_V136_START
-// 搜索页 cell 高度撑到 912，让 RichContent 容器到 852
-static double (*orig_h4r_v136)(id, SEL, id, id);
 
-static double new_h4r_v136(id self, SEL _cmd, id tableView, id indexPath) {
-    double orig = orig_h4r_v136(self, _cmd, tableView, indexPath);
-    @try {
-        NSString *refer = [self valueForKey:@"referString"] ?: @"";
-        if (![refer containsString:@"search"]) return orig;
-        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-        return screenH + 60.0;  // 852 + 60 = 912
-    } @catch (NSException *e) {}
+// ============================================================
+// DYYY v140: 搜索详情页底栏 UI 下移 60pt
+// 原理：改官方 offset 方法返回值 → Masonry 约束自动重算
+// 只命中 referString 含 "search" 的页面，首页(homepage_hot)不命中
+// ============================================================
+
+%hook AWEPlayInteractionViewController
+
+- (double)p_stackContainerViewBottomOffset {
+    double orig = %orig;
+    NSString *refer = [self valueForKey:@"referString"];
+    if ([refer isKindOfClass:[NSString class]] && [refer containsString:@"search"]) {
+        return orig - 60.0;
+    }
     return orig;
 }
 
-%ctor {
-    Class c = objc_getClass("AWEAwemeDetailTableViewController");
-    if (c) {
-        Method m = class_getInstanceMethod(c, @selector(tableView:heightForRowAtIndexPath:));
-        if (m) {
-            orig_h4r_v136 = (double (*)(id, SEL, id, id))method_getImplementation(m);
-            method_setImplementation(m, (IMP)new_h4r_v136);
-            NSLog(@"[DYYY] v136 installed");
-        }
+- (double)p_leftAndRightContainerBottomOffset {
+    double orig = %orig;
+    NSString *refer = [self valueForKey:@"referString"];
+    if ([refer isKindOfClass:[NSString class]] && [refer containsString:@"search"]) {
+        return orig - 60.0;
     }
+    return orig;
 }
-// <<< DYYY_V136_END
+
+- (double)leftContainerBottomOffset {
+    double orig = %orig;
+    NSString *refer = [self valueForKey:@"referString"];
+    if ([refer isKindOfClass:[NSString class]] && [refer containsString:@"search"]) {
+        return orig - 60.0;
+    }
+    return orig;
+}
+
+%end
