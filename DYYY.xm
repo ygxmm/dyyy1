@@ -18011,13 +18011,29 @@ static void DYYYV54Log(NSString *fmt, ...) {
 }
 
 // >>> DYYY_PROBE_START
-// 探查:抖音自己的 API 实际值
+// 探查：抖音自己的 tableViewBottomMargin 和 cellVC 的实际值
+// 日志写到 <抖音沙盒>/Documents/dyyy_probe.log
 
-// hook tableVC 的 viewDidLayoutSubviews,打一次性日志
+static void DYYYProbeLog(NSString *fmt, ...) {
+    @autoreleasepool {
+        va_list ap; va_start(ap, fmt);
+        NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
+        va_end(ap);
+        NSString *home = NSHomeDirectory();
+        if (home.length == 0) return;
+        NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
+                          stringByAppendingPathComponent:@"dyyy_probe.log"];
+        FILE *fp = fopen(path.UTF8String, "a");
+        if (!fp) return;
+        fputs(([msg stringByAppendingString:@"
+"]).UTF8String, fp);
+        fclose(fp);
+    }
+}
+
 static void (*orig_probe_tableVC)(id, SEL);
 static void new_probe_tableVC(id self, SEL _cmd) {
     orig_probe_tableVC(self, _cmd);
-    
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
@@ -18025,17 +18041,14 @@ static void new_probe_tableVC(id self, SEL _cmd) {
         double margin = 0;
         @try { refer = [self valueForKey:@"referString"] ?: @""; } @catch (NSException *e) {}
         @try { margin = [[self valueForKey:@"tableViewBottomMargin"] doubleValue]; } @catch (NSException *e) {}
-        
-        NSLog(@"[DYYY PROBE] screenH=%.0f refer=%@ tableViewBottomMargin=%.1f",
-              screenH, refer, margin);
+        DYYYProbeLog(@"[TableVC] screenH=%.0f refer=%@ tableViewBottomMargin=%.1f",
+                     screenH, refer, margin);
     });
 }
 
-// hook cellVC,打一次性日志
 static void (*orig_probe_cellVC)(id, SEL);
 static void new_probe_cellVC(id self, SEL _cmd) {
     orig_probe_cellVC(self, _cmd);
-    
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         NSString *refer = @"";
@@ -18044,9 +18057,8 @@ static void new_probe_cellVC(id self, SEL _cmd) {
         UIView *cell = selfView.superview;
         CGFloat cellH = cell ? cell.bounds.size.height : -1;
         CGFloat selfH = selfView ? selfView.bounds.size.height : -1;
-        
-        NSLog(@"[DYYY PROBE cell] refer=%@ selfH=%.0f cellH=%.0f superCls=%@",
-              refer, selfH, cellH, cell ? NSStringFromClass([cell class]) : @"nil");
+        DYYYProbeLog(@"[CellVC] refer=%@ selfH=%.0f cellH=%.0f superCls=%@",
+                     refer, selfH, cellH, cell ? NSStringFromClass([cell class]) : @"nil");
     });
 }
 
@@ -18059,7 +18071,6 @@ static void new_probe_cellVC(id self, SEL _cmd) {
             method_setImplementation(m, (IMP)new_probe_tableVC);
         }
     }
-    
     Class c2 = objc_getClass("AWEAwemeDetailCellViewController");
     if (c2) {
         Method m = class_getInstanceMethod(c2, @selector(viewDidLayoutSubviews));
