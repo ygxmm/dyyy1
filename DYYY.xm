@@ -18027,21 +18027,24 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
-
-
-// ===== v124: getImageContentInsets 纯 runtime 替换（绕过 Logos）=====
+// ===== v125: getImageContentInsets 纯 Runtime 替换 =====
 static UIEdgeInsets (*orig_getImageContentInsets)(id, SEL);
 
 static UIEdgeInsets new_getImageContentInsets(id self, SEL _cmd) {
     UIEdgeInsets insets = orig_getImageContentInsets(self, _cmd);
+    
     NSString *refer = @"";
     @try {
         id r = [self valueForKey:@"referString"];
-        if ([r isKindOfClass:[NSString class]]) refer = (NSString *)r;
+        if ([r isKindOfClass:[NSString class]]) {
+            refer = (NSString *)r;
+        }
     } @catch (NSException *e) {}
+    
     if ([refer containsString:@"search"]) {
         insets.bottom = 0.0;
     }
+    
     return insets;
 }
 
@@ -18050,7 +18053,8 @@ static UIEdgeInsets new_getImageContentInsets(id self, SEL _cmd) {
     if (cls) {
         Method m = class_getInstanceMethod(cls, @selector(getImageContentInsets));
         if (m) {
-            orig_getImageContentInsets = (UIEdgeInsets (*)(id, SEL))method_getImplementation(m);
+            orig_getImageContentInsets =
+                (UIEdgeInsets (*)(id, SEL))method_getImplementation(m);
             method_setImplementation(m, (IMP)new_getImageContentInsets);
         }
     }
