@@ -18027,69 +18027,54 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
-// ===== v132: 只撑 RichContent（不改 cell），避免视频拉伸 =====
+// ===== v133: 只对图片页 cell 撑高 912，视频页保持 852 =====
 
-// 判断搜索页
-static BOOL DYYYv132IsSearch(id self) {
-    NSString *refer = @"";
-    @try {
-        id r = [self valueForKey:@"referString"];
-        if ([r isKindOfClass:[NSString class]]) refer = (NSString *)r;
-    } @catch (NSException *e) {}
-    return [refer containsString:@"search"];
-}
-
-// ===== ① AWEMultiContentImpl.RichContentNewListViewController (图片页) =====
-static void (*orig_RCL_v132_layout)(id, SEL);
-static void new_RCL_v132_layout(id self, SEL _cmd) {
-    orig_RCL_v132_layout(self, _cmd);
-    if (!DYYYv132IsSearch(self)) return;
-    
-    UIView *v = [self valueForKey:@"view"];
-    UIView *sv = v.superview;
-    if (!v || !sv) return;
-    
-    CGFloat targetH = sv.bounds.size.height;
-    CGRect f = v.frame;
-    if (targetH > 100.0 && fabs(f.size.height - targetH) > 0.5) {
-        f.size.height = targetH;
-        v.frame = f;
+// 递归检查 view 里有没有 RichContentContainer 子 VC 或类
+static BOOL DYYYv133HasRichContent(UIView *root, int depth) {
+    if (!root || depth > 30) return NO;
+    // 检查 root 的 nextResponder 链
+    UIResponder *r = root.nextResponder;
+    int d = 0;
+    while (r && d++ < 10) {
+        NSString *cls = NSStringFromClass([r class]);
+        if ([cls containsString:@"RichContentContainer"] ||
+            [cls containsString:@"RichContentNewList"]) {
+            return YES;
+        }
+        r = [r nextResponder];
     }
+    // 递归子视图
+    for (UIView *sub in root.subviews) {
+        if (DYYYv133HasRichContent(sub, depth + 1)) return YES;
+    }
+    return NO;
 }
 
-// ===== ② AWEAwemeDetailTableViewCell (视频页) =====
-// 恢复 cell 高度为 852，让视频不被拉伸
-static void (*orig_cell_v132_layout)(id, SEL);
-static void new_cell_v132_layout(id self, SEL _cmd) {
-    orig_cell_v132_layout(self, _cmd);
+static void (*orig_cell_v133)(id, SEL);
+static void new_cell_v133(id self, SEL _cmd) {
+    orig_cell_v133(self, _cmd);
     
-    CGRect f = [(UIView *)self frame];
+    UIView *cell = (UIView *)self;
+    BOOL hasRichContent = DYYYv133HasRichContent(cell, 0);
+    
     CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-    if (fabs(f.size.height - screenH) > 1.0) {
-        f.size.height = screenH;
-        [(UIView *)self setFrame:f];
+    CGFloat targetH = hasRichContent ? screenH + 60.0 : screenH;
+    
+    CGRect f = cell.frame;
+    if (fabs(f.size.height - targetH) > 1.0) {
+        f.size.height = targetH;
+        cell.frame = f;
     }
 }
 
 %ctor {
-    // ① 图片页：撑 RichContent
-    Class c1 = objc_getClass("AWEMultiContentImpl.RichContentNewListViewController");
-    if (!c1) c1 = objc_getClass("_TtC19AWEMultiContentImpl32RichContentNewListViewController");
-    if (c1) {
-        Method m = class_getInstanceMethod(c1, @selector(viewDidLayoutSubviews));
+    Class c = objc_getClass("AWEAwemeDetailTableViewCell");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(layoutSubviews));
         if (m) {
-            orig_RCL_v132_layout = (void (*)(id, SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)new_RCL_v132_layout);
-        }
-    }
-    
-    // ② 视频页：cell 高度强制回 852
-    Class c2 = objc_getClass("AWEAwemeDetailTableViewCell");
-    if (c2) {
-        Method m = class_getInstanceMethod(c2, @selector(layoutSubviews));
-        if (m) {
-            orig_cell_v132_layout = (void (*)(id, SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)new_cell_v132_layout);
+            orig_cell_v133 = (void (*)(id, SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)new_cell_v133);
+            NSLog(@"[DYYY] v133 cell hook installed");
         }
     }
 }
