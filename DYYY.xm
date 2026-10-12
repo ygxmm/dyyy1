@@ -14829,7 +14829,7 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
     %orig;
 }
 
-%end
+- (double)p_stackContainerViewBottomOffset {    double orig = %orig;    NSString *refer = [self valueForKey:@"referString"];    if ([refer isKindOfClass:[NSString class]] && [refer containsString:@"search"]) {        return orig - 60.0;    }    return orig;}- (double)p_leftAndRightContainerBottomOffset {    double orig = %orig;    NSString *refer = [self valueForKey:@"referString"];    if ([refer isKindOfClass:[NSString class]] && [refer containsString:@"search"]) {        return orig - 60.0;    }    return orig;}- (double)leftContainerBottomOffset {    double orig = %orig;    NSString *refer = [self valueForKey:@"referString"];    if ([refer isKindOfClass:[NSString class]] && [refer containsString:@"search"]) {        return orig - 60.0;    }    return orig;}%end
 
 static void DYYYUpdateManagedPrivacyHalfScreenAppearance(AFDPrivacyHalfScreenViewController *viewController) {
     BOOL isDarkMode = [DYYYUtils isDarkMode];
@@ -18015,41 +18015,3 @@ static void DYYYV54Log(NSString *fmt, ...) {
         fclose(fp);
     }
 }
-
-
-// ============================================================
-// DYYY v140: 搜索详情页底栏 UI 下移 60pt
-// 原理：改官方 offset 方法返回值 → Masonry 约束自动重算
-// 只命中 referString 含 "search" 的页面，首页(homepage_hot)不命中
-// ============================================================
-
-%hook AWEPlayInteractionViewController
-
-- (double)p_stackContainerViewBottomOffset {
-    double orig = %orig;
-    NSString *refer = [self valueForKey:@"referString"];
-    if ([refer isKindOfClass:[NSString class]] && [refer containsString:@"search"]) {
-        return orig - 60.0;
-    }
-    return orig;
-}
-
-- (double)p_leftAndRightContainerBottomOffset {
-    double orig = %orig;
-    NSString *refer = [self valueForKey:@"referString"];
-    if ([refer isKindOfClass:[NSString class]] && [refer containsString:@"search"]) {
-        return orig - 60.0;
-    }
-    return orig;
-}
-
-- (double)leftContainerBottomOffset {
-    double orig = %orig;
-    NSString *refer = [self valueForKey:@"referString"];
-    if ([refer isKindOfClass:[NSString class]] && [refer containsString:@"search"]) {
-        return orig - 60.0;
-    }
-    return orig;
-}
-
-%end
