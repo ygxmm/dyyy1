@@ -18033,7 +18033,13 @@ static void DYYYV54Log(NSString *fmt, ...) {
 
 - (UIEdgeInsets)getImageContentInsets {
     UIEdgeInsets insets = %orig;
-    NSString *refer = self.referString ?: @"";
+    NSString *refer = @"";
+    @try {
+        id r = [self valueForKey:@"referString"];
+        if ([r isKindOfClass:[NSString class]]) {
+            refer = (NSString *)r;
+        }
+    } @catch (NSException *e) {}
     if ([refer containsString:@"search"]) {
         insets.bottom = 0.0;
     }
