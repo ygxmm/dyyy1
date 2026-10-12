@@ -18027,35 +18027,36 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
-// ===== v125: getImageContentInsets 纯 Runtime 替换 =====
-static UIEdgeInsets (*orig_getImageContentInsets)(id, SEL);
+// ===== v126: 干掉 AWEAwemeDetailTableViewController 里 60pt 隐藏占位 =====
+static void (*orig_detailVC_viewDidLayoutSubviews)(id, SEL);
 
-static UIEdgeInsets new_getImageContentInsets(id self, SEL _cmd) {
-    UIEdgeInsets insets = orig_getImageContentInsets(self, _cmd);
+static void new_detailVC_viewDidLayoutSubviews(id self, SEL _cmd) {
+    orig_detailVC_viewDidLayoutSubviews(self, _cmd);
     
-    NSString *refer = @"";
-    @try {
-        id r = [self valueForKey:@"referString"];
-        if ([r isKindOfClass:[NSString class]]) {
-            refer = (NSString *)r;
+    UIView *v = [self valueForKey:@"view"];
+    if (!v) return;
+    
+    for (UIView *sub in v.subviews) {
+        CGFloat y = sub.frame.origin.y;
+        CGFloat h = sub.frame.size.height;
+        // 找: y≈792, h≈60, 隐藏的, 无子视图
+        if (y > 780.0 && y < 800.0 && h > 55.0 && h < 65.0 &&
+            sub.hidden && sub.subviews.count == 0) {
+            CGRect f = sub.frame;
+            f.size.height = 0.0;
+            sub.frame = f;
         }
-    } @catch (NSException *e) {}
-    
-    if ([refer containsString:@"search"]) {
-        insets.bottom = 0.0;
     }
-    
-    return insets;
 }
 
 %ctor {
-    Class cls = objc_getClass("RichContentContainerViewController");
+    Class cls = objc_getClass("AWEAwemeDetailTableViewController");
     if (cls) {
-        Method m = class_getInstanceMethod(cls, @selector(getImageContentInsets));
+        Method m = class_getInstanceMethod(cls, @selector(viewDidLayoutSubviews));
         if (m) {
-            orig_getImageContentInsets =
-                (UIEdgeInsets (*)(id, SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)new_getImageContentInsets);
+            orig_detailVC_viewDidLayoutSubviews =
+                (void (*)(id, SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)new_detailVC_viewDidLayoutSubviews);
         }
     }
 }
