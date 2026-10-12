@@ -15654,8 +15654,27 @@ static Class tabBarButtonClass = nil;
     %orig;
 
     if (DYYYGetBool(@"DYYYHideComment")) {
-        [self removeFromSuperview];
-        return;
+        // v94: 图文页不隐藏评论框，其他页面保持隐藏
+        BOOL isRichContentPage = NO;
+        UIView *ancestor = self.superview;
+        int d = 0;
+        while (ancestor && d++ < 15) {
+            NSString *cls = NSStringFromClass([ancestor class]);
+            if ([cls containsString:@"RichContentContainer"] ||
+                [cls containsString:@"AWEMultiContentImpl.RichContent"]) {
+                if (fabs(ancestor.bounds.size.height - 792.0) < 5.0) {
+                    isRichContentPage = YES;
+                }
+                break;
+            }
+            ancestor = ancestor.superview;
+        }
+
+        if (!isRichContentPage) {
+            [self removeFromSuperview];
+            return;
+        }
+        // 图文页：不隐藏，继续往下执行
     }
 
     CGAffineTransform newTransform = CGAffineTransformMakeTranslation(0, originalTabBarHeight - gCurrentTabBarHeight);
