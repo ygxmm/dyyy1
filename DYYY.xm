@@ -16162,35 +16162,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 - (void)viewDidLayoutSubviews {
     %orig;
     
-    // >>> DYYY_V134_START
-    // 只对搜索页的视频下移 60（图文不动）
-    @try {
-        NSString *refer = [self valueForKey:@"referString"] ?: @"";
-        if ([refer containsString:@"search"]) {
-            // 检查是否图文（awemeType == 68 = 图文）
-            id model = [self valueForKey:@"model"];
-            long long awemeType = 0;
-            @try { awemeType = [[model valueForKey:@"awemeType"] longLongValue]; } @catch (NSException *e) {}
-            
-            if (awemeType != 68) {
-                // 视频：下移 60
-                if (fabs(self.view.transform.ty - 60.0) > 0.5) {
-                    self.view.transform = CGAffineTransformMakeTranslation(0, 60);
-                }
-            } else {
-                // 图文：归零（修复 cell 复用残留）
-                if (!CGAffineTransformIsIdentity(self.view.transform)) {
-                    self.view.transform = CGAffineTransformIdentity;
-                }
-            }
-        } else {
-            // 非搜索页：归零
-            if (!CGAffineTransformIsIdentity(self.view.transform)) {
-                self.view.transform = CGAffineTransformIdentity;
-            }
-        }
-    } @catch (NSException *e) {}
-    // <<< DYYY_V134_END
 
     
 
@@ -16887,6 +16858,52 @@ static void DYYYRemoveAppLifecycleObservers(void) {
     }
 
     %orig;
+    
+    // >>> DYYY_V135_START
+    // 只对搜索页视频的 stack 下移到底部（不改 view）
+    @try {
+        CGFloat w = self.bounds.size.width;
+        CGFloat h = self.bounds.size.height;
+        // 过滤：跳过 h=0 的时间条
+        if (w < 40.0 || h < 30.0) return;
+        
+        // 找 referString + model.awemeType
+        NSString *refer = @"";
+        long long awemeType = -1;
+        UIResponder *r = self.nextResponder;
+        int d = 0;
+        while (r && d++ < 20) {
+            NSString *cls = NSStringFromClass([r class]);
+            if ([cls containsString:@"InteractionViewController"]) {
+                @try { refer = [r valueForKey:@"referString"] ?: @""; } @catch (NSException *e) {}
+                @try {
+                    id model = [r valueForKey:@"model"];
+                    if (model) awemeType = [[model valueForKey:@"awemeType"] longLongValue];
+                } @catch (NSException *e) {}
+                break;
+            }
+            r = [r nextResponder];
+        }
+        
+        BOOL shouldMove = [refer containsString:@"search"] && awemeType != 68;
+        
+        if (shouldMove) {
+            CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+            CGFloat targetBottom = screenH - 0.3;
+            CGFloat curCenterY = self.center.y;
+            CGFloat curBottom = curCenterY + self.bounds.size.height / 2.0 + self.transform.ty;
+            CGFloat dy = targetBottom - curBottom;
+            if (fabs(dy) > 0.5) {
+                self.transform = CGAffineTransformMakeTranslation(0, self.transform.ty + dy);
+            }
+        } else {
+            if (!CGAffineTransformIsIdentity(self.transform)) {
+                self.transform = CGAffineTransformIdentity;
+            }
+        }
+    } @catch (NSException *e) {}
+    // <<< DYYY_V135_END
+
 
     UIViewController *viewController = [DYYYUtils firstAvailableViewControllerFromView:self];
 
