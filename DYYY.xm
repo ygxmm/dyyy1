@@ -17231,6 +17231,28 @@ static void DYYYRemoveAppLifecycleObservers(void) {
             center.y -= gCurrentTabBarHeight;
         }
     }
+    // v115: 搜索页图片翻页进度条下移12
+    {
+        NSString *dyyyRef115 = @"";
+        UIResponder *dyyyR115 = self.nextResponder;
+        int dyyyD115 = 0;
+        while (dyyyR115 && dyyyD115++ < 20) {
+            NSString *dyyyCls115 = NSStringFromClass([dyyyR115 class]);
+            if ([dyyyCls115 containsString:@"InteractionViewController"]) {
+                @try {
+                    id dyyyVC115 = (id)dyyyR115;
+                    if ([dyyyVC115 respondsToSelector:@selector(referString)]) {
+                        dyyyRef115 = [dyyyVC115 performSelector:@selector(referString)] ?: @"";
+                    }
+                } @catch (NSException *e) {}
+                break;
+            }
+            dyyyR115 = [dyyyR115 nextResponder];
+        }
+        if ([dyyyRef115 containsString:@"search"] && center.y > 500.0 && self.bounds.size.height > 0.0) {
+            center.y += 12.0;
+        }
+    }
     %orig(center);
 }
 
