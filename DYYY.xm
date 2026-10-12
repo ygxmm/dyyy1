@@ -15654,27 +15654,8 @@ static Class tabBarButtonClass = nil;
     %orig;
 
     if (DYYYGetBool(@"DYYYHideComment")) {
-        // v94: 图文页不隐藏评论框，其他页面保持隐藏
-        BOOL isRichContentPage = NO;
-        UIView *ancestor = self.superview;
-        int d = 0;
-        while (ancestor && d++ < 15) {
-            NSString *cls = NSStringFromClass([ancestor class]);
-            if ([cls containsString:@"RichContentContainer"] ||
-                [cls containsString:@"AWEMultiContentImpl.RichContent"]) {
-                if (fabs(ancestor.bounds.size.height - 792.0) < 5.0) {
-                    isRichContentPage = YES;
-                }
-                break;
-            }
-            ancestor = ancestor.superview;
-        }
-
-        if (!isRichContentPage) {
-            [self removeFromSuperview];
-            return;
-        }
-        // 图文页：不隐藏，继续往下执行
+        [self removeFromSuperview];
+        return;
     }
 
     CGAffineTransform newTransform = CGAffineTransformMakeTranslation(0, originalTabBarHeight - gCurrentTabBarHeight);
@@ -16269,8 +16250,8 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
     // DYYY修复：全屏开关打开时，强制走 if 分支，UI层撑满852
     // 详情页原生走 else 是 732，比推荐页少120pt，这里统一到 852
-    // v95: UI 层高度完全跟随 superview（视频页 852，图文页 792）
-    frame.size.height = superviewHeight;
+    // v92: UI 层保留底栏 60pt，进度条不再贴屏底
+    frame.size.height = superviewHeight - 60.0;
 
     if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
         self.view.frame = frame;
@@ -18029,49 +18010,3 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
-
-// ===== v96: 详情页强制 desiredHeight = 0，尝试撑满图文页 =====
-#import <objc/runtime.h>
-
-static double (*orig_desiredHeight)(id, SEL);
-static BOOL (*orig_isDetailPage)(void);
-
-// 判断当前是不是在详情页（有 RichContent 容器）
-static BOOL dyyy_isDetailPage_v96(void) {
-    UIWindow *win = nil;
-    for (UIWindow *w in [UIApplication sharedApplication].windows) {
-        if (w.isKeyWindow) { win = w; break; }
-    }
-    if (!win) return NO;
-    NSMutableArray *q = [NSMutableArray arrayWithObject:win];
-    int s = 0;
-    while (q.count > 0 && s++ < 500) {
-        UIView *v = q.firstObject;
-        [q removeObjectAtIndex:0];
-        NSString *cls = NSStringFromClass([v class]);
-        if ([cls containsString:@"RichContentContainer"] ||
-            [cls containsString:@"AWEMultiContentImpl.RichContent"]) {
-            if (fabs(v.bounds.size.height - 792.0) < 5.0) return YES;
-        }
-        for (UIView *sub in v.subviews) [q addObject:sub];
-    }
-    return NO;
-}
-
-static double new_desiredHeight(id self, SEL _cmd) {
-    if (dyyy_isDetailPage_v96()) {
-        return 0.0;
-    }
-    if (orig_desiredHeight) return orig_desiredHeight(self, _cmd);
-    return 0.0;
-}
-
-%ctor {
-    Class c = objc_getClass("AWENormalModeTabBar");
-    if (!c) return;
-    Method m = class_getInstanceMethod(c, @selector(desiredHeight));
-    if (m) {
-        orig_desiredHeight = (double (*)(id, SEL))method_getImplementation(m);
-        method_setImplementation(m, (IMP)new_desiredHeight);
-    }
-}
