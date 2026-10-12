@@ -18029,3 +18029,49 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
+
+// ===== v96: 详情页强制 desiredHeight = 0，尝试撑满图文页 =====
+#import <objc/runtime.h>
+
+static double (*orig_desiredHeight)(id, SEL);
+static BOOL (*orig_isDetailPage)(void);
+
+// 判断当前是不是在详情页（有 RichContent 容器）
+static BOOL dyyy_isDetailPage_v96(void) {
+    UIWindow *win = nil;
+    for (UIWindow *w in [UIApplication sharedApplication].windows) {
+        if (w.isKeyWindow) { win = w; break; }
+    }
+    if (!win) return NO;
+    NSMutableArray *q = [NSMutableArray arrayWithObject:win];
+    int s = 0;
+    while (q.count > 0 && s++ < 500) {
+        UIView *v = q.firstObject;
+        [q removeObjectAtIndex:0];
+        NSString *cls = NSStringFromClass([v class]);
+        if ([cls containsString:@"RichContentContainer"] ||
+            [cls containsString:@"AWEMultiContentImpl.RichContent"]) {
+            if (fabs(v.bounds.size.height - 792.0) < 5.0) return YES;
+        }
+        for (UIView *sub in v.subviews) [q addObject:sub];
+    }
+    return NO;
+}
+
+static double new_desiredHeight(id self, SEL _cmd) {
+    if (dyyy_isDetailPage_v96()) {
+        return 0.0;
+    }
+    if (orig_desiredHeight) return orig_desiredHeight(self, _cmd);
+    return 0.0;
+}
+
+%ctor {
+    Class c = objc_getClass("AWENormalModeTabBar");
+    if (!c) return;
+    Method m = class_getInstanceMethod(c, @selector(desiredHeight));
+    if (m) {
+        orig_desiredHeight = (double (*)(id, SEL))method_getImplementation(m);
+        method_setImplementation(m, (IMP)new_desiredHeight);
+    }
+}
