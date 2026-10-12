@@ -16859,50 +16859,6 @@ static void DYYYRemoveAppLifecycleObservers(void) {
 
     %orig;
     
-    // >>> DYYY_V135_START
-    // 只对搜索页视频的 stack 下移到底部（不改 view）
-    @try {
-        CGFloat w = self.bounds.size.width;
-        CGFloat h = self.bounds.size.height;
-        // 过滤：跳过 h=0 的时间条
-        if (w < 40.0 || h < 30.0) return;
-        
-        // 找 referString + model.awemeType
-        NSString *refer = @"";
-        long long awemeType = -1;
-        UIResponder *r = self.nextResponder;
-        int d = 0;
-        while (r && d++ < 20) {
-            NSString *cls = NSStringFromClass([r class]);
-            if ([cls containsString:@"InteractionViewController"]) {
-                @try { refer = [r valueForKey:@"referString"] ?: @""; } @catch (NSException *e) {}
-                @try {
-                    id model = [r valueForKey:@"model"];
-                    if (model) awemeType = [[model valueForKey:@"awemeType"] longLongValue];
-                } @catch (NSException *e) {}
-                break;
-            }
-            r = [r nextResponder];
-        }
-        
-        BOOL shouldMove = [refer containsString:@"search"] && awemeType != 68;
-        
-        if (shouldMove) {
-            CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-            CGFloat targetBottom = screenH - 0.3;
-            CGFloat curCenterY = self.center.y;
-            CGFloat curBottom = curCenterY + self.bounds.size.height / 2.0 + self.transform.ty;
-            CGFloat dy = targetBottom - curBottom;
-            if (fabs(dy) > 0.5) {
-                self.transform = CGAffineTransformMakeTranslation(0, self.transform.ty + dy);
-            }
-        } else {
-            if (!CGAffineTransformIsIdentity(self.transform)) {
-                self.transform = CGAffineTransformIdentity;
-            }
-        }
-    } @catch (NSException *e) {}
-    // <<< DYYY_V135_END
 
 
     UIViewController *viewController = [DYYYUtils firstAvailableViewControllerFromView:self];
@@ -18062,4 +18018,30 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
+// >>> DYYY_V136_START
+// 搜索页 cell 高度撑到 912，让 RichContent 容器到 852
+static double (*orig_h4r_v136)(id, SEL, id, id);
 
+static double new_h4r_v136(id self, SEL _cmd, id tableView, id indexPath) {
+    double orig = orig_h4r_v136(self, _cmd, tableView, indexPath);
+    @try {
+        NSString *refer = [self valueForKey:@"referString"] ?: @"";
+        if (![refer containsString:@"search"]) return orig;
+        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+        return screenH + 60.0;  // 852 + 60 = 912
+    } @catch (NSException *e) {}
+    return orig;
+}
+
+%ctor {
+    Class c = objc_getClass("AWEAwemeDetailTableViewController");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(tableView:heightForRowAtIndexPath:));
+        if (m) {
+            orig_h4r_v136 = (double (*)(id, SEL, id, id))method_getImplementation(m);
+            method_setImplementation(m, (IMP)new_h4r_v136);
+            NSLog(@"[DYYY] v136 installed");
+        }
+    }
+}
+// <<< DYYY_V136_END
