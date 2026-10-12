@@ -14829,7 +14829,34 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
     %orig;
 }
 
-- (double)p_stackContainerViewBottomOffset {    double orig = %orig;    NSString *refer = [self valueForKey:@"referString"];    if ([refer isKindOfClass:[NSString class]] && [refer containsString:@"search"]) {        return orig - 60.0;    }    return orig;}- (double)p_leftAndRightContainerBottomOffset {    double orig = %orig;    NSString *refer = [self valueForKey:@"referString"];    if ([refer isKindOfClass:[NSString class]] && [refer containsString:@"search"]) {        return orig - 60.0;    }    return orig;}- (double)leftContainerBottomOffset {    double orig = %orig;    NSString *refer = [self valueForKey:@"referString"];    if ([refer isKindOfClass:[NSString class]] && [refer containsString:@"search"]) {        return orig - 60.0;    }    return orig;}%end
+- (double)p_stackContainerViewBottomOffset {
+    double orig = %orig;
+    NSString *refer = [self valueForKey:@"referString"];
+    if ([refer isKindOfClass:[NSString class]] && [refer containsString:@"search"]) {
+        return orig - 60.0;
+    }
+    return orig;
+}
+
+- (double)p_leftAndRightContainerBottomOffset {
+    double orig = %orig;
+    NSString *refer = [self valueForKey:@"referString"];
+    if ([refer isKindOfClass:[NSString class]] && [refer containsString:@"search"]) {
+        return orig - 60.0;
+    }
+    return orig;
+}
+
+- (double)leftContainerBottomOffset {
+    double orig = %orig;
+    NSString *refer = [self valueForKey:@"referString"];
+    if ([refer isKindOfClass:[NSString class]] && [refer containsString:@"search"]) {
+        return orig - 60.0;
+    }
+    return orig;
+}
+
+%end
 
 static void DYYYUpdateManagedPrivacyHalfScreenAppearance(AFDPrivacyHalfScreenViewController *viewController) {
     BOOL isDarkMode = [DYYYUtils isDarkMode];
