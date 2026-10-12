@@ -5280,6 +5280,27 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
     }
 }
 
+// v94: 图文页进度条容器整体下移 60pt（沿 responder 链找 RichContent 父 VC）
+- (void)setFrame:(CGRect)frame {
+    BOOL _dyyyV94InRichContent = NO;
+    UIResponder *_dyyyV94R = self.nextResponder;
+    int _dyyyV94D = 0;
+    while (_dyyyV94R && _dyyyV94D++ < 40) {
+        NSString *_dyyyV94Cls = NSStringFromClass([_dyyyV94R class]);
+        if ([_dyyyV94Cls containsString:@"RichContentContainer"] ||
+            [_dyyyV94Cls containsString:@"RichContentNewList"] ||
+            [_dyyyV94Cls containsString:@"AWEMultiContentImpl.RichContent"]) {
+            _dyyyV94InRichContent = YES;
+            break;
+        }
+        _dyyyV94R = [_dyyyV94R nextResponder];
+    }
+    if (_dyyyV94InRichContent && frame.origin.y > 100.0) {
+        frame.origin.y += 60.0;
+    }
+    %orig(frame);
+}
+
 %end
 
 %hook AWEFeedProgressSlider
@@ -18009,27 +18030,3 @@ static void DYYYV54Log(NSString *fmt, ...) {
         fclose(fp);
     }
 }
-
-
-// ===== v94: 搜索页视频点赞进度条下移 60pt =====
-%hook AWEPlayInteractionProgressContainerView
-
-- (void)setFrame:(CGRect)frame {
-    BOOL _dyyyV94IsSearch = NO;
-    UIResponder *_dyyyV94R = self.nextResponder;
-    int _dyyyV94D = 0;
-    while (_dyyyV94R && _dyyyV94D++ < 40) {
-        NSString *_dyyyV94Cls = NSStringFromClass([_dyyyV94R class]);
-        if ([_dyyyV94Cls rangeOfString:@"Search" options:NSCaseInsensitiveSearch].location != NSNotFound) {
-            _dyyyV94IsSearch = YES;
-            break;
-        }
-        _dyyyV94R = [_dyyyV94R nextResponder];
-    }
-    if (_dyyyV94IsSearch) {
-        frame.origin.y += 60;
-    }
-    %orig(frame);
-}
-
-%end
