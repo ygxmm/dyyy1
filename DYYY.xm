@@ -17281,7 +17281,7 @@ static void DYYYExpandPlayInteraction(UIView *root) {
                 UIView *sv = vv.superview;
                 if (sv && vv.frame.size.height < sv.bounds.size.height - 1) {
                     CGRect f = vv.frame;
-                    f.origin.y = 0;
+                    // v91: 不再强制 y=0，让 v77 的 -60 transform 生效
                     f.size.height = sv.bounds.size.height;
                     vv.frame = f;
                     vv.clipsToBounds = NO;
