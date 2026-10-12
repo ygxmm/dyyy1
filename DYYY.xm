@@ -17673,61 +17673,26 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
         }
     }
     
-    CGRect _old = self.frame;
-    UIView *_sup = self.superview;
-    
-    if (_sup && _sup.bounds.size.height > 800.0 &&
-        fabs(frame.size.height - (_sup.bounds.size.height - 60.0)) < 2.0 &&
-        fabs(_old.size.height - _sup.bounds.size.height) < 2.0) {
-        
-        NSMutableString *_chain = [NSMutableString string];
-        UIResponder *_r = self.nextResponder;
-        int _d = 0;
-        while (_r && _d++ < 40) {
-            [_chain appendFormat:@"%@ > ", NSStringFromClass([_r class])];
-            _r = [_r nextResponder];
-        }
-        
-        NSString *_home = NSHomeDirectory();
-        if (_home.length > 0) {
-            NSString *_path = [[_home stringByAppendingPathComponent:@"Documents"]
-                               stringByAppendingPathComponent:@"dyyy_v100_diag.log"];
-            FILE *_fp = fopen(_path.UTF8String, "a");
-            if (_fp) {
-                NSString *_info = [NSString stringWithFormat:
-                    @"\n=== supH=%.1f ===\nChain: %@\n",
-                    _sup.bounds.size.height, _chain];
-                fputs(_info.UTF8String, _fp);
-                fclose(_fp);
-            }
-        }
+    // v102: 用 enableEnterProfile 区分首页/图文页
+    //   首页: enableEnterProfile = YES → 不动
+    //   图文页: enableEnterProfile = nil/NO → 撑满
+    id _enp = nil;
+    @try {
+        _enp = [self valueForKey:@"enableEnterProfile"];
+    } @catch (NSException *e) {
+        _enp = nil;
     }
+    BOOL _isHome = (_enp != nil && [_enp boolValue]);
     
-    if (_sup) {
-        CGFloat _supH = _sup.bounds.size.height;
-        BOOL _isRich = NO;
-        if (_supH > 800.0 && fabs(frame.size.height - (_supH - 60.0)) < 2.0) {
-            UIResponder *_rr = self.nextResponder;
-            int _dd = 0;
-            while (_rr && _dd++ < 30) {
-                NSString *_cls = NSStringFromClass([_rr class]);
-                if ([_cls containsString:@"RichContentContainer"] ||
-                    [_cls containsString:@"AWEMultiContentImpl.RichContent"] ||
-                    [_cls containsString:@"RichContentNewList"]) {
-                    _isRich = YES;
-                    break;
-                }
-                if ([_cls containsString:@"FeedRootViewController"] ||
-                    [_cls containsString:@"AWEFeedTableViewController"] ||
-                    [_cls containsString:@"AWEFeedContainerViewController"]) {
-                    break;
-                }
-                _rr = [_rr nextResponder];
+    if (!_isHome) {
+        UIView *_sup = self.superview;
+        if (_sup) {
+            CGFloat _supH = _sup.bounds.size.height;
+            if (_supH > 800.0 &&
+                fabs(frame.size.height - (_supH - 60.0)) < 2.0 &&
+                frame.origin.y == 0) {
+                frame.size.height = _supH;
             }
-        }
-        if (_isRich) {
-            frame.size.height = _supH;
-            frame.origin.y = 0;
         }
     }
     
