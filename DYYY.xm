@@ -18293,3 +18293,107 @@ static void new_cell_v138(id self, SEL _cmd) {
         }
     }
 }
+
+// ===================================================================
+// v140: cell 高度 (用抖音官方 IESECSystemHeightImpl.getHostTabBarHeight)
+// -------------------------------------------------------------------
+// 抖音官方 API: IESECSystemHeightImpl.getHostTabBarHeight
+// 直接返回宿主 TabBar 高度,不用遍历窗口
+// 首次调用缓存到 static,后续零开销
+// ===================================================================
+
+static CGFloat gDYYYv140TabBarH = -1;
+static CGFloat gDYYYv140ScreenHAtCache = -1;
+
+static CGFloat DYYYv140CalcTabBarHeight(void) {
+    // ① 抖音官方 API（最优先）
+    @try {
+        Class cls = objc_getClass("IESECSystemHeightImpl");
+        if (cls && [cls respondsToSelector:@selector(getHostTabBarHeight)]) {
+            IMP imp = [cls methodForSelector:@selector(getHostTabBarHeight)];
+            double (*fn)(id, SEL) = (double (*)(id, SEL))imp;
+            double h = fn(cls, @selector(getHostTabBarHeight));
+            if (h > 30 && h < 150) {
+                NSLog(@"[DYYY] v140 got tabBarH from IESECSystemHeightImpl: %.0f", h);
+                return (CGFloat)h;
+            }
+        }
+    } @catch (NSException *e) {}
+
+    // ② 兜底1: safeAreaInsets + 49
+    @try {
+        for (UIWindow *w in [UIApplication sharedApplication].windows) {
+            if (w.isKeyWindow) {
+                CGFloat sa = w.safeAreaInsets.bottom;
+                if (sa > 0) return sa + 49.0;
+            }
+        }
+    } @catch (NSException *e) {}
+
+    // ③ 兜底2: 60（iOS 13+ 刘海屏标准）
+    return 60.0;
+}
+
+static CGFloat DYYYv140GetTabBarHeight(void) {
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    
+    // 首次或屏幕变了 → 重算
+    if (fabs(gDYYYv140ScreenHAtCache - screenH) > 1.0) {
+        gDYYYv140TabBarH = DYYYv140CalcTabBarHeight();
+        gDYYYv140ScreenHAtCache = screenH;
+        NSLog(@"[DYYY] v140 tabBarH cached: screen=%.0f tabBar=%.0f",
+              screenH, gDYYYv140TabBarH);
+    }
+    
+    return gDYYYv140TabBarH;
+}
+
+static BOOL DYYYv140HasRichContent(UIView *root, int depth) {
+    if (!root || depth > 30) return NO;
+    UIResponder *r = root.nextResponder;
+    int d = 0;
+    while (r && d++ < 10) {
+        NSString *cls = NSStringFromClass([r class]);
+        if ([cls containsString:@"RichContentContainer"] ||
+            [cls containsString:@"RichContentNewList"]) {
+            return YES;
+        }
+        r = [r nextResponder];
+    }
+    for (UIView *sub in root.subviews) {
+        if (DYYYv140HasRichContent(sub, depth + 1)) return YES;
+    }
+    return NO;
+}
+
+static void (*orig_cell_v140)(id, SEL);
+
+static void new_cell_v140(id self, SEL _cmd) {
+    orig_cell_v140(self, _cmd);
+    
+    UIView *cell = (UIView *)self;
+    BOOL isImagePage = DYYYv140HasRichContent(cell, 0);
+    
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    CGFloat tabBarH = DYYYv140GetTabBarHeight();
+    
+    CGFloat targetH = isImagePage ? (screenH + tabBarH) : screenH;
+    
+    CGRect f = cell.frame;
+    if (fabs(f.size.height - targetH) > 1.0) {
+        f.size.height = targetH;
+        cell.frame = f;
+    }
+}
+
+%ctor {
+    Class c = objc_getClass("AWEAwemeDetailTableViewCell");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(layoutSubviews));
+        if (m) {
+            orig_cell_v140 = (void (*)(id, SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)new_cell_v140);
+            NSLog(@"[DYYY] v140 installed");
+        }
+    }
+}
