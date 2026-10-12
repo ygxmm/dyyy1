@@ -16159,6 +16159,23 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
     }
 }
 
+// v112: 搜索页改 stack 底部偏移，让底栏自动往下对齐
+- (double)p_stackContainerViewBottomOffset {
+    double orig = %orig;
+    if ([self.referString containsString:@"search"]) {
+        return MAX(orig - 12.0, 0.0);
+    }
+    return orig;
+}
+
+- (double)p_leftAndRightContainerBottomOffset {
+    double orig = %orig;
+    if ([self.referString containsString:@"search"]) {
+        return MAX(orig - 12.0, 0.0);
+    }
+    return orig;
+}
+
 - (void)viewDidLayoutSubviews {
     %orig;
 
