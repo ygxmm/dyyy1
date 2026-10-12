@@ -18050,7 +18050,7 @@ static UIEdgeInsets new_getImageContentInsets(id self, SEL _cmd) {
     if (cls) {
         Method m = class_getInstanceMethod(cls, @selector(getImageContentInsets));
         if (m) {
-            orig_getImageContentInsets = (void *)method_getImplementation(m);
+            orig_getImageContentInsets = (UIEdgeInsets (*)(id, SEL))method_getImplementation(m);
             method_setImplementation(m, (IMP)new_getImageContentInsets);
         }
     }
