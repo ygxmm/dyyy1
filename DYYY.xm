@@ -6576,6 +6576,20 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 %end
 
+// ===== v93fix: 4 个丢失的 group 定义（空实现，防 %init 报 undefined）=====
+%group DYYYHidePlusButtonStickerOverlay
+%end
+
+%group DYYYHidePlusButtonSpecialPlusManager
+%end
+
+%group DYYYHidePlusButtonBigAnimation
+%end
+
+%group DYYYHidePlusButtonInnerBubble
+%end
+
+
 %ctor {
     [DYYYLoginBypassManager configureInitialStateIfNeeded];
 
