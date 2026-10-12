@@ -16162,6 +16162,53 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 - (void)viewDidLayoutSubviews {
     %orig;
     
+    // >>> DYYY_DIAG_START
+    @try {
+        NSString *refer = [self valueForKey:@"referString"] ?: @"";
+        if ([refer isEqualToString:@"homepage_hot"] || [refer containsString:@"search"]) {
+            static NSMutableSet *logged = nil;
+            static dispatch_once_t initOnce;
+            dispatch_once(&initOnce, ^{ logged = [NSMutableSet set]; });
+            @synchronized (logged) {
+                if ([logged containsObject:refer]) return;
+                [logged addObject:refer];
+            }
+            
+            UIView *v = self.view;
+            NSMutableString *s = [NSMutableString string];
+            [s appendFormat:@"\n=== refer=%@ ===", refer];
+            [s appendFormat:@"\n  view.frame=(%.1f, %.1f, %.1f, %.1f)  transform.ty=%.1f  layer.m42=%.1f",
+             v.frame.origin.x, v.frame.origin.y, v.frame.size.width, v.frame.size.height,
+             v.transform.ty, v.layer.transform.m42];
+            [s appendFormat:@"\n  superview.frame=(%.1f, %.1f, %.1f, %.1f)  cls=%@",
+             v.superview.frame.origin.x, v.superview.frame.origin.y,
+             v.superview.frame.size.width, v.superview.frame.size.height,
+             NSStringFromClass([v.superview class])];
+            for (UIView *sub in v.subviews) {
+                NSString *cls = NSStringFromClass([sub class]);
+                if ([cls containsString:@"Progress"] ||
+                    [cls containsString:@"ElementStack"] ||
+                    [cls containsString:@"StoryContainer"]) {
+                    [s appendFormat:@"\n    %@  frame=(%.1f, %.1f, %.1f, %.1f)",
+                     cls, sub.frame.origin.x, sub.frame.origin.y,
+                     sub.frame.size.width, sub.frame.size.height];
+                }
+            }
+            NSString *home = NSHomeDirectory();
+            if (home.length > 0) {
+                NSString *p = [[home stringByAppendingPathComponent:@"Documents"]
+                               stringByAppendingPathComponent:@"dyyy_diag.log"];
+                FILE *fp = fopen(p.UTF8String, "a");
+                if (fp) {
+                    fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
+                    fclose(fp);
+                }
+            }
+        }
+    } @catch (NSException *e) {}
+    // <<< DYYY_DIAG_END
+
+    
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
         DYYYHideVideoAIParseBar(self.view);
     }
@@ -16331,70 +16378,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 }
 
 
-// >>> DYYY_DIAG_START
-// 只读日志：写 <抖音沙盒>/Documents/dyyy_diag.log
-// 记录首页 vs 搜索页的互动层/进度条 实际位置
-
-static void DYYYDiag(NSString *line) {
-    @autoreleasepool {
-        NSString *home = NSHomeDirectory();
-        if (home.length == 0) return;
-        NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
-                          stringByAppendingPathComponent:@"dyyy_diag.log"];
-        FILE *fp = fopen(path.UTF8String, "a");
-        if (!fp) return;
-        fputs(([line stringByAppendingString:@"\n"]).UTF8String, fp);
-        fclose(fp);
-    }
-}
-
-- (void)viewDidLayoutSubviews {
-    %orig;
-    @try {
-        NSString *refer = [self valueForKey:@"referString"] ?: @"";
-        // 只追踪首页/搜索页
-        if (![refer isEqualToString:@"homepage_hot"] &&
-            ![refer containsString:@"search"]) {
-            return;
-        }
-        // 每个 refer 只打一次
-        static NSMutableSet *logged = nil;
-        static dispatch_once_t initOnce;
-        dispatch_once(&initOnce, ^{ logged = [NSMutableSet set]; });
-        @synchronized (logged) {
-            if ([logged containsObject:refer]) return;
-            [logged addObject:refer];
-        }
-        
-        UIView *v = self.view;
-        NSMutableString *s = [NSMutableString string];
-        [s appendFormat:@"\n=== refer=%@ ===", refer];
-        [s appendFormat:@"\n  view.frame=(%.1f, %.1f, %.1f, %.1f)  transform.ty=%.1f  layer.ty=%.1f",
-         v.frame.origin.x, v.frame.origin.y, v.frame.size.width, v.frame.size.height,
-         v.transform.ty, v.layer.transform.m42];
-        [s appendFormat:@"\n  superview.frame=(%.1f, %.1f, %.1f, %.1f)  cls=%@",
-         v.superview.frame.origin.x, v.superview.frame.origin.y,
-         v.superview.frame.size.width, v.superview.frame.size.height,
-         NSStringFromClass([v.superview class])];
-        
-        // 列所有子视图
-        [s appendString:@"\n  --- subviews ---"];
-        for (UIView *sub in v.subviews) {
-            NSString *cls = NSStringFromClass([sub class]);
-            // 只挑关键类
-            if ([cls containsString:@"Progress"] ||
-                [cls containsString:@"ElementStack"] ||
-                [cls containsString:@"StoryContainer"]) {
-                [s appendFormat:@"\n    %@  frame=(%.1f, %.1f, %.1f, %.1f)",
-                 cls, sub.frame.origin.x, sub.frame.origin.y,
-                 sub.frame.size.width, sub.frame.size.height];
-            }
-        }
-        
-        DYYYDiag(s);
-    } @catch (NSException *e) {}
-}
-// <<< DYYY_DIAG_END
 
 %end
 
