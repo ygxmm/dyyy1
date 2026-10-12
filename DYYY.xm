@@ -17201,6 +17201,22 @@ static void DYYYRemoveAppLifecycleObservers(void) {
     BOOL forceHide = DYYYGetBool(@"DYYYHideDotsIndicator");
     %orig(forceHide ? YES : hidden);
 }
+
+// v94: 底部进度条容器贴到屏幕底部往上 60pt（图文/视频详情页）
+- (void)setFrame:(CGRect)frame {
+    if (frame.origin.y > 500.0 && frame.origin.y < 850.0) {
+        CGFloat _dyyyV94ScreenH = self.window.bounds.size.height;
+        if (_dyyyV94ScreenH < 100.0) {
+            _dyyyV94ScreenH = [UIScreen mainScreen].bounds.size.height;
+        }
+        CGFloat _dyyyV94TargetY = _dyyyV94ScreenH - 60.0 - frame.size.height;
+        if (_dyyyV94TargetY > 0) {
+            frame.origin.y = _dyyyV94TargetY;
+        }
+    }
+    %orig(frame);
+}
+
 %end
 
 %hook AWELandscapeFeedEntryView
