@@ -5256,32 +5256,6 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
 %hook AWEPlayInteractionProgressContainerView
 - (void)layoutSubviews {
     %orig;
-    
-    // v113: 搜索页进度条容器也下移 12（跟 stack 对齐）
-    {
-        NSString *dyyyRefer = @"";
-        UIResponder *r = self.nextResponder;
-        int d = 0;
-        while (r && d++ < 20) {
-            NSString *cls = NSStringFromClass([r class]);
-            if ([cls containsString:@"InteractionViewController"]) {
-                @try {
-                    id vc = (id)r;
-                    if ([vc respondsToSelector:@selector(referString)]) {
-                        dyyyRefer = [vc performSelector:@selector(referString)] ?: @"";
-                    }
-                } @catch (NSException *e) {}
-                break;
-            }
-            r = [r nextResponder];
-        }
-        if ([dyyyRefer containsString:@"search"]) {
-            self.transform = CGAffineTransformMakeTranslation(0, 12);
-        } else if (!CGAffineTransformIsIdentity(self.transform)) {
-            self.transform = CGAffineTransformIdentity;
-        }
-    }
-    
     DYYYApplyFloatClearProgressStateToView(self);
 
     if (![[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYEnableFullScreen"]) {
@@ -16185,25 +16159,25 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
     }
 }
 
-// v112: 搜索页改 stack 底部偏移，让底栏自动往下对齐
-- (double)p_stackContainerViewBottomOffset {
-    double orig = %orig;
-    if ([self.referString containsString:@"search"]) {
-        return MAX(orig - 12.0, 0.0);
-    }
-    return orig;
-}
-
-- (double)p_leftAndRightContainerBottomOffset {
-    double orig = %orig;
-    if ([self.referString containsString:@"search"]) {
-        return MAX(orig - 12.0, 0.0);
-    }
-    return orig;
-}
-
 - (void)viewDidLayoutSubviews {
     %orig;
+
+    // v116: 搜索页整层互动内容下移 12（视频层是兄弟，不受影响）
+    {
+        NSString *dyyyRefer = self.referString ?: @"";
+        BOOL dyyyFromSearch = [dyyyRefer containsString:@"search"];
+        if (dyyyFromSearch) {
+            if (fabs(self.view.transform.ty - 12.0) > 0.5 ||
+                fabs(self.view.transform.tx) > 0.5 ||
+                fabs(self.view.transform.a - 1.0) > 0.01) {
+                self.view.transform = CGAffineTransformMakeTranslation(0, 12);
+            }
+        } else {
+            if (!CGAffineTransformIsIdentity(self.view.transform)) {
+                self.view.transform = CGAffineTransformIdentity;
+            }
+        }
+    }
 
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
         DYYYHideVideoAIParseBar(self.view);
@@ -17229,28 +17203,6 @@ static void DYYYRemoveAppLifecycleObservers(void) {
         BOOL needsLegacyOffset = appVersion.length == 0 || [DYYYUtils compareVersion:appVersion toVersion:@"37.2.0"] == NSOrderedAscending;
         if (needsLegacyOffset && gCurrentTabBarHeight > 0) {
             center.y -= gCurrentTabBarHeight;
-        }
-    }
-    // v115: 搜索页图片翻页进度条下移12
-    {
-        NSString *dyyyRef115 = @"";
-        UIResponder *dyyyR115 = self.nextResponder;
-        int dyyyD115 = 0;
-        while (dyyyR115 && dyyyD115++ < 20) {
-            NSString *dyyyCls115 = NSStringFromClass([dyyyR115 class]);
-            if ([dyyyCls115 containsString:@"InteractionViewController"]) {
-                @try {
-                    id dyyyVC115 = (id)dyyyR115;
-                    if ([dyyyVC115 respondsToSelector:@selector(referString)]) {
-                        dyyyRef115 = [dyyyVC115 performSelector:@selector(referString)] ?: @"";
-                    }
-                } @catch (NSException *e) {}
-                break;
-            }
-            dyyyR115 = [dyyyR115 nextResponder];
-        }
-        if ([dyyyRef115 containsString:@"search"] && center.y > 500.0 && self.bounds.size.height > 0.0) {
-            center.y += 12.0;
         }
     }
     %orig(center);
