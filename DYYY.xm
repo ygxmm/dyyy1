@@ -18027,44 +18027,126 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
-// ===== v133: 只对图片页 cell 撑高 912，视频页保持 852 =====
+// ===================================================================
+// v134: 详情页 cell 高度自动推算（不硬编码任何数字）
+// -------------------------------------------------------------------
+// 原理：
+//   第一次 layout 时，记录 cell 的"原生高度"和 RichContent 的"原生高度"
+//   gap = cell原生 - RichContent原生（这是抖音给 TabBar 预留的空间）
+//
+//   图片页：cell = 屏高 + gap（RichContent 正好撑满到屏高）
+//   视频页：cell = 屏高（视频正好撑满不变形）
+//
+//   所有数值都动态算，适配任何机型、任何抖音版本
+// ===================================================================
 
-// 递归检查 view 里有没有 RichContentContainer 子 VC 或类
-static BOOL DYYYv133HasRichContent(UIView *root, int depth) {
-    if (!root || depth > 30) return NO;
-    // 检查 root 的 nextResponder 链
+// 用 associatedObject 存每个 cell 的基准值
+static char kDYYYv134CellBaseH;    // cell 原生高度
+static char kDYYYv134RichBaseH;    // RichContent 原生高度
+
+// 递归找 view 树里的 RichContent 容器
+static UIView *DYYYv134FindRichContent(UIView *root, int depth) {
+    if (!root || depth > 30) return nil;
+    
+    // 从当前 view 的 nextResponder 链找 RichContent VC 的 view
     UIResponder *r = root.nextResponder;
     int d = 0;
     while (r && d++ < 10) {
         NSString *cls = NSStringFromClass([r class]);
         if ([cls containsString:@"RichContentContainer"] ||
             [cls containsString:@"RichContentNewList"]) {
-            return YES;
+            // 找到 VC，返回它的 view
+            if ([r isKindOfClass:[UIViewController class]]) {
+                UIViewController *vc = (UIViewController *)r;
+                if (vc.isViewLoaded) {
+                    UIView *v = vc.view;
+                    if (v && v != root && v.superview) {
+                        // 确保 v 是 root 的子孙
+                        UIView *p = v;
+                        while (p) {
+                            if (p == root) return v;
+                            p = p.superview;
+                        }
+                    }
+                }
+            }
+            return nil;
         }
         r = [r nextResponder];
     }
-    // 递归子视图
+    
     for (UIView *sub in root.subviews) {
-        if (DYYYv133HasRichContent(sub, depth + 1)) return YES;
+        UIView *found = DYYYv134FindRichContent(sub, depth + 1);
+        if (found) return found;
     }
-    return NO;
+    return nil;
 }
 
-static void (*orig_cell_v133)(id, SEL);
-static void new_cell_v133(id self, SEL _cmd) {
-    orig_cell_v133(self, _cmd);
+static void (*orig_cell_v134)(id, SEL);
+
+static void new_cell_v134(id self, SEL _cmd) {
+    // 让抖音先按原生逻辑布局
+    orig_cell_v134(self, _cmd);
     
     UIView *cell = (UIView *)self;
-    BOOL hasRichContent = DYYYv133HasRichContent(cell, 0);
     
+    // 找 RichContent 容器
+    UIView *richContent = DYYYv134FindRichContent(cell, 0);
+    BOOL isImagePage = (richContent != nil);
+    
+    // 记录基准值（只记第一次，即抖音原生高度）
+    NSNumber *baseCellH = objc_getAssociatedObject(self, &kDYYYv134CellBaseH);
+    NSNumber *baseRichH = objc_getAssociatedObject(self, &kDYYYv134RichBaseH);
+    
+    CGFloat currentCellH = cell.frame.size.height;
     CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-    CGFloat targetH = hasRichContent ? screenH + 60.0 : screenH;
     
+    // 判断：currentCellH < screenH * 1.1 才算"原生值"（避免被我们改过的值污染）
+    if (!baseCellH && currentCellH > 100.0 && currentCellH < screenH * 1.1) {
+        objc_setAssociatedObject(self, &kDYYYv134CellBaseH,
+                                 @(currentCellH), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        baseCellH = @(currentCellH);
+        
+        if (richContent && richContent.frame.size.height > 100.0) {
+            objc_setAssociatedObject(self, &kDYYYv134RichBaseH,
+                                     @(richContent.frame.size.height),
+                                     OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            baseRichH = @(richContent.frame.size.height);
+        }
+    }
+    
+    // 计算目标高度
+    CGFloat targetH;
+    if (isImagePage && baseCellH && baseRichH) {
+        // 图片页：gap = 原生 cell - 原生 RichContent（抖音预留量）
+        CGFloat gap = baseCellH.doubleValue - baseRichH.doubleValue;
+        if (gap < 0) gap = 60.0;  // 兜底
+        // 目标：让 RichContent 撑满到屏高
+        targetH = screenH + gap;
+    } else {
+        // 视频页：cell = 屏高
+        targetH = screenH;
+    }
+    
+    // 应用（只在差异 > 1 时才改，防死循环）
     CGRect f = cell.frame;
     if (fabs(f.size.height - targetH) > 1.0) {
         f.size.height = targetH;
         cell.frame = f;
     }
+    
+    // Debug 日志（第一次记录时打印）
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSLog(@"[DYYY] v134 first layout: screenH=%.0f baseCellH=%.0f baseRichH=%.0f "
+              @"isImage=%d targetH=%.0f gap=%.0f",
+              screenH,
+              baseCellH ? baseCellH.doubleValue : -1,
+              baseRichH ? baseRichH.doubleValue : -1,
+              isImagePage,
+              targetH,
+              (baseCellH && baseRichH) ? (baseCellH.doubleValue - baseRichH.doubleValue) : -1);
+    });
 }
 
 %ctor {
@@ -18072,9 +18154,9 @@ static void new_cell_v133(id self, SEL _cmd) {
     if (c) {
         Method m = class_getInstanceMethod(c, @selector(layoutSubviews));
         if (m) {
-            orig_cell_v133 = (void (*)(id, SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)new_cell_v133);
-            NSLog(@"[DYYY] v133 cell hook installed");
+            orig_cell_v134 = (void (*)(id, SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)new_cell_v134);
+            NSLog(@"[DYYY] v134 auto-calc cell hook installed");
         }
     }
 }
