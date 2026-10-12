@@ -14457,6 +14457,54 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 }
 %end
 
+// ============================================================
+// DYYY - 探针函数（落盘抖音沙盒 Documents/DYYY_probe_offset.log）
+// ============================================================
+static void DYYYProbeLog(NSString *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
+    va_end(ap);
+
+    static dispatch_queue_t q;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        q = dispatch_queue_create("dyyy.probe.offset", DISPATCH_QUEUE_SERIAL);
+    });
+    dispatch_async(q, ^{
+        NSArray *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+        if (docs.count == 0) return;
+        NSString *p = [docs.firstObject stringByAppendingPathComponent:@"DYYY_probe_offset.log"];
+
+        NSDateFormatter *df = [[NSDateFormatter alloc] init];
+        df.dateFormat = @"HH:mm:ss.SSS";
+        NSString *ts = [df stringFromDate:[NSDate date]];
+        NSString *line = [NSString stringWithFormat:@"[%@] %@\n", ts, msg];
+
+        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:p];
+        if (!fh) {
+            [line writeToFile:p atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        } else {
+            @try { [fh seekToEndOfFile]; [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]]; }
+            @finally { [fh closeFile]; }
+        }
+    });
+}
+
+static BOOL DYYYIsSearchVC(id self) {
+    @try {
+        NSString *refer = [self valueForKey:@"referString"];
+        NSString *enter = [self valueForKey:@"enterFrom"];
+        BOOL hit = [refer isKindOfClass:[NSString class]] && [refer containsString:@"search"];
+        DYYYProbeLog(@"offset 被调 | refer=%@ enterFrom=%@ hit=%d",
+                     refer ?: @"(nil)", enter ?: @"(nil)", hit);
+        return hit;
+    } @catch (NSException *e) {
+        DYYYProbeLog(@"offset 异常: %@", e.reason);
+        return NO;
+    }
+}
+
 %hook AWEPlayInteractionViewController
 
 - (void)performCommentAction {
@@ -14831,29 +14879,20 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 
 - (double)p_stackContainerViewBottomOffset {
     double orig = %orig;
-    NSString *refer = [self valueForKey:@"referString"];
-    if ([refer isKindOfClass:[NSString class]] && [refer containsString:@"search"]) {
-        return orig - 60.0;
-    }
-    return orig;
+    DYYYProbeLog(@"p_stack orig=%.2f", orig);
+    return DYYYIsSearchVC(self) ? (orig - 60.0) : orig;
 }
 
 - (double)p_leftAndRightContainerBottomOffset {
     double orig = %orig;
-    NSString *refer = [self valueForKey:@"referString"];
-    if ([refer isKindOfClass:[NSString class]] && [refer containsString:@"search"]) {
-        return orig - 60.0;
-    }
-    return orig;
+    DYYYProbeLog(@"p_leftRight orig=%.2f", orig);
+    return DYYYIsSearchVC(self) ? (orig - 60.0) : orig;
 }
 
 - (double)leftContainerBottomOffset {
     double orig = %orig;
-    NSString *refer = [self valueForKey:@"referString"];
-    if ([refer isKindOfClass:[NSString class]] && [refer containsString:@"search"]) {
-        return orig - 60.0;
-    }
-    return orig;
+    DYYYProbeLog(@"leftContainer orig=%.2f", orig);
+    return DYYYIsSearchVC(self) ? (orig - 60.0) : orig;
 }
 
 %end
