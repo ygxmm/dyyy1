@@ -17672,30 +17672,18 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
             return;
         }
     }
-    CGRect _dyyyV97OldFrame = self.frame;
-    %orig(frame);
-    if (fabs(frame.size.height - _dyyyV97OldFrame.size.height) > 0.5 && frame.size.height < 850 && frame.size.height > 100) {
-        NSString *_home = NSHomeDirectory();
-        if (_home.length > 0) {
-            NSString *_path = [[_home stringByAppendingPathComponent:@"Documents"]
-                               stringByAppendingPathComponent:@"dyyy_v97.log"];
-            FILE *_fp = fopen(_path.UTF8String, "a");
-            if (_fp) {
-                NSArray *_stack = [NSThread callStackSymbols];
-                NSUInteger _n = MIN(_stack.count, (NSUInteger)25);
-                NSString *_head = [NSString stringWithFormat:
-                    @"\n=== setFrame %.1f -> %.1f (super=%@) ===\n",
-                    _dyyyV97OldFrame.size.height, frame.size.height,
-                    NSStringFromClass([self.superview class])];
-                fputs(_head.UTF8String, _fp);
-                for (NSUInteger _i = 0; _i < _n; _i++) {
-                    NSString *_line = [_stack[_i] stringByAppendingString:@"\n"];
-                    fputs(_line.UTF8String, _fp);
-                }
-                fclose(_fp);
-            }
+    
+    // v98: 拦截 AwemeCore 内部把图文页 collectionView 高度从 852 压到 792
+    UIView *_dyyyV98Sup = self.superview;
+    if (_dyyyV98Sup) {
+        CGFloat _dyyyV98SupH = _dyyyV98Sup.bounds.size.height;
+        if (_dyyyV98SupH > 800.0 && fabs(frame.size.height - (_dyyyV98SupH - 60.0)) < 2.0) {
+            frame.size.height = _dyyyV98SupH;
+            frame.origin.y = 0;
         }
     }
+    
+    %orig(frame);
 }
 
 %end
