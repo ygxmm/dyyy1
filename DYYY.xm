@@ -18027,62 +18027,69 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
-// ===== v131: 搜索页 cell 高度 = 屏幕高 + 60 (912) =====
-static double (*orig_h4r_v131)(id, SEL, id, id);
+// ===== v132: 只撑 RichContent（不改 cell），避免视频拉伸 =====
 
-static double new_h4r_v131(id self, SEL _cmd, id tableView, id indexPath) {
-    double orig = orig_h4r_v131(self, _cmd, tableView, indexPath);
-    
-    // 判断是否搜索页
-    BOOL isSearch = NO;
+// 判断搜索页
+static BOOL DYYYv132IsSearch(id self) {
+    NSString *refer = @"";
     @try {
-        UINavigationController *nav = [self valueForKey:@"navigationController"];
-        if (nav) {
-            UIViewController *top = nav.topViewController;
-            while (top && top.presentedViewController) {
-                top = top.presentedViewController;
-            }
-            if (top) {
-                // 试 context.referString
-                @try {
-                    id ctx = [top valueForKey:@"context"];
-                    if (ctx) {
-                        NSString *ref = [ctx valueForKey:@"referString"];
-                        if ([ref isKindOfClass:[NSString class]] &&
-                            [(NSString *)ref containsString:@"search"]) {
-                            isSearch = YES;
-                        }
-                    }
-                } @catch (NSException *e) {}
-                // 试 self.referString
-                if (!isSearch) {
-                    @try {
-                        NSString *ref = [top valueForKey:@"referString"];
-                        if ([ref isKindOfClass:[NSString class]] &&
-                            [(NSString *)ref containsString:@"search"]) {
-                            isSearch = YES;
-                        }
-                    } @catch (NSException *e) {}
-                }
-            }
-        }
+        id r = [self valueForKey:@"referString"];
+        if ([r isKindOfClass:[NSString class]]) refer = (NSString *)r;
     } @catch (NSException *e) {}
+    return [refer containsString:@"search"];
+}
+
+// ===== ① AWEMultiContentImpl.RichContentNewListViewController (图片页) =====
+static void (*orig_RCL_v132_layout)(id, SEL);
+static void new_RCL_v132_layout(id self, SEL _cmd) {
+    orig_RCL_v132_layout(self, _cmd);
+    if (!DYYYv132IsSearch(self)) return;
     
-    if (isSearch) {
-        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-        return screenH + 60.0;   // 852 + 60 = 912
+    UIView *v = [self valueForKey:@"view"];
+    UIView *sv = v.superview;
+    if (!v || !sv) return;
+    
+    CGFloat targetH = sv.bounds.size.height;
+    CGRect f = v.frame;
+    if (targetH > 100.0 && fabs(f.size.height - targetH) > 0.5) {
+        f.size.height = targetH;
+        v.frame = f;
     }
-    return orig;
+}
+
+// ===== ② AWEAwemeDetailTableViewCell (视频页) =====
+// 恢复 cell 高度为 852，让视频不被拉伸
+static void (*orig_cell_v132_layout)(id, SEL);
+static void new_cell_v132_layout(id self, SEL _cmd) {
+    orig_cell_v132_layout(self, _cmd);
+    
+    CGRect f = [(UIView *)self frame];
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    if (fabs(f.size.height - screenH) > 1.0) {
+        f.size.height = screenH;
+        [(UIView *)self setFrame:f];
+    }
 }
 
 %ctor {
-    Class c = objc_getClass("AWEAwemeDetailTableViewController");
-    if (c) {
-        Method m = class_getInstanceMethod(c, @selector(tableView:heightForRowAtIndexPath:));
+    // ① 图片页：撑 RichContent
+    Class c1 = objc_getClass("AWEMultiContentImpl.RichContentNewListViewController");
+    if (!c1) c1 = objc_getClass("_TtC19AWEMultiContentImpl32RichContentNewListViewController");
+    if (c1) {
+        Method m = class_getInstanceMethod(c1, @selector(viewDidLayoutSubviews));
         if (m) {
-            orig_h4r_v131 = (double (*)(id, SEL, id, id))method_getImplementation(m);
-            method_setImplementation(m, (IMP)new_h4r_v131);
-            NSLog(@"[DYYY] v131 heightForRow hook installed");
+            orig_RCL_v132_layout = (void (*)(id, SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)new_RCL_v132_layout);
+        }
+    }
+    
+    // ② 视频页：cell 高度强制回 852
+    Class c2 = objc_getClass("AWEAwemeDetailTableViewCell");
+    if (c2) {
+        Method m = class_getInstanceMethod(c2, @selector(layoutSubviews));
+        if (m) {
+            orig_cell_v132_layout = (void (*)(id, SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)new_cell_v132_layout);
         }
     }
 }
