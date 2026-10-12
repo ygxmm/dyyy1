@@ -16331,11 +16331,45 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 }
 
 // >>> DYYY_V139_START
+// 搜索页 UI 下移 60（改 offset 方法，UIKit 自动重排，不卡）
+
+static void DYYYV139Log(NSString *fmt, ...) {
+    @autoreleasepool {
+        va_list ap; va_start(ap, fmt);
+        NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
+        va_end(ap);
+        NSString *home = NSHomeDirectory();
+        if (home.length == 0) return;
+        NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
+                          stringByAppendingPathComponent:@"dyyy_v139.log"];
+        FILE *fp = fopen(path.UTF8String, "a");
+        if (!fp) return;
+        fputs(([msg stringByAppendingString:@"\n"]).UTF8String, fp);
+        fclose(fp);
+    }
+}
+
 - (double)p_stackContainerViewBottomOffset {
     double orig = %orig;
     @try {
         NSString *refer = [self valueForKey:@"referString"] ?: @"";
-        if ([refer containsString:@"search"]) {
+        NSString *ctxRefer = @"";
+        @try {
+            id ctx = [self valueForKey:@"context"];
+            if (ctx) ctxRefer = [ctx valueForKey:@"referString"] ?: @"";
+        } @catch (NSException *e) {}
+        
+        // 只在值变化时写日志
+        static NSString *lastRefer = nil;
+        static NSString *lastCtxRefer = nil;
+        if (![refer isEqualToString:lastRefer] || ![ctxRefer isEqualToString:lastCtxRefer]) {
+            lastRefer = refer;
+            lastCtxRefer = ctxRefer;
+            DYYYV139Log(@"p_stack: self.refer=%@ ctx.refer=%@ orig=%.1f cls=%@",
+                        refer, ctxRefer, orig, NSStringFromClass([self class]));
+        }
+        
+        if ([refer containsString:@"search"] || [ctxRefer containsString:@"search"]) {
             return MAX(orig - 60.0, 0.0);
         }
     } @catch (NSException *e) {}
