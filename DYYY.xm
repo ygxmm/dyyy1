@@ -16162,28 +16162,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 - (void)viewDidLayoutSubviews {
     %orig;
 
-    // v120: 搜索页把 self.view 撑高到父视图高度（跟首页 792 对齐）
-    {
-        NSString *dyyyRefer = self.referString ?: @"";
-        if ([dyyyRefer containsString:@"search"]) {
-            __weak typeof(self) weakSelf = self;
-            dispatch_async(dispatch_get_main_queue(), ^{
-                __strong typeof(weakSelf) strongSelf = weakSelf;
-                if (!strongSelf) return;
-                UIView *v = strongSelf.view;
-                UIView *sv = v.superview;
-                if (!sv) return;
-                CGFloat targetH = sv.bounds.size.height;
-                if (targetH > 100.0 &&
-                    fabs(v.frame.size.height - targetH) > 1.0) {
-                    CGRect f = v.frame;
-                    f.size.height = targetH;
-                    v.frame = f;
-                }
-            });
-        }
-    }
-
     // ===== 只读 dump：记录本 VC 的视图树 =====
     {
         static char kDumpTree2;
