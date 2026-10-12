@@ -16162,21 +16162,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 - (void)viewDidLayoutSubviews {
     %orig;
     
-    // >>> DYYY_V135_START
-    // 搜索页 UI 下移 60（每实例只算一次，避免 KYC 卡帧）
-    {
-        static char kDYYYV135AppliedKey;
-        if (!objc_getAssociatedObject(self, &kDYYYV135AppliedKey)) {
-            objc_setAssociatedObject(self, &kDYYYV135AppliedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            NSString *refer = @"";
-            @try { refer = [self valueForKey:@"referString"] ?: @""; } @catch (NSException *e) {}
-            if ([refer containsString:@"search"]) {
-                self.view.transform = CGAffineTransformMakeTranslation(0, 60);
-            }
-        }
-    }
-    // <<< DYYY_V135_END
-
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
         DYYYHideVideoAIParseBar(self.view);
     }
@@ -16344,6 +16329,30 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         });
     }
 }
+
+// >>> DYYY_V139_START
+- (double)p_stackContainerViewBottomOffset {
+    double orig = %orig;
+    @try {
+        NSString *refer = [self valueForKey:@"referString"] ?: @"";
+        if ([refer containsString:@"search"]) {
+            return MAX(orig - 60.0, 0.0);
+        }
+    } @catch (NSException *e) {}
+    return orig;
+}
+
+- (double)p_leftAndRightContainerBottomOffset {
+    double orig = %orig;
+    @try {
+        NSString *refer = [self valueForKey:@"referString"] ?: @"";
+        if ([refer containsString:@"search"]) {
+            return MAX(orig - 60.0, 0.0);
+        }
+    } @catch (NSException *e) {}
+    return orig;
+}
+// <<< DYYY_V139_END
 
 %end
 
