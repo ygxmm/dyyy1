@@ -16162,6 +16162,79 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 - (void)viewDidLayoutSubviews {
     %orig;
 
+    // ===== 诊断：只写日志，不改任何行为 =====
+    static char kDYV101DiagKey;
+    if (!objc_getAssociatedObject(self, &kDYV101DiagKey)) {
+        objc_setAssociatedObject(self, &kDYV101DiagKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        
+        NSMutableString *s = [NSMutableString string];
+        [s appendFormat:@"\n===== AWEPlayInteractionViewController %p =====\n", self];
+        
+        // 1. responder 链
+        [s appendString:@"-- responder 链 --\n"];
+        UIResponder *r = self;
+        int d = 0;
+        while (r && d++ < 25) {
+            [s appendFormat:@"  %@\n", NSStringFromClass([r class])];
+            r = [r nextResponder];
+        }
+        
+        // 2. context 业务字段
+        [s appendString:@"-- context 字段 --\n"];
+        @try {
+            id ctx = [self valueForKey:@"context"];
+            if (ctx) {
+                for (NSString *k in @[@"referString", @"enterFrom", @"pageType", @"reactId", @"adEventName", @"originEntryEnterMethod"]) {
+                    @try {
+                        id v = [ctx valueForKey:k];
+                        [s appendFormat:@"  context.%@ = %@\n", k, v];
+                    } @catch (NSException *e) {}
+                }
+            } else {
+                [s appendString:@"  context = nil\n"];
+            }
+        } @catch (NSException *e) {
+            [s appendFormat:@"  取 context 失败: %@\n", e.reason];
+        }
+        
+        // 3. model 字段
+        [s appendString:@"-- model 字段 --\n"];
+        @try {
+            id model = [self valueForKey:@"model"];
+            if (model) {
+                for (NSString *k in @[@"referString", @"enterFrom", @"awemeType", @"desc", @"authorUserId"]) {
+                    @try {
+                        id v = [model valueForKey:k];
+                        if ([k isEqualToString:@"desc"] && [v isKindOfClass:[NSString class]]) {
+                            v = [v length] > 20 ? [[v substringToIndex:20] stringByAppendingString:@"..."] : v;
+                        }
+                        [s appendFormat:@"  model.%@ = %@\n", k, v];
+                    } @catch (NSException *e) {}
+                }
+            }
+        } @catch (NSException *e) {}
+        
+        // 4. nav 栈
+        [s appendString:@"-- 导航栈 --\n"];
+        UINavigationController *nav = self.navigationController;
+        if (nav) {
+            for (UIViewController *vc in nav.viewControllers) {
+                [s appendFormat:@"  %@\n", NSStringFromClass([vc class])];
+            }
+        } else {
+            [s appendString:@"  (无 nav)\n"];
+        }
+        
+        [s appendString:@"===== END =====\n"];
+        
+        NSString *home = NSHomeDirectory();
+        NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
+                          stringByAppendingPathComponent:@"dyyy_diag.log"];
+        FILE *fp = fopen(path.UTF8String, "a");
+        if (fp) { fputs(s.UTF8String, fp); fclose(fp); }
+    }
+    // ===== 诊断结束 =====
+
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
         DYYYHideVideoAIParseBar(self.view);
     }
@@ -18010,68 +18083,3 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
-
-// ===== 诊断：打印详情页来源信息 =====
-%hook AWEPlayInteractionViewController
-
-- (void)viewDidLoad {
-    %orig;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        NSMutableString *s = [NSMutableString string];
-        [s appendFormat:@"\n===== AWEPlayInteractionViewController %p =====\n", self];
-
-        // 1. nextResponder 链
-        [s appendString:@"\n-- responder 链 --\n"];
-        UIResponder *r = self;
-        int d = 0;
-        while (r && d++ < 20) {
-            [s appendFormat:@"  %@\n", NSStringFromClass([r class])];
-            r = [r nextResponder];
-        }
-
-        // 2. 业务属性
-        [s appendString:@"\n-- 业务属性 --\n"];
-        @try {
-            id ctx = [self valueForKey:@"context"];
-            [s appendFormat:@"context = %@\n", ctx];
-            for (NSString *k in @[@"referString", @"enterFrom", @"pageType", @"reactId", @"adEventName"]) {
-                @try {
-                    id v = [ctx valueForKey:k];
-                    [s appendFormat:@"context.%@ = %@\n", k, v];
-                } @catch (NSException *e) {}
-            }
-        } @catch (NSException *e) {
-            [s appendFormat:@"context 拿不到: %@\n", e.reason];
-        }
-
-        @try {
-            id model = [self valueForKey:@"model"];
-            for (NSString *k in @[@"referString", @"enterFrom", @"awemeType", @"desc"]) {
-                @try {
-                    id v = [model valueForKey:k];
-                    [s appendFormat:@"model.%@ = %@\n", k, v];
-                } @catch (NSException *e) {}
-            }
-        } @catch (NSException *e) {}
-
-        // 3. 导航栈
-        [s appendString:@"\n-- 导航栈 --\n"];
-        UINavigationController *nav = self.navigationController;
-        if (nav) {
-            for (UIViewController *vc in nav.viewControllers) {
-                [s appendFormat:@"  %@\n", NSStringFromClass([vc class])];
-            }
-        } else {
-            [s appendString:@"(无 nav)\n"];
-        }
-
-        NSString *home = NSHomeDirectory();
-        NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
-                          stringByAppendingPathComponent:@"dyyy_search_diag.log"];
-        FILE *fp = fopen(path.UTF8String, "a");
-        if (fp) { fputs(s.UTF8String, fp); fclose(fp); }
-    });
-}
-
-%end
