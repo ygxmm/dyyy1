@@ -18010,3 +18010,52 @@ static void DYYYV54Log(NSString *fmt, ...) {
     }
 }
 
+
+// >>> DYYY_V133_START
+// v133: 详情页 cell 高度（图片页 = 屏高+60，视频页 = 屏高）
+// 判断：cell responder 链里有 RichContent → 图片页
+static BOOL DYYYv133HasRichContent(UIView *root, int depth) {
+    if (!root || depth > 30) return NO;
+    UIResponder *r = root.nextResponder;
+    int d = 0;
+    while (r && d++ < 10) {
+        NSString *cls = NSStringFromClass([r class]);
+        if ([cls containsString:@"RichContentContainer"] ||
+            [cls containsString:@"RichContentNewList"]) {
+            return YES;
+        }
+        r = [r nextResponder];
+    }
+    for (UIView *sub in root.subviews) {
+        if (DYYYv133HasRichContent(sub, depth + 1)) return YES;
+    }
+    return NO;
+}
+
+static void (*orig_cell_v133)(id, SEL);
+
+static void new_cell_v133(id self, SEL _cmd) {
+    orig_cell_v133(self, _cmd);
+    UIView *cell = (UIView *)self;
+    BOOL isImagePage = DYYYv133HasRichContent(cell, 0);
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    CGFloat targetH = isImagePage ? (screenH + 60.0) : screenH;
+    CGRect f = cell.frame;
+    if (fabs(f.size.height - targetH) > 1.0) {
+        f.size.height = targetH;
+        cell.frame = f;
+    }
+}
+
+%ctor {
+    Class c = objc_getClass("AWEAwemeDetailTableViewCell");
+    if (c) {
+        Method m = class_getInstanceMethod(c, @selector(layoutSubviews));
+        if (m) {
+            orig_cell_v133 = (void (*)(id, SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)new_cell_v133);
+            NSLog(@"[DYYY] v133 installed");
+        }
+    }
+}
+// <<< DYYY_V133_END
