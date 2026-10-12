@@ -16172,10 +16172,15 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
             long long awemeType = 0;
             @try { awemeType = [[model valueForKey:@"awemeType"] longLongValue]; } @catch (NSException *e) {}
             
-            // 只视频（非图文）下移
             if (awemeType != 68) {
+                // 视频：下移 60
                 if (fabs(self.view.transform.ty - 60.0) > 0.5) {
                     self.view.transform = CGAffineTransformMakeTranslation(0, 60);
+                }
+            } else {
+                // 图文：归零（修复 cell 复用残留）
+                if (!CGAffineTransformIsIdentity(self.view.transform)) {
+                    self.view.transform = CGAffineTransformIdentity;
                 }
             }
         } else {
