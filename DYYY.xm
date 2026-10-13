@@ -2356,11 +2356,20 @@ static NSInteger DYYYBitrateForBitrateModel(id model) {
 - (AWEURLModel *)playURL {
     {
         static int n = 0;
-        if (n < 5) {
+        if (n < 3) {
             n++;
-            DYYYProbeLog(@"v213 playURL called, enabled=%d models=%lu",
-                DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality"),
-                (unsigned long)[[self bitrateModels] count]);
+            NSArray *ms = [self bitrateModels];
+            NSMutableString *buf = [NSMutableString stringWithFormat:@"v215 bitrate: enabled=%d cnt=%lu",
+                DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality"), (unsigned long)ms.count];
+            for (id m in ms) {
+                NSInteger b = DYYYBitrateForBitrateModel(m);
+                id pa = [m valueForKey:@"playAddr"];
+                [buf appendFormat:@"\n  model cls=%@ br=%ld gear=%@ playAddrCls=%@",
+                    NSStringFromClass([m class]), (long)b,
+                    [m valueForKey:@"gearName"] ?: @"?",
+                    pa ? NSStringFromClass([pa class]) : @"nil"];
+            }
+            DYYYProbeLog(@"%@", buf);
         }
     }
     if (!DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality")) {
