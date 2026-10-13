@@ -5068,6 +5068,37 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
             }
             for (UIView *s in v.subviews) [q addObject:s];
         }
+
+        // v209 dump: cell 内所有不透明子视图
+        {
+            static int n = 0;
+            if (n < 1) {
+                n++;
+                NSMutableString *buf = [NSMutableString stringWithString:@"v209 dump:"];
+                __block void (^walk)(UIView *, int);
+                walk = ^(UIView *v, int d) {
+                    if (d > 6) return;
+                    UIColor *bg = v.backgroundColor;
+                    CGFloat r=0,g=0,b=0,a=0;
+                    [bg getRed:&r green:&g blue:&b alpha:&a];
+                    if (a > 0.05) {
+                        NSMutableString *pad = [NSMutableString string];
+                        for (int i = 0; i < d; i++) [pad appendString:@"  "];
+                        [buf appendFormat:@"\n%@[d=%d] %@ f=%@ bg=%.2f,%.2f,%.2f,%.2f",
+                            pad, d, NSStringFromClass(v.class),
+                            NSStringFromCGRect(v.frame),
+                            r, g, b, a];
+                    }
+                    for (UIView *sub in v.subviews) walk(sub, d + 1);
+                };
+                for (UIView *top in self.view.subviews) {
+                    if ([top isKindOfClass:[UICollectionView class]]) {
+                        walk(top, 0);
+                    }
+                }
+                DYYYProbeLog(@"%@", buf);
+            }
+        }
     }
 }
         }
