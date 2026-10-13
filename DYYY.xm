@@ -5068,34 +5068,6 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
             }
             for (UIView *s in v.subviews) [q addObject:s];
         }
-
-        // v209 dump: cell 内所有不透明子视图
-        {
-            static int n = 0;
-            if (n < 1) {
-                n++;
-                NSMutableString *buf = [NSMutableString stringWithString:@"v209 dump:"];
-                __block void (^walk)(UIView *, int);
-                walk = ^(UIView *v, int d) {
-                    if (d > 6) return;
-                    UIColor *bg = v.backgroundColor;
-                    CGFloat r=0,g=0,b=0,a=0;
-                    [bg getRed:&r green:&g blue:&b alpha:&a];
-                    if (a > 0.05) {
-                        NSMutableString *pad = [NSMutableString string];
-                        for (int i = 0; i < d; i++) [pad appendString:@"  "];
-                        [buf appendFormat:@"\n%@[d=%d] %@ f=%@ bg=%.2f,%.2f,%.2f,%.2f",
-                            pad, d, NSStringFromClass(v.class),
-                            NSStringFromCGRect(v.frame),
-                            r, g, b, a];
-                    }
-                    for (UIView *sub in v.subviews) walk(sub, d + 1);
-                };
-                for (UIView *top in self.view.subviews) {
-                    if ([top isKindOfClass:[UICollectionView class]]) {
-                        walk(top, 0);
-                    }
-                }
                 DYYYProbeLog(@"%@", buf);
             }
         }
@@ -18243,6 +18215,59 @@ static void v179_dcvLayout(id self, SEL _cmd) {
             method_setImplementation(m, (IMP)v179_dcvLayout);
             DYYYProbeLog(@"v179: hooked DCV");
         } else DYYYProbeLog(@"v179: no method");
+    }
+}
+
+// v211: 评论 cell 内部深色背景强制透明（黑色毛玻璃效果）
+static void (*v211_orig_cellLayout)(id, SEL) = NULL;
+
+static void v211_clearDarkBg(UIView *v) {
+    if (!v) return;
+    UIColor *bg = v.backgroundColor;
+    if (bg) {
+        CGFloat r=0,g=0,b=0,a=0;
+        if ([bg getRed:&r green:&g blue:&b alpha:&a]) {
+            if (r < 0.3 && g < 0.3 && b < 0.3 && a > 0.5) {
+                v.backgroundColor = [UIColor clearColor];
+                v.opaque = NO;
+            }
+        }
+    }
+    if (v.layer.backgroundColor) {
+        CGColorRef lc = v.layer.backgroundColor;
+        const CGFloat *comps = CGColorGetComponents(lc);
+        size_t n = CGColorGetNumberOfComponents(lc);
+        if (n >= 4 && comps[0] < 0.3 && comps[1] < 0.3 && comps[2] < 0.3 && comps[3] > 0.5) {
+            v.layer.backgroundColor = [UIColor clearColor].CGColor;
+        }
+    }
+}
+
+static void v211_cellLayout(id self, SEL _cmd) {
+    if (v211_orig_cellLayout) v211_orig_cellLayout(self, _cmd);
+    @try {
+        if (!DYYYGetBool(@"DYYYEnableCommentBlur")) return;
+        UIView *cell = (UIView *)self;
+        v211_clearDarkBg(cell);
+        for (UIView *sub in cell.subviews) {
+            v211_clearDarkBg(sub);
+            for (UIView *sub2 in sub.subviews) {
+                v211_clearDarkBg(sub2);
+            }
+        }
+    } @catch (NSException *e) {}
+}
+
+%ctor {
+    @autoreleasepool {
+        Class cls = objc_getClass("AWECommentPanelListSwiftImpl.CommentNewCell");
+        if (!cls) { DYYYProbeLog(@"v211: cell class not found"); return; }
+        Method m = class_getInstanceMethod(cls, @selector(layoutSubviews));
+        if (m) {
+            v211_orig_cellLayout = (void (*)(id, SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)v211_cellLayout);
+            DYYYProbeLog(@"v211: hooked CommentNewCell.layoutSubviews");
+        }
     }
 }
 
