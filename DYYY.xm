@@ -5013,6 +5013,13 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
 %hook AWEBaseListViewController
 - (void)viewDidLayoutSubviews {
     %orig;
+    {
+        static int n = 0;
+        if (n < 8) {
+            n++;
+            DYYYProbeLog(@"v198 ABLV layout self=%@", NSStringFromClass([self class]));
+        }
+    }
     [self applyBlurEffectIfNeeded];
 }
 
