@@ -5027,6 +5027,25 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
 
         // 应用毛玻璃效果
         [DYYYUtils applyBlurEffectToView:self.view transparency:userTransparency blurViewTag:999];
+        {
+            static int n = 0;
+            if (n < 5) {
+                n++;
+                int cnt = 0;
+                UIVisualEffectView *bv = nil;
+                for (UIView *sv in self.view.subviews) {
+                    if ([sv isKindOfClass:[UIVisualEffectView class]] && sv.tag == 999) {
+                        bv = (UIVisualEffectView *)sv; cnt++;
+                    }
+                }
+                DYYYProbeLog(@"v195 blurView cnt=%d alpha=%.2f effect=%@ hidden=%d superSubCnt=%lu",
+                    cnt,
+                    bv ? bv.alpha : 0,
+                    bv ? (bv.effect ? @"Y" : @"nil") : @"-",
+                    bv ? bv.hidden : -1,
+                    (unsigned long)self.view.subviews.count);
+            }
+        }
 
     }
 }
