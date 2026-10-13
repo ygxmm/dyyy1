@@ -5048,6 +5048,20 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
                            || [v isKindOfClass:[UITableView class]]) {
                     v.backgroundColor = [UIColor clearColor];
                     v.opaque = NO;
+                } else if ([v isKindOfClass:[UICollectionViewCell class]]
+                           || [v isKindOfClass:[UITableViewCell class]]) {
+                    // v185: 评论 cell 也透明
+                    v.backgroundColor = [UIColor clearColor];
+                    v.opaque = NO;
+                } else if (v.backgroundColor) {
+                    // v185: 其他深色背景视图也清（亮度 < 0.3 判为深色）
+                    CGFloat h, s, b, a;
+                    if ([v.backgroundColor getHue:&h saturation:&s brightness:&b alpha:&a]) {
+                        if (b < 0.3 && a > 0.5) {
+                            v.backgroundColor = [UIColor clearColor];
+                            v.opaque = NO;
+                        }
+                    }
                 }
                 for (UIView *s in v.subviews) [q addObject:s];
             }
