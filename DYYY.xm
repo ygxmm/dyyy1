@@ -124,6 +124,8 @@ static void DLog(NSString *fmt, ...) {
 
 static void DYYYProbeLog(NSString *fmt, ...);
 
+static id DYYYBestDownloadAddr(id videoModel);
+
 %hook NSBundle
 - (NSString *)bundleIdentifier {
     NSString *bundleIdentifier = %orig;
