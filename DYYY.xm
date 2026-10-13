@@ -15798,6 +15798,15 @@ static Class tabBarButtonClass = nil;
     %orig;
 
     if (DYYYGetBool(@"DYYYEnableFullScreen") && gCurrentTabBarHeight > 0) {
+        // v230a: 只在 gCurrentTabBarHeight 变化时重新应用，
+        // 避免 layoutSubviews 反复触发导致 origin.y -= 累积偏移。
+        static char kDYYYConcernAppliedTabBarHKey;
+        NSNumber *applied = objc_getAssociatedObject(self, &kDYYYConcernAppliedTabBarHKey);
+        if (applied && fabs(applied.doubleValue - gCurrentTabBarHeight) < 0.1) {
+            return;
+        }
+        objc_setAssociatedObject(self, &kDYYYConcernAppliedTabBarHKey, @(gCurrentTabBarHeight), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
         for (UIView *subview in self.subviews) {
             CGRect frame = subview.frame;
             frame.origin.y -= gCurrentTabBarHeight;
@@ -17169,9 +17178,17 @@ static void DYYYRemoveAppLifecycleObservers(void) {
 
                 if (isWorkImage) {
                     // 修复作者主页作品图片上移问题
+                    // v230b: 记上次应用后的 y，避免 layout 反复触发导致 origin.y += 累积
+                    static char kDYYYWorkImageAppliedYKey;
+                    NSNumber *appliedYNum = objc_getAssociatedObject(subview, &kDYYYWorkImageAppliedYKey);
+                    CGFloat currentY = subview.frame.origin.y;
+                    if (appliedYNum && fabs(currentY - appliedYNum.doubleValue) < 0.5) {
+                        continue;
+                    }
                     CGRect frame = subview.frame;
                     frame.origin.y += gCurrentTabBarHeight;
                     subview.frame = frame;
+                    objc_setAssociatedObject(subview, &kDYYYWorkImageAppliedYKey, @(frame.origin.y), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 }
             }
         }
