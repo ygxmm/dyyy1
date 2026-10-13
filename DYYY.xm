@@ -16918,6 +16918,24 @@ static void DYYYRemoveAppLifecycleObservers(void) {
 
 %end
 
+// v234: 判定 view 是否在首页播放交互层（用来只挪首页，不动详情页/搜索页）
+static BOOL DYYYIsHomePlayInteraction(UIView *view) {
+    if (!view) return NO;
+    static Class sPlayInteractionVCClass = nil;
+    static Class sFeedCellVCClass = nil;
+    static dispatch_once_t sOnce;
+    dispatch_once(&sOnce, ^{
+        sPlayInteractionVCClass = NSClassFromString(@"AWEPlayInteractionViewController");
+        sFeedCellVCClass = NSClassFromString(@"AWEFeedCellViewController");
+    });
+    if (!sPlayInteractionVCClass || !sFeedCellVCClass) return NO;
+    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
+    if (!vc || ![vc isKindOfClass:sPlayInteractionVCClass]) return NO;
+    if (![vc respondsToSelector:NSSelectorFromString(@"awemeBaseViewController")]) return NO;
+    id base = [vc valueForKey:@"awemeBaseViewController"];
+    return base && [base isKindOfClass:sFeedCellVCClass];
+}
+
 %hook AWEElementStackView
 
 - (void)setAlpha:(CGFloat)alpha {
@@ -17103,7 +17121,17 @@ static void DYYYRemoveAppLifecycleObservers(void) {
         }
         // 左侧昵称/文案元素按子元素分别缩放
         else if (hasScalableLeftElement) {
+            // v234: 先重置 self transform，避免反复 layout 累积 60pt 位移
+            self.transform = CGAffineTransformIdentity;
             DYYYApplyPlayInteractionLeftStackElementTransforms(self);
+        }
+
+        // v234: 首页左右两个 AWEElementStackView 一起下移 60pt，
+        // 让点赞栏 + 文案跟进度条对齐。只对首页生效，详情页/搜索页不动。
+        if (DYYYGetBool(@"DYYYEnableFullScreen")
+            && self.frame.size.height >= 100.0
+            && DYYYIsHomePlayInteraction(self)) {
+            self.transform = CGAffineTransformConcat(self.transform, CGAffineTransformMakeTranslation(0, 60.0));
         }
     }
 }
