@@ -2356,25 +2356,6 @@ static NSInteger DYYYBitrateForBitrateModel(id model) {
 %hook AWEVideoModel
 
 - (AWEURLModel *)playURL {
-    {
-        // v216: 每个 URLModel 只打 1 次（用 associatedObject 标记）
-        static char kDumpedKey;
-        if (!objc_getAssociatedObject(self, &kDumpedKey)) {
-            objc_setAssociatedObject(self, &kDumpedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            NSArray *ms = [self bitrateModels];
-            NSMutableString *buf = [NSMutableString stringWithFormat:@"v215 bitrate: enabled=%d cnt=%lu",
-                DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality"), (unsigned long)ms.count];
-            for (id m in ms) {
-                NSInteger b = DYYYBitrateForBitrateModel(m);
-                id pa = [m valueForKey:@"playAddr"];
-                [buf appendFormat:@"\n  model cls=%@ br=%ld gear=%@ playAddrCls=%@",
-                    NSStringFromClass([m class]), (long)b,
-                    [m valueForKey:@"gearName"] ?: @"?",
-                    pa ? NSStringFromClass([pa class]) : @"nil"];
-            }
-            DYYYProbeLog(@"%@", buf);
-        }
-    }
     if (!DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality")) {
         return %orig;
     }
@@ -2412,14 +2393,6 @@ static NSInteger DYYYBitrateForBitrateModel(id model) {
 static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 
 - (NSString *)currentPlayingURLKey {
-    {
-        static int n = 0;
-        if (n < 10) {
-            n++;
-            NSString *orig = %orig;
-            DYYYProbeLog(@"v218 orig key=%@", orig);
-        }
-    }
     if (DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality")) {
         @try {
             NSArray *ms = [self bitrateModels];
@@ -2437,21 +2410,6 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 
 - (NSArray *)bitrateModels {
     NSArray *originalModels = %orig;
-    {
-        static char kHevcDumped;
-        if (!objc_getAssociatedObject(self, &kHevcDumped)) {
-            objc_setAssociatedObject(self, &kHevcDumped, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            NSMutableString *buf = [NSMutableString stringWithString:@"v221 hevc:"];
-            for (id m in originalModels) {
-                NSInteger b = DYYYBitrateForBitrateModel(m);
-                NSNumber *h265 = nil;
-                @try { h265 = [m valueForKey:@"isH265"]; } @catch (NSException *e) {}
-                [buf appendFormat:@"\n  br=%ld h265=%@ gear=%@",
-                    (long)b, h265 ?: @"?", [m valueForKey:@"gearName"] ?: @"?"];
-            }
-            DYYYProbeLog(@"%@", buf);
-        }
-    }
 
     if (DYYYShouldDisableAllHDR()) {
         NSArray *filteredModels = DYYYFilteredSDRBitrateModels(originalModels);
