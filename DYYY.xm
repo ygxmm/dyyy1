@@ -5101,10 +5101,7 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
         }
     }
 }
-        }
 
-    }
-}
 %end
 
 static BOOL DYYYFeedVideoCollectButtonHideEnabled(void) {
