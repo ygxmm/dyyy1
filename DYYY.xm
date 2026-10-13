@@ -16679,9 +16679,11 @@ static char kDYYYFeedTableFullScreenAppliedKey;
         objc_setAssociatedObject(self, &kDYYYFeedTableFullScreenAppliedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 
-    if (fabs(CGRectGetHeight(self.frame) - superviewHeight) > 0.5) {
+    // v223: 判断条件与目标对齐（都对比屏幕高），避免每帧重复改 frame 触发递归
+    CGFloat targetH = [UIScreen mainScreen].bounds.size.height;
+    if (fabs(CGRectGetHeight(self.frame) - targetH) > 0.5) {
         CGRect frame = self.frame;
-        frame.size.height = [UIScreen mainScreen].bounds.size.height;
+        frame.size.height = targetH;
         self.frame = frame;
     }
 }
