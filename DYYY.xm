@@ -18206,3 +18206,40 @@ static void v179_dcvLayout(id self, SEL _cmd) {
         } else DYYYProbeLog(@"v179: no method");
     }
 }
+
+// v207: 评论面板内 UICollectionViewCell 背景强制透明（评论文字/昵称背景是黑的）
+static void (*v207_orig_setBg)(id, SEL, id) = NULL;
+
+static BOOL v207_inCommentPanel(UIResponder *r) {
+    int n = 0;
+    while (r && n++ < 30) {
+        Class inner = NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController");
+        Class list = NSClassFromString(@"AWECommentPanelListSwiftImpl.CommentViewController");
+        if ((inner && [r isKindOfClass:inner]) || (list && [r isKindOfClass:list])) return YES;
+        r = r.nextResponder;
+    }
+    return NO;
+}
+
+static void v207_setBg(id self, SEL _cmd, id color) {
+    if (DYYYGetBool(@"DYYYEnableCommentBlur") && v207_inCommentPanel(((UIView *)self).nextResponder)) {
+        if (v207_orig_setBg) v207_orig_setBg(self, _cmd, [UIColor clearColor]);
+        [(UIView *)self setValue:@NO forKey:@"opaque"];
+        return;
+    }
+    if (v207_orig_setBg) v207_orig_setBg(self, _cmd, color);
+}
+
+%ctor {
+    @autoreleasepool {
+        Class cls = objc_getClass("UICollectionViewCell");
+        if (!cls) return;
+        Method m = class_getInstanceMethod(cls, @selector(setBackgroundColor:));
+        if (m) {
+            v207_orig_setBg = (void (*)(id, SEL, id))method_getImplementation(m);
+            method_setImplementation(m, (IMP)v207_setBg);
+            DYYYProbeLog(@"v207: hooked UICollectionViewCell.setBackgroundColor");
+        }
+    }
+}
+
