@@ -99,7 +99,6 @@ static NSURL *DYYYLoginBypassURLByReplacingBundleIdentifier(NSURL *url) {
 
 %group DYYYLoginBypassCore
 
-
 // ===== DYYY 统一日志（变参，动态沙盒路径）=====
 static NSString *DYYYLogPath(void) {
     NSString *home = NSHomeDirectory();
@@ -5028,23 +5027,6 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
 
         // 应用毛玻璃效果
         [DYYYUtils applyBlurEffectToView:self.view transparency:userTransparency blurViewTag:999];
-        {
-            static int n = 0;
-            if (n < 5) {
-                n++;
-                UIVisualEffectView *bv = nil;
-                for (UIView *sv in self.view.subviews) {
-                    if ([sv isKindOfClass:[UIVisualEffectView class]] && sv.tag == 999) {
-                        bv = (UIVisualEffectView *)sv; break;
-                    }
-                }
-                DYYYProbeLog(@"v189 blurView=%@ alpha=%.2f frame=%@ idx=%lu",
-                    bv ? @"Y" : @"nil",
-                    bv ? bv.alpha : 0,
-                    bv ? NSStringFromCGRect(bv.frame) : @"-",
-                    bv ? (unsigned long)[self.view.subviews indexOfObject:bv] : 0);
-            }
-        }
 
     }
 }
@@ -9886,7 +9868,6 @@ static BOOL DYYYShouldVerifiedCollapseCommentHeaderModel(id model) {
 }
 %end
 
-
 %hook AWELeftSideBarEntranceView
 
 - (void)setRedDot:(id)redDot {
@@ -14511,7 +14492,6 @@ static void DYYYProbeLog(NSString *fmt, ...) {
     });
 }
 
-
 // ============================================================
 // DYYY v141: 搜索页 UI 下移 60pt（幂等 transform 方案）
 // 原理：抖音自己用 transform 做布局，我们在其基础上再 +60pt
@@ -14948,8 +14928,6 @@ static BOOL DYYYIsSearchVC(id self) {
     // 默认行为
     %orig;
 }
-
-
 
 %end
 
@@ -16457,7 +16435,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
     }
 }
 
-
 %end
 
 %hook AWEAwemePlayVideoViewController
@@ -16981,7 +16958,6 @@ static void DYYYRemoveAppLifecycleObservers(void) {
 
     %orig;
     
-
 
     UIViewController *viewController = [DYYYUtils firstAvailableViewControllerFromView:self];
 
@@ -18008,9 +17984,7 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
     }
 }
 
-
 // ===== 详情页 Cell 撑满全屏（严格限定 AWEAwemeDetailTableView） =====
-
 
 // ===== v29: 每个 table 只处理一次，不再每帧 dispatch =====
 // v28 每次 layout 都 dispatch_async + layoutIfNeeded → 打断主页加载
@@ -18120,7 +18094,6 @@ static void _m_v29(id self, SEL _cmd) {
     method_setImplementation(m, newImp);
 }
 
-
 // 写沙盒日志（动态路径，不写死）
 static void DYYYV54Log(NSString *fmt, ...) {
     @autoreleasepool {
@@ -18201,47 +18174,36 @@ static void v179_dcvLayout(id self, SEL _cmd) {
     }
 }
 
-// v188: 源头 hook section bg 的 setBackgroundColor，评论面板内强制透明
-static void (*v188_orig_setBg)(id, SEL, id) = NULL;
+// v190: 只对评论面板内的 AWEBaseListSectionBackgroundView 强制透明
+// 目的：恢复 DYYY 原版毛玻璃可见（新版抖音加了不透明 section 背景遮挡）
+static void (*v190_orig_setBg)(id, SEL, id) = NULL;
 
-static BOOL v188_inCommentPanel(UIView *v) {
-    UIResponder *r = v.nextResponder;
-    int n = 0;
-    while (r && n < 30) {
-        if ([r isKindOfClass:NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController")]
-            || [r isKindOfClass:NSClassFromString(@"AWECommentPanelListSwiftImpl.CommentViewController")]
-            || [r isKindOfClass:NSClassFromString(@"AWECommentContainerViewController")]) {
-            return YES;
-        }
-        r = r.nextResponder;
-        n++;
-    }
-    return NO;
-}
-
-static void v188_setBg(id self, SEL _cmd, UIColor *color) {
+static void v190_setBg(id self, SEL _cmd, UIColor *color) {
     if (DYYYGetBool(@"DYYYEnableCommentBlur")) {
-        @try {
-            if (v188_inCommentPanel((UIView *)self)) {
-                if (v188_orig_setBg) v188_orig_setBg(self, _cmd, [UIColor clearColor]);
-                [(UIView *)self setValue:@NO forKey:@"opaque"];
+        UIResponder *r = ((UIView *)self).nextResponder;
+        int n = 0;
+        while (r && n++ < 30) {
+            if ([r isKindOfClass:NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController")]
+                || [r isKindOfClass:NSClassFromString(@"AWECommentPanelListSwiftImpl.CommentViewController")]) {
+                if (v190_orig_setBg) v190_orig_setBg(self, _cmd, [UIColor clearColor]);
                 return;
             }
-        } @catch (NSException *e) {}
+            r = r.nextResponder;
+        }
     }
-    if (v188_orig_setBg) v188_orig_setBg(self, _cmd, color);
+    if (v190_orig_setBg) v190_orig_setBg(self, _cmd, color);
 }
 
 %ctor {
     @autoreleasepool {
         Class cls = objc_getClass("AWEBaseListSectionBackgroundView");
-        if (!cls) { DYYYProbeLog(@"v188: cls nil"); return; }
+        if (!cls) { DYYYProbeLog(@"v190: cls nil"); return; }
         Method m = class_getInstanceMethod(cls, @selector(setBackgroundColor:));
         if (m) {
-            v188_orig_setBg = (void (*)(id, SEL, id))method_getImplementation(m);
-            method_setImplementation(m, (IMP)v188_setBg);
-            DYYYProbeLog(@"v188: hooked setBackgroundColor");
-        } else DYYYProbeLog(@"v188: no setter");
+            v190_orig_setBg = (void (*)(id, SEL, id))method_getImplementation(m);
+            method_setImplementation(m, (IMP)v190_setBg);
+            DYYYProbeLog(@"v190: hooked");
+        }
     }
 }
 
