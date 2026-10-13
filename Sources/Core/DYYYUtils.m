@@ -1093,7 +1093,7 @@ static void DYYYApplyDisplayLocationToLabel(UILabel *label, NSString *displayLoc
     }
 
     BOOL isDarkMode = [DYYYUtils isDarkMode];
-    UIBlurEffectStyle blurStyle = isDarkMode ? UIBlurEffectStyleDark : UIBlurEffectStyleLight;
+    UIBlurEffectStyle blurStyle = UIBlurEffectStyleLight;  // v203: 固定浅色磨砂，深色太黑
 
     UIView *overlayView = nil;
 
@@ -1128,16 +1128,14 @@ static void DYYYApplyDisplayLocationToLabel(UILabel *label, NSString *displayLoc
         }
     }
     if (overlayView) {
-        // v202b: 用户设的值 = 透明度（1=最透明, 0=最浓）
-        // 1.0 → 只显示模糊（后面清楚）
-        // 0.0 → 黑色遮罩最浓
+        // v203: 用户值 = 透明度（1=最透明, 0=最浓）
         CGFloat v = userTransparency;
         if (v < 0) v = 0;
         if (v > 1) v = 1;
-        CGFloat eff = (1.0 - v) * 0.6;   // 最浓时黑 60%
+        CGFloat eff = (1.0 - v) * 0.4;   // 最浓时黑 40%
         if (eff < 0.02) eff = 0.02;
         overlayView.alpha = 1.0;
-        overlayView.backgroundColor = [UIColor colorWithWhite:(isDarkMode ? 0.1 : 0.1) alpha:eff];
+        overlayView.backgroundColor = [UIColor colorWithWhite:0.1 alpha:eff];
     }
 }
 
