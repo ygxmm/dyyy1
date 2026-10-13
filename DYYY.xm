@@ -13654,9 +13654,12 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 
 %end
 
+
+static BOOL DYYYRingHookDisabled = YES;  // v224: 临时禁用排查
 %hook AWECodeGenStoryRingInfoModel
 
 - (NSArray *)storyRingsModelArray {
+    if (DYYYRingHookDisabled) return %orig;  // v224
 	BOOL DYYYHideAvatarButton = DYYYGetBool(@"DYYYHideAvatarButton");
 	if (DYYYHideAvatarButton) {
 		return @[];
@@ -13665,6 +13668,7 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 }
 
 - (void)setStoryRingsModelArray:(NSArray *)array {
+    if (DYYYRingHookDisabled) { %orig; return; }  // v224
 	BOOL DYYYHideAvatarButton = DYYYGetBool(@"DYYYHideAvatarButton");
 	if (DYYYHideAvatarButton) {
 		%orig(@[]);
