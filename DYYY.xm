@@ -5361,6 +5361,52 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
     }
 }
 
+// v231: 首页进度条容器贴底栏上方，随底栏显隐实时重算位置。
+// 只对首页生效（AWEPlayInteractionViewController 的 awemeBaseViewController 是 AWEFeedCellViewController），
+// 详情页 / 搜索页不动。
+- (void)setFrame:(CGRect)frame {
+    if (DYYYGetBool(@"DYYYEnableFullScreen")
+        && frame.size.height > 100.0
+        && frame.origin.y > 400.0) {
+
+        UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
+        BOOL isHome = NO;
+        if (vc && [vc isKindOfClass:%c(AWEPlayInteractionViewController)]
+            && [vc respondsToSelector:NSSelectorFromString(@"awemeBaseViewController")]) {
+            id base = [vc valueForKey:@"awemeBaseViewController"];
+            if (base && [base isKindOfClass:%c(AWEFeedCellViewController)]) {
+                isHome = YES;
+            }
+        }
+
+        if (isHome) {
+            UIWindow *win = self.window ?: [DYYYUtils getActiveWindow];
+            UIView *tabBar = nil;
+            for (UIView *v in win.subviews) {
+                if ([v isKindOfClass:NSClassFromString(@"AWEBaseTabBar")]) {
+                    tabBar = v;
+                    break;
+                }
+            }
+            CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+            BOOL visible = NO;
+            if (tabBar && tabBar.window && !tabBar.hidden && tabBar.alpha > 0.01) {
+                CGRect tabFrame = tabBar.frame;
+                if (CGRectGetMinY(tabFrame) < screenH - 1.0 && CGRectGetHeight(tabFrame) > 1.0) {
+                    visible = YES;
+                }
+            }
+            CGFloat tabH = visible ? CGRectGetHeight(tabBar.frame) : 0.0;
+            CGFloat targetY = screenH - tabH - frame.size.height;
+            if (targetY > 0 && fabs(frame.origin.y - targetY) > 0.5) {
+                frame.origin.y = targetY;
+            }
+        }
+    }
+
+    %orig(frame);
+}
+
 %end
 
 %hook AWEFeedProgressSlider
