@@ -1132,10 +1132,10 @@ static void DYYYApplyDisplayLocationToLabel(UILabel *label, NSString *displayLoc
         CGFloat v = userTransparency;
         if (v < 0) v = 0;
         if (v > 1) v = 1;
-        CGFloat eff = (1.0 - v) * 0.4;   // 最浓时黑 40%
+        CGFloat eff = (1.0 - v) * 0.15;  // v206: 最浓时只 15%
         if (eff < 0.02) eff = 0.02;
         overlayView.alpha = 1.0;
-        overlayView.backgroundColor = [UIColor colorWithWhite:0.1 alpha:eff];
+        overlayView.backgroundColor = [UIColor colorWithWhite:0.9 alpha:eff];  // v206: 浅白叠加
     }
 }
 
