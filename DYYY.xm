@@ -14241,10 +14241,15 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 %hook AWEPlayInteractionUserAvatarStoryController
 - (void)layoutElementView {
     %orig;
+    if (DYYYGetBool(@"DYYYHideAvatarButton")) {
+        self.colorRingView.hidden = YES;
+        return;
+    }
     DYYYApplyAvatarSurroundingSettingsForOwner(self);
 }
 
 - (void)showStory25RingView {
+    if (DYYYGetBool(@"DYYYHideAvatarButton")) return;   // v225: 拦截彩环创建
     %orig;
     DYYYApplyAvatarSurroundingSettingsForOwner(self);
 }
@@ -18300,51 +18305,4 @@ static id DYYYBestDownloadAddr(id videoModel) {
     }
     return best;
 }
-
-// ============================================================
-// v225: 隐藏头像彩环（日常环 Story Ring）—— View/Controller 层实现
-// 从 Model 层迁移过来，避免抖音序列化 storyRingsModelArray 时自引用闪退
-// ============================================================
-%hook AWEPlayInteractionUserAvatarStoryController
-
-- (BOOL)shouldShowColorRing:(id)arg {
-    if (DYYYGetBool(@"DYYYHideAvatarButton")) return NO;
-    return %orig;
-}
-
-- (void)layoutElementView {
-    %orig;
-    if (DYYYGetBool(@"DYYYHideAvatarButton")) {
-        self.colorRingView.hidden = YES;
-    }
-}
-
-- (void)showStory25RingView {
-    if (DYYYGetBool(@"DYYYHideAvatarButton")) return;
-    %orig;
-}
-
-- (void)p_setupStory25RingViewIfNeeded {
-    if (DYYYGetBool(@"DYYYHideAvatarButton")) return;
-    %orig;
-}
-
-%end
-
-// ============================================================
-// v225b: Element 层保险
-// ============================================================
-%hook AFDStoryPlayInteractionUserAvatarElement
-
-- (void)showStory25RingView {
-    if (DYYYGetBool(@"DYYYHideAvatarButton")) return;
-    %orig;
-}
-
-- (BOOL)shouldShowColorRing {
-    if (DYYYGetBool(@"DYYYHideAvatarButton")) return NO;
-    return %orig;
-}
-
-%end
 
