@@ -16615,50 +16615,22 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 static char kDYYYFeedTableOriginalHeightGapKey;
 static char kDYYYFeedTableFullScreenAppliedKey;
 
+// v229b: 前向声明，避免 v229 在 16630 处报 undeclared identifier
+static void DYYYExpandPlayInteraction(UIView *root);
+
 %hook AWEFeedTableView
 - (void)layoutSubviews {
     %orig;
 
-    UIView *superview = self.superview;
-    if (!superview) {
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) {
         return;
     }
 
-    BOOL enableFullScreen = DYYYGetBool(@"DYYYEnableFullScreen");
-    BOOL fullScreenApplied = [objc_getAssociatedObject(self, &kDYYYFeedTableFullScreenAppliedKey) boolValue];
-    CGFloat superviewHeight = CGRectGetHeight(superview.bounds);
-
-    if (!enableFullScreen) {
-        if (fullScreenApplied) {
-            NSNumber *storedGap = objc_getAssociatedObject(self, &kDYYYFeedTableOriginalHeightGapKey);
-            CGFloat originalHeightGap = storedGap ? MAX(storedGap.doubleValue, 0.0) : 0.0;
-            CGFloat restoredHeight = MAX(superviewHeight - originalHeightGap, 0.0);
-            CGRect frame = self.frame;
-            if (fabs(CGRectGetHeight(frame) - restoredHeight) > 0.5) {
-                frame.size.height = restoredHeight;
-                self.frame = frame;
-            }
-            objc_setAssociatedObject(self, &kDYYYFeedTableOriginalHeightGapKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            objc_setAssociatedObject(self, &kDYYYFeedTableFullScreenAppliedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        return;
-    }
-
-    if (!fullScreenApplied) {
-        CGFloat originalHeightGap = MAX(superviewHeight - CGRectGetHeight(self.frame), 0.0);
-        objc_setAssociatedObject(self, &kDYYYFeedTableOriginalHeightGapKey, @(originalHeightGap), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(self, &kDYYYFeedTableFullScreenAppliedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-
-    // v228: 用 superview 高度作为目标，不用屏幕高
-    // 好处：tableView 不会超出 superview，避免视觉错位
-    // 前提：抖音的 feed 容器本身就是全屏高度（由 DYYY 别处保持）
-    CGFloat targetH = superviewHeight;
-    if (fabs(CGRectGetHeight(self.frame) - targetH) > 0.5) {
-        CGRect frame = self.frame;
-        frame.size.height = targetH;
-        self.frame = frame;
-    }
+    // v229: 参考 AWEAwemeDetailTableView 的做法 —— 不改 frame，
+    // 靠 clipsToBounds=NO + ExpandPlayInteraction 让 cell 内容溢出显示，
+    // 视觉上实现全屏。彻底无状态 → 切页返回不会残留旧 gap 导致错位。
+    self.clipsToBounds = NO;
+    DYYYExpandPlayInteraction(self);
 }
 %end
 
