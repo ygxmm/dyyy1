@@ -18134,6 +18134,22 @@ static void v179_dcvLayout(id self, SEL _cmd) {
         @try { refer = [vc valueForKey:@"referString"]; } @catch (NSException *e) {}
         if (![refer isKindOfClass:[NSString class]] || ![refer containsString:@"search"]) return;
 
+        // v179fix: 评论面板打开时不动 RC.view（避免评论背景变透明）
+        id ic = nil;
+        @try { ic = [vc valueForKey:@"interactionController"]; } @catch (NSException *e) {}
+        if (ic) {
+            @try {
+                if ([ic respondsToSelector:NSSelectorFromString(@"isCommentVCShowing")]) {
+                    BOOL showing = [[ic performSelector:NSSelectorFromString(@"isCommentVCShowing")] boolValue];
+                    if (showing) return;
+                }
+                if ([ic respondsToSelector:NSSelectorFromString(@"isCommentListShowing")]) {
+                    BOOL showing = [[ic performSelector:NSSelectorFromString(@"isCommentListShowing")] boolValue];
+                    if (showing) return;
+                }
+            } @catch (NSException *e) {}
+        }
+
         CGFloat w = [UIScreen mainScreen].bounds.size.width;
         CGFloat h = [UIScreen mainScreen].bounds.size.height;
 
