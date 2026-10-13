@@ -2437,6 +2437,21 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 
 - (NSArray *)bitrateModels {
     NSArray *originalModels = %orig;
+    {
+        static char kHevcDumped;
+        if (!objc_getAssociatedObject(self, &kHevcDumped)) {
+            objc_setAssociatedObject(self, &kHevcDumped, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            NSMutableString *buf = [NSMutableString stringWithString:@"v221 hevc:"];
+            for (id m in originalModels) {
+                NSInteger b = DYYYBitrateForBitrateModel(m);
+                NSNumber *h265 = nil;
+                @try { h265 = [m valueForKey:@"isH265"]; } @catch (NSException *e) {}
+                [buf appendFormat:@"\n  br=%ld h265=%@ gear=%@",
+                    (long)b, h265 ?: @"?", [m valueForKey:@"gearName"] ?: @"?"];
+            }
+            DYYYProbeLog(@"%@", buf);
+        }
+    }
 
     if (DYYYShouldDisableAllHDR()) {
         NSArray *filteredModels = DYYYFilteredSDRBitrateModels(originalModels);
