@@ -1093,7 +1093,7 @@ static void DYYYApplyDisplayLocationToLabel(UILabel *label, NSString *displayLoc
     }
 
     BOOL isDarkMode = [DYYYUtils isDarkMode];
-    UIBlurEffectStyle blurStyle = UIBlurEffectStyleLight;  // v203: 固定浅色磨砂，深色太黑
+    UIBlurEffectStyle blurStyle = isDarkMode ? UIBlurEffectStyleDark : UIBlurEffectStyleLight;
 
     UIView *overlayView = nil;
 
@@ -1102,7 +1102,7 @@ static void DYYYApplyDisplayLocationToLabel(UILabel *label, NSString *displayLoc
         UIVisualEffectView *blurEffectView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
         blurEffectView.frame = view.bounds;
         blurEffectView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        blurEffectView.alpha = 1.0;  // iOS: <1.0 模糊不渲染
+        blurEffectView.alpha = userTransparency;
         blurEffectView.tag = tag;
 
         overlayView = [[UIView alloc] initWithFrame:view.bounds];
@@ -1113,7 +1113,7 @@ static void DYYYApplyDisplayLocationToLabel(UILabel *label, NSString *displayLoc
     } else {
         UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:blurStyle];
         [existingBlurView setEffect:blurEffect];
-        existingBlurView.alpha = 1.0;
+        existingBlurView.alpha = userTransparency;
 
         for (UIView *subview in existingBlurView.contentView.subviews) {
             if ([subview isKindOfClass:[UIView class]]) {
@@ -1128,14 +1128,8 @@ static void DYYYApplyDisplayLocationToLabel(UILabel *label, NSString *displayLoc
         }
     }
     if (overlayView) {
-        // v203: 用户值 = 透明度（1=最透明, 0=最浓）
-        CGFloat v = userTransparency;
-        if (v < 0) v = 0;
-        if (v > 1) v = 1;
-        CGFloat eff = (1.0 - v) * 0.15;  // v206: 最浓时只 15%
-        if (eff < 0.02) eff = 0.02;
-        overlayView.alpha = 1.0;
-        overlayView.backgroundColor = [UIColor colorWithWhite:0.9 alpha:eff];  // v206: 浅白叠加
+        CGFloat alpha = isDarkMode ? 0.2 : 0.1;
+        overlayView.backgroundColor = [UIColor colorWithWhite:(isDarkMode ? 0 : 1) alpha:alpha];
     }
 }
 
