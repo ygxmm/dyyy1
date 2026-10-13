@@ -2354,6 +2354,15 @@ static NSInteger DYYYBitrateForBitrateModel(id model) {
 %hook AWEVideoModel
 
 - (AWEURLModel *)playURL {
+    {
+        static int n = 0;
+        if (n < 5) {
+            n++;
+            DYYYProbeLog(@"v213 playURL called, enabled=%d models=%lu",
+                DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality"),
+                (unsigned long)[[self bitrateModels] count]);
+        }
+    }
     if (!DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality")) {
         return %orig;
     }
