@@ -5013,13 +5013,7 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
 %hook AWEBaseListViewController
 - (void)viewDidLayoutSubviews {
     %orig;
-    {
-        static int n = 0;
-        if (n < 8) {
-            n++;
-            DYYYProbeLog(@"v198 ABLV layout self=%@", NSStringFromClass([self class]));
-        }
-    }
+
     [self applyBlurEffectIfNeeded];
 }
 
@@ -5029,34 +5023,26 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
         float userTransparency = [[[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYCommentBlurTransparent"] floatValue];
         if (userTransparency <= 0 || userTransparency > 1) userTransparency = 0.9;
         [DYYYUtils applyBlurEffectToView:self.view transparency:userTransparency blurViewTag:999];
-        {
-            static int n = 0;
-            if (n < 3) {
-                n++;
-                NSMutableString *buf = [NSMutableString stringWithString:@"v196 dump:"];
-                UIView *root = self.view;
-                [buf appendFormat:@"\n  root=%@ frame=%@ bg=%@ alpha=%.2f",
-                    NSStringFromClass(root.class),
-                    NSStringFromCGRect(root.frame),
-                    root.backgroundColor,
-                    root.alpha];
-                for (UIView *sv in root.subviews) {
-                    [buf appendFormat:@"\n  sub=%@ tag=%ld frame=%@ bg=%@ alpha=%.2f hidden=%d clips=%d",
-                        NSStringFromClass(sv.class),
-                        (long)sv.tag,
-                        NSStringFromCGRect(sv.frame),
-                        sv.backgroundColor,
-                        sv.alpha,
-                        sv.hidden,
-                        sv.clipsToBounds];
-                    // 如果是 UIVisualEffectView 看里面
-                    if ([sv isKindOfClass:[UIVisualEffectView class]]) {
-                        UIVisualEffectView *vev = (UIVisualEffectView *)sv;
-                        [buf appendFormat:@"\n    [effect=%@ contentSubCnt=%lu]",
-                            vev.effect ? NSStringFromClass(vev.effect.class) : @"nil",
-                            (unsigned long)vev.contentView.subviews.count];
+
+        // v200: 清 UICollectionView + AWEBaseListSectionBackgroundView 的深灰背景（不然盖住 blurView）
+        Class sbCls = NSClassFromString(@"AWEBaseListSectionBackgroundView");
+        for (UIView *sv in self.view.subviews) {
+            if ([sv isKindOfClass:[UICollectionView class]]) {
+                if (sv.backgroundColor && sv.backgroundColor.alpha > 0) {
+                    sv.backgroundColor = [UIColor clearColor];
+                    sv.opaque = NO;
+                }
+                for (UIView *sub in sv.subviews) {
+                    if (sbCls && [sub isKindOfClass:sbCls]) {
+                        if (sub.backgroundColor && sub.backgroundColor.alpha > 0) {
+                            sub.backgroundColor = [UIColor clearColor];
+                            sub.opaque = NO;
+                        }
                     }
                 }
+            }
+        }
+
                 DYYYProbeLog(@"%@", buf);
             }
         }
