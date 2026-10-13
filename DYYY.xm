@@ -2457,6 +2457,21 @@ static NSInteger DYYYBitrateForBitrateModel(id model) {
     %orig;
 }
 
+// v217_origin: 播放器可能读 bitrateModels_origin，也排序
+- (NSArray *)bitrateModels_origin {
+    NSArray *orig = %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality") && orig.count >= 2) {
+        return [orig sortedArrayWithOptions:NSSortStable
+                          usingComparator:^NSComparisonResult(id l, id r) {
+                              NSInteger lb = DYYYBitrateForBitrateModel(l);
+                              NSInteger rb = DYYYBitrateForBitrateModel(r);
+                              if (lb == rb) return NSOrderedSame;
+                              return lb > rb ? NSOrderedAscending : NSOrderedDescending;
+                          }];
+    }
+    return orig;
+}
+
 - (NSArray *)manualBitrateModels {
     NSArray *models = %orig;
     if (DYYYShouldDisableAllHDR()) {
