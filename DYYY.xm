@@ -2355,9 +2355,8 @@ static NSInteger DYYYBitrateForBitrateModel(id model) {
 
 - (AWEURLModel *)playURL {
     {
-        static int n = 0;
-        if (n < 3) {
-            n++;
+        // v216: 每次调用都 dump（刷视频可以看到新视频的档位）
+        {
             NSArray *ms = [self bitrateModels];
             NSMutableString *buf = [NSMutableString stringWithFormat:@"v215 bitrate: enabled=%d cnt=%lu",
                 DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality"), (unsigned long)ms.count];
