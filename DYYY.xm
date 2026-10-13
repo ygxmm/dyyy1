@@ -5017,36 +5017,11 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
 }
 
 - (void)applyBlurEffectIfNeeded {
-    %orig;   // v187: 先跑抖音原逻辑（可能有清背景）
+    %orig;
     if (DYYYGetBool(@"DYYYEnableCommentBlur") && [self isKindOfClass:NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController")]) {
-        // 动态获取用户设置的透明度
         float userTransparency = [[[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYCommentBlurTransparent"] floatValue];
-        if (userTransparency <= 0 || userTransparency > 1) {
-            userTransparency = 0.9;
-        }
-
-        // 应用毛玻璃效果
+        if (userTransparency <= 0 || userTransparency > 1) userTransparency = 0.9;
         [DYYYUtils applyBlurEffectToView:self.view transparency:userTransparency blurViewTag:999];
-        {
-            static int n = 0;
-            if (n < 5) {
-                n++;
-                int cnt = 0;
-                UIVisualEffectView *bv = nil;
-                for (UIView *sv in self.view.subviews) {
-                    if ([sv isKindOfClass:[UIVisualEffectView class]] && sv.tag == 999) {
-                        bv = (UIVisualEffectView *)sv; cnt++;
-                    }
-                }
-                DYYYProbeLog(@"v195 blurView cnt=%d alpha=%.2f effect=%@ hidden=%d superSubCnt=%lu",
-                    cnt,
-                    bv ? bv.alpha : 0,
-                    bv ? (bv.effect ? @"Y" : @"nil") : @"-",
-                    bv ? bv.hidden : -1,
-                    (unsigned long)self.view.subviews.count);
-            }
-        }
-
     }
 }
 %end
@@ -18191,26 +18166,6 @@ static void v179_dcvLayout(id self, SEL _cmd) {
             DYYYProbeLog(@"v179: hooked DCV");
         } else DYYYProbeLog(@"v179: no method");
     }
-}
-
-// v190: 只对评论面板内的 AWEBaseListSectionBackgroundView 强制透明
-// 目的：恢复 DYYY 原版毛玻璃可见（新版抖音加了不透明 section 背景遮挡）
-static void (*v190_orig_setBg)(id, SEL, id) = NULL;
-
-static void v190_setBg(id self, SEL _cmd, UIColor *color) {
-    if (DYYYGetBool(@"DYYYEnableCommentBlur")) {
-        UIResponder *r = ((UIView *)self).nextResponder;
-        int n = 0;
-        while (r && n++ < 30) {
-            if ([r isKindOfClass:NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController")]
-                || [r isKindOfClass:NSClassFromString(@"AWECommentPanelListSwiftImpl.CommentViewController")]) {
-                if (v190_orig_setBg) v190_orig_setBg(self, _cmd, [UIColor clearColor]);
-                return;
-            }
-            r = r.nextResponder;
-        }
-    }
-    if (v190_orig_setBg) v190_orig_setBg(self, _cmd, color);
 }
 
 %ctor {
