@@ -16650,8 +16650,10 @@ static char kDYYYFeedTableFullScreenAppliedKey;
         objc_setAssociatedObject(self, &kDYYYFeedTableFullScreenAppliedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 
-    // v223: 判断条件与目标对齐（都对比屏幕高），避免每帧重复改 frame 触发递归
-    CGFloat targetH = [UIScreen mainScreen].bounds.size.height;
+    // v228: 用 superview 高度作为目标，不用屏幕高
+    // 好处：tableView 不会超出 superview，避免视觉错位
+    // 前提：抖音的 feed 容器本身就是全屏高度（由 DYYY 别处保持）
+    CGFloat targetH = superviewHeight;
     if (fabs(CGRectGetHeight(self.frame) - targetH) > 0.5) {
         CGRect frame = self.frame;
         frame.size.height = targetH;
