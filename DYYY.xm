@@ -5023,6 +5023,43 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
         float userTransparency = [[[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYCommentBlurTransparent"] floatValue];
         if (userTransparency <= 0 || userTransparency > 1) userTransparency = 0.9;
         [DYYYUtils applyBlurEffectToView:self.view transparency:userTransparency blurViewTag:999];
+        {
+            static int n = 0;
+            if (n < 5) {
+                n++;
+                NSMutableString *buf = [NSMutableString stringWithString:@"v202 dump:"];
+                [buf appendFormat:@"\n  userTransparency=%.2f", userTransparency];
+                for (UIView *sv in self.view.subviews) {
+                    if ([sv isKindOfClass:[UIVisualEffectView class]]) {
+                        UIVisualEffectView *vev = (UIVisualEffectView *)sv;
+                        [buf appendFormat:@"\n  BLUR tag=%ld alpha=%.2f effect=%@ frame=%@",
+                            (long)sv.tag,
+                            vev.alpha,
+                            vev.effect ? NSStringFromClass(vev.effect.class) : @"nil",
+                            NSStringFromCGRect(vev.frame)];
+                        for (UIView *inner in vev.contentView.subviews) {
+                            [buf appendFormat:@"\n    inner=%@ alpha=%.2f bg=%@",
+                                NSStringFromClass(inner.class),
+                                inner.alpha,
+                                inner.backgroundColor];
+                        }
+                    } else if ([sv isKindOfClass:[UICollectionView class]]) {
+                        [buf appendFormat:@"\n  COLL tag=%ld bg=%@ alpha=%.2f hidden=%d",
+                            (long)sv.tag,
+                            sv.backgroundColor,
+                            sv.alpha,
+                            sv.hidden];
+                    } else {
+                        [buf appendFormat:@"\n  OTHR %@ frame=%@ bg=%@ alpha=%.2f",
+                            NSStringFromClass(sv.class),
+                            NSStringFromCGRect(sv.frame),
+                            sv.backgroundColor,
+                            sv.alpha];
+                    }
+                }
+                DYYYProbeLog(@"%@", buf);
+            }
+        }
 
         // v200: 清 UICollectionView + AWEBaseListSectionBackgroundView 的深灰背景（不然盖住 blurView）
         Class sbCls = NSClassFromString(@"AWEBaseListSectionBackgroundView");
