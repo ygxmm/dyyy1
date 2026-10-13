@@ -18118,3 +18118,50 @@ static void DYYYV54Log(NSString *fmt, ...) {
         fclose(fp);
     }
 }
+
+// ============================================================
+// v179: DCV 布局完成后把 RC.view 拉回 852（父改子，不循环）
+// ============================================================
+static void (*v179_orig_dcvLayout)(id, SEL) = NULL;
+
+static void v179_dcvLayout(id self, SEL _cmd) {
+    if (v179_orig_dcvLayout) v179_orig_dcvLayout(self, _cmd);
+    @try {
+        if (![self isKindOfClass:[UIViewController class]]) return;
+        UIViewController *vc = (UIViewController *)self;
+
+        NSString *refer = nil;
+        @try { refer = [vc valueForKey:@"referString"]; } @catch (NSException *e) {}
+        if (![refer isKindOfClass:[NSString class]] || ![refer containsString:@"search"]) return;
+
+        CGFloat w = [UIScreen mainScreen].bounds.size.width;
+        CGFloat h = [UIScreen mainScreen].bounds.size.height;
+
+        for (UIViewController *child in vc.childViewControllers) {
+            NSString *cn = NSStringFromClass([child class]);
+            if ([cn containsString:@"RichContentContainer"]) {
+                UIView *cv = child.view;
+                if (!cv) continue;
+                CGRect f = cv.frame;
+                if (fabs(f.size.height - h) > 1.0 || fabs(f.origin.y) > 1.0) {
+                    cv.frame = CGRectMake(0, 0, w, h);
+                }
+                cv.clipsToBounds = NO;
+            }
+        }
+    } @catch (NSException *e) {}
+}
+
+%ctor {
+    @autoreleasepool {
+        Class cls = objc_getClass("AWEAwemeDetailCellViewController");
+        if (!cls) { DYYYProbeLog(@"v179: cls nil"); return; }
+        Method m = class_getInstanceMethod(cls, @selector(viewDidLayoutSubviews));
+        if (m) {
+            v179_orig_dcvLayout = (void (*)(id, SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)v179_dcvLayout);
+            DYYYProbeLog(@"v179: hooked DCV");
+        } else DYYYProbeLog(@"v179: no method");
+    }
+}
+
