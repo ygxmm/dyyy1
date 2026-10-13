@@ -2406,6 +2406,25 @@ static NSInteger DYYYBitrateForBitrateModel(id model) {
     return %orig;
 }
 
+// v218: 播放器选档靠 currentPlayingURLKey，hook 它指向最高码率档
+static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
+
+- (NSString *)currentPlayingURLKey {
+    if (DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality")) {
+        @try {
+            NSArray *ms = [self bitrateModels];
+            if (ms.count > 0) {
+                id top = ms.firstObject;
+                NSString *key = [top valueForKey:@"gearName"];
+                if ([key isKindOfClass:[NSString class]] && key.length > 0) {
+                    return key;
+                }
+            }
+        } @catch (NSException *e) {}
+    }
+    return %orig;
+}
+
 - (NSArray *)bitrateModels {
     NSArray *originalModels = %orig;
 
