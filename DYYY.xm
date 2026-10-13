@@ -5023,20 +5023,8 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
     [self applyBlurEffectIfNeeded];
 }
 
+%new
 - (void)applyBlurEffectIfNeeded {
-    {
-        static int n = 0;
-        if (n < 5) {
-            n++;
-            Class tg = NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController");
-            DYYYProbeLog(@"v197 called self=%@ target=%@ isKind=%d enabled=%d",
-                NSStringFromClass([self class]),
-                tg ? @"Y" : @"nil",
-                tg ? [self isKindOfClass:tg] : 0,
-                DYYYGetBool(@"DYYYEnableCommentBlur"));
-        }
-    }
-    %orig;
     if (DYYYGetBool(@"DYYYEnableCommentBlur") && [self isKindOfClass:NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController")]) {
         float userTransparency = [[[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYCommentBlurTransparent"] floatValue];
         if (userTransparency <= 0 || userTransparency > 1) userTransparency = 0.9;
