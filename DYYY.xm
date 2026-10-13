@@ -5022,6 +5022,37 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
         float userTransparency = [[[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYCommentBlurTransparent"] floatValue];
         if (userTransparency <= 0 || userTransparency > 1) userTransparency = 0.9;
         [DYYYUtils applyBlurEffectToView:self.view transparency:userTransparency blurViewTag:999];
+        {
+            static int n = 0;
+            if (n < 3) {
+                n++;
+                NSMutableString *buf = [NSMutableString stringWithString:@"v196 dump:"];
+                UIView *root = self.view;
+                [buf appendFormat:@"\n  root=%@ frame=%@ bg=%@ alpha=%.2f",
+                    NSStringFromClass(root.class),
+                    NSStringFromCGRect(root.frame),
+                    root.backgroundColor,
+                    root.alpha];
+                for (UIView *sv in root.subviews) {
+                    [buf appendFormat:@"\n  sub=%@ tag=%ld frame=%@ bg=%@ alpha=%.2f hidden=%d clips=%d",
+                        NSStringFromClass(sv.class),
+                        (long)sv.tag,
+                        NSStringFromCGRect(sv.frame),
+                        sv.backgroundColor,
+                        sv.alpha,
+                        sv.hidden,
+                        sv.clipsToBounds];
+                    // 如果是 UIVisualEffectView 看里面
+                    if ([sv isKindOfClass:[UIVisualEffectView class]]) {
+                        UIVisualEffectView *vev = (UIVisualEffectView *)sv;
+                        [buf appendFormat:@"\n    [effect=%@ contentSubCnt=%lu]",
+                            vev.effect ? NSStringFromClass(vev.effect.class) : @"nil",
+                            (unsigned long)vev.contentView.subviews.count];
+                    }
+                }
+                DYYYProbeLog(@"%@", buf);
+            }
+        }
     }
 }
 %end
