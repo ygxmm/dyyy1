@@ -5019,18 +5019,6 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
 
 %new
 - (void)applyBlurEffectIfNeeded {
-    {
-        static int n = 0;
-        if (n < 10) {
-            n++;
-            Class target = NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController");
-            DYYYProbeLog(@"blur-check: self=%@ target=%@ isKind=%d switch=%d",
-                         NSStringFromClass([self class]),
-                         target ? NSStringFromClass(target) : @"(nil)",
-                         (target && [self isKindOfClass:target]),
-                         DYYYGetBool(@"DYYYEnableCommentBlur"));
-        }
-    }
     if (DYYYGetBool(@"DYYYEnableCommentBlur") && [self isKindOfClass:NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController")]) {
         // 动态获取用户设置的透明度
         float userTransparency = [[[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYCommentBlurTransparent"] floatValue];
@@ -5040,6 +5028,22 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
 
         // 应用毛玻璃效果
         [DYYYUtils applyBlurEffectToView:self.view transparency:userTransparency blurViewTag:999];
+
+        // v182: 清理抖音新版加的 section 背景（不透明深灰，会盖住 blurView）
+        Class sbCls = NSClassFromString(@"AWEBaseListSectionBackgroundView");
+        if (sbCls) {
+            NSMutableArray *q = [NSMutableArray arrayWithObject:self.view];
+            int safety = 0;
+            while (q.count > 0 && safety++ < 500) {
+                UIView *v = q.firstObject;
+                [q removeObjectAtIndex:0];
+                if ([v isKindOfClass:sbCls]) {
+                    v.backgroundColor = [UIColor clearColor];
+                    v.opaque = NO;
+                }
+                for (UIView *s in v.subviews) [q addObject:s];
+            }
+        }
     }
 }
 %end
