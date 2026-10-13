@@ -5030,33 +5030,32 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
         [DYYYUtils applyBlurEffectToView:self.view transparency:userTransparency blurViewTag:999];
 
         // v182: 清理抖音新版加的 section 背景（不透明深灰，会盖住 blurView）
+        // v183: 清 section bg + UICollectionView/UITableView 的深色背景
         Class sbCls = NSClassFromString(@"AWEBaseListSectionBackgroundView");
-        {
-            static int n = 0;
-            if (n < 3) {
-                n++;
-                DYYYProbeLog(@"v182 sbCls=%@ objc_getClass=%@",
-                    sbCls ? NSStringFromClass(sbCls) : @"(nil)",
-                    objc_getClass("AWEBaseListSectionBackgroundView") ? @"found" : @"nil");
+        NSMutableArray *q = [NSMutableArray arrayWithObject:self.view];
+        int safety = 0;
+        int hitSb = 0, hitCV = 0;
+        while (q.count > 0 && safety++ < 800) {
+            UIView *v = q.firstObject;
+            [q removeObjectAtIndex:0];
+
+            if (sbCls && [v isKindOfClass:sbCls]) {
+                v.backgroundColor = [UIColor clearColor];
+                v.opaque = NO;
+                hitSb++;
+            } else if ([v isKindOfClass:[UICollectionView class]]
+                       || [v isKindOfClass:[UITableView class]]) {
+                v.backgroundColor = [UIColor clearColor];
+                v.opaque = NO;
+                hitCV++;
             }
+            for (UIView *s in v.subviews) [q addObject:s];
         }
-        if (sbCls) {
-            NSMutableArray *q = [NSMutableArray arrayWithObject:self.view];
-            int safety = 0;
-            int hit = 0;
-            while (q.count > 0 && safety++ < 500) {
-                UIView *v = q.firstObject;
-                [q removeObjectAtIndex:0];
-                if ([v isKindOfClass:sbCls]) {
-                    v.backgroundColor = [UIColor clearColor];
-                    v.opaque = NO;
-                    hit++;
-                }
-                for (UIView *s in v.subviews) [q addObject:s];
-            }
-            {
-                static int m = 0;
-                if (m < 3) { m++; DYYYProbeLog(@"v182 cleaned %d section bg views", hit); }
+        {
+            static int m = 0;
+            if (m < 3) {
+                m++;
+                DYYYProbeLog(@"v183 sb=%d cv=%d", hitSb, hitCV);
             }
         }
     }
