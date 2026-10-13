@@ -3953,49 +3953,73 @@ static inline BOOL DYYYLayerHookNeeded(void) {
 %hook CALayer
 
 - (void)setHidden:(BOOL)hidden {
-    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) { %orig(hidden); return; }
+    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) {
+        %orig(hidden);
+        return;
+    }
     BOOL shouldForceHidden = DYYYShouldForceHideAvatarActionLayer(self) || DYYYShouldForceHideFeedVideoCollectButtonLayer(self);
     %orig(shouldForceHidden ? YES : hidden);
 }
 
 - (void)setContents:(id)contents {
-    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) { %orig(contents); return; }
+    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) {
+        %orig(contents);
+        return;
+    }
     BOOL shouldClearLayer = DYYYShouldClearAvatarActionLayer(self) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
     %orig(shouldClearLayer ? nil : contents);
 }
 
 - (void)setBackgroundColor:(CGColorRef)backgroundColor {
-    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) { %orig(backgroundColor); return; }
+    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) {
+        %orig(backgroundColor);
+        return;
+    }
     BOOL shouldClearLayer = DYYYShouldClearAvatarActionLayer(self) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
     %orig(shouldClearLayer ? UIColor.clearColor.CGColor : backgroundColor);
 }
 
 - (void)setOpaque:(BOOL)opaque {
-    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) { %orig(opaque); return; }
+    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) {
+        %orig(opaque);
+        return;
+    }
     BOOL shouldClearLayer = DYYYShouldClearAvatarActionLayer(self) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
     %orig(shouldClearLayer ? NO : opaque);
 }
 
 - (void)setBorderWidth:(CGFloat)borderWidth {
-    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) { %orig(borderWidth); return; }
+    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) {
+        %orig(borderWidth);
+        return;
+    }
     BOOL shouldClearLayer = DYYYShouldClearAvatarActionLayer(self) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
     %orig(shouldClearLayer ? 0.0 : borderWidth);
 }
 
 - (void)setBorderColor:(CGColorRef)borderColor {
-    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) { %orig(borderColor); return; }
+    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) {
+        %orig(borderColor);
+        return;
+    }
     BOOL shouldClearLayer = DYYYShouldClearAvatarActionLayer(self) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
     %orig(shouldClearLayer ? UIColor.clearColor.CGColor : borderColor);
 }
 
 - (void)setShadowOpacity:(float)shadowOpacity {
-    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) { %orig(shadowOpacity); return; }
+    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) {
+        %orig(shadowOpacity);
+        return;
+    }
     BOOL shouldClearLayer = DYYYShouldClearAvatarActionLayer(self) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
     %orig(shouldClearLayer ? 0.0f : shadowOpacity);
 }
 
 - (void)setShadowColor:(CGColorRef)shadowColor {
-    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) { %orig(shadowColor); return; }
+    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) {
+        %orig(shadowColor);
+        return;
+    }
     BOOL shouldClearLayer = DYYYShouldClearAvatarActionLayer(self) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
     %orig(shouldClearLayer ? UIColor.clearColor.CGColor : shadowColor);
 }
