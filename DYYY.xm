@@ -5031,17 +5031,32 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
 
         // v182: 清理抖音新版加的 section 背景（不透明深灰，会盖住 blurView）
         Class sbCls = NSClassFromString(@"AWEBaseListSectionBackgroundView");
+        {
+            static int n = 0;
+            if (n < 3) {
+                n++;
+                DYYYProbeLog(@"v182 sbCls=%@ objc_getClass=%@",
+                    sbCls ? NSStringFromClass(sbCls) : @"(nil)",
+                    objc_getClass("AWEBaseListSectionBackgroundView") ? @"found" : @"nil");
+            }
+        }
         if (sbCls) {
             NSMutableArray *q = [NSMutableArray arrayWithObject:self.view];
             int safety = 0;
+            int hit = 0;
             while (q.count > 0 && safety++ < 500) {
                 UIView *v = q.firstObject;
                 [q removeObjectAtIndex:0];
                 if ([v isKindOfClass:sbCls]) {
                     v.backgroundColor = [UIColor clearColor];
                     v.opaque = NO;
+                    hit++;
                 }
                 for (UIView *s in v.subviews) [q addObject:s];
+            }
+            {
+                static int m = 0;
+                if (m < 3) { m++; DYYYProbeLog(@"v182 cleaned %d section bg views", hit); }
             }
         }
     }
