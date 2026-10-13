@@ -5017,8 +5017,8 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
     [self applyBlurEffectIfNeeded];
 }
 
-%new
 - (void)applyBlurEffectIfNeeded {
+    %orig;   // v187: 先跑抖音原逻辑（可能有清背景）
     if (DYYYGetBool(@"DYYYEnableCommentBlur") && [self isKindOfClass:NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController")]) {
         // 动态获取用户设置的透明度
         float userTransparency = [[[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYCommentBlurTransparent"] floatValue];
