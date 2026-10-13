@@ -5028,13 +5028,13 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
         Class sbCls = NSClassFromString(@"AWEBaseListSectionBackgroundView");
         for (UIView *sv in self.view.subviews) {
             if ([sv isKindOfClass:[UICollectionView class]]) {
-                if (sv.backgroundColor && sv.backgroundColor.alpha > 0) {
+                if (sv.backgroundColor && CGColorGetAlpha(sv.backgroundColor.CGColor) > 0) {
                     sv.backgroundColor = [UIColor clearColor];
                     sv.opaque = NO;
                 }
                 for (UIView *sub in sv.subviews) {
                     if (sbCls && [sub isKindOfClass:sbCls]) {
-                        if (sub.backgroundColor && sub.backgroundColor.alpha > 0) {
+                        if (sub.backgroundColor && CGColorGetAlpha(sub.backgroundColor.CGColor) > 0) {
                             sub.backgroundColor = [UIColor clearColor];
                             sub.opaque = NO;
                         }
