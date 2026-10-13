@@ -1128,10 +1128,14 @@ static void DYYYApplyDisplayLocationToLabel(UILabel *label, NSString *displayLoc
         }
     }
     if (overlayView) {
-        CGFloat alpha = isDarkMode ? 0.2 : 0.1;
-        overlayView.backgroundColor = [UIColor colorWithWhite:(isDarkMode ? 0 : 1) alpha:alpha];
-        // v192: 用户设的透明度控制叠加层浓淡（0=纯模糊，1=完全遮住后面）
-        overlayView.alpha = userTransparency;
+        // v193: 用户设的值 = 遮罩浓度
+        // 0.0 → 纯模糊（后面完全清楚）
+        // 1.0 → 完全遮住后面（纯色）
+        CGFloat eff = userTransparency;
+        if (eff < 0.05) eff = 0.05;
+        if (eff > 0.95) eff = 0.95;
+        overlayView.alpha = 1.0;
+        overlayView.backgroundColor = [UIColor colorWithWhite:(isDarkMode ? 0 : 1) alpha:eff];
     }
 }
 
