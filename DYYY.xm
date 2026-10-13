@@ -18195,3 +18195,29 @@ static void v179_dcvLayout(id self, SEL _cmd) {
     }
 }
 
+// v182 AWEBaseListSectionBackgroundView: 评论毛玻璃失效修复
+// 新版抖音给 section 加了不透明深灰背景，把 DYYY 的 blurView 盖住了
+%hook AWEBaseListSectionBackgroundView
+
+- (void)layoutSubviews {
+    %orig;
+    if (!DYYYGetBool(@"DYYYEnableCommentBlur")) return;
+
+    // 只在评论容器内才清背景，避免影响首页/其他列表
+    UIResponder *r = self.nextResponder;
+    int n = 0;
+    while (r && n < 20) {
+        if ([r isKindOfClass:NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController")]) {
+            if (self.backgroundColor != [UIColor clearColor]) {
+                self.backgroundColor = [UIColor clearColor];
+                self.opaque = NO;
+            }
+            return;
+        }
+        r = r.nextResponder;
+        n++;
+    }
+}
+
+%end
+
