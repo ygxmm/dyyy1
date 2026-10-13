@@ -14519,7 +14519,7 @@ static void DYYYApplySearchShiftIfNeeded(id vc) {
             BOOL hit = [refer containsString:@"search"];
             objc_setAssociatedObject(vc, &kDYYYSearchHitKey, @(hit), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             isSearch = @(hit);
-            if (hit) DYYYProbeLog(@"v141: 命中搜索页");
+            // if (hit) DYYYProbeLog(@"v141: 命中搜索页");  // v179 稳定后关闭
         }
         if (!isSearch.boolValue) return;
 
