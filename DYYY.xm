@@ -13636,20 +13636,11 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 %hook AWEUserModel
 
 - (id)storyRing {
-	BOOL DYYYHideAvatarButton = DYYYGetBool(@"DYYYHideAvatarButton");
-	if (DYYYHideAvatarButton) {
-		return nil;
-	}
 	return %orig;
 }
 
 - (void)setStoryRing:(id)ring {
-	BOOL DYYYHideAvatarButton = DYYYGetBool(@"DYYYHideAvatarButton");
-	if (DYYYHideAvatarButton) {
-		%orig(nil);
-		return;
-	}
-	%orig;
+	%orig(ring);
 }
 
 %end
@@ -14247,7 +14238,7 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
     if (DYYYGetBool(@"DYYYHideAvatarButton")) {
         return NO;
     }
-    return %orig;
+    return %orig(arg);
 }
 
 %end
