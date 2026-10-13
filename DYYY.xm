@@ -5029,43 +5029,6 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
         // 应用毛玻璃效果
         [DYYYUtils applyBlurEffectToView:self.view transparency:userTransparency blurViewTag:999];
 
-        // v182: 清理抖音新版加的 section 背景（不透明深灰，会盖住 blurView）
-        // v184: 清 section bg + UICollectionView/UITableView 背景（每个 VC.view 只做一次）
-        static char kDYYYBlurCleanedKey;
-        if (!objc_getAssociatedObject(self.view, &kDYYYBlurCleanedKey)) {
-            objc_setAssociatedObject(self.view, &kDYYYBlurCleanedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            Class sbCls = NSClassFromString(@"AWEBaseListSectionBackgroundView");
-            NSMutableArray *q = [NSMutableArray arrayWithObject:self.view];
-            int safety = 0;
-            while (q.count > 0 && safety++ < 800) {
-                UIView *v = q.firstObject;
-                [q removeObjectAtIndex:0];
-
-                if (sbCls && [v isKindOfClass:sbCls]) {
-                    v.backgroundColor = [UIColor clearColor];
-                    v.opaque = NO;
-                } else if ([v isKindOfClass:[UICollectionView class]]
-                           || [v isKindOfClass:[UITableView class]]) {
-                    v.backgroundColor = [UIColor clearColor];
-                    v.opaque = NO;
-                } else if ([v isKindOfClass:[UICollectionViewCell class]]
-                           || [v isKindOfClass:[UITableViewCell class]]) {
-                    // v185: 评论 cell 也透明
-                    v.backgroundColor = [UIColor clearColor];
-                    v.opaque = NO;
-                } else if (v.backgroundColor) {
-                    // v185: 其他深色背景视图也清（亮度 < 0.3 判为深色）
-                    CGFloat h, s, b, a;
-                    if ([v.backgroundColor getHue:&h saturation:&s brightness:&b alpha:&a]) {
-                        if (b < 0.3 && a > 0.5) {
-                            v.backgroundColor = [UIColor clearColor];
-                            v.opaque = NO;
-                        }
-                    }
-                }
-                for (UIView *s in v.subviews) [q addObject:s];
-            }
-        }
     }
 }
 %end
@@ -18221,4 +18184,47 @@ static void v179_dcvLayout(id self, SEL _cmd) {
     }
 }
 
+// v188: 源头 hook section bg 的 setBackgroundColor，评论面板内强制透明
+static void (*v188_orig_setBg)(id, SEL, id) = NULL;
+
+static BOOL v188_inCommentPanel(UIView *v) {
+    UIResponder *r = v.nextResponder;
+    int n = 0;
+    while (r && n < 30) {
+        if ([r isKindOfClass:NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController")]
+            || [r isKindOfClass:NSClassFromString(@"AWECommentPanelListSwiftImpl.CommentViewController")]
+            || [r isKindOfClass:NSClassFromString(@"AWECommentContainerViewController")]) {
+            return YES;
+        }
+        r = r.nextResponder;
+        n++;
+    }
+    return NO;
+}
+
+static void v188_setBg(id self, SEL _cmd, UIColor *color) {
+    if (DYYYGetBool(@"DYYYEnableCommentBlur")) {
+        @try {
+            if (v188_inCommentPanel((UIView *)self)) {
+                if (v188_orig_setBg) v188_orig_setBg(self, _cmd, [UIColor clearColor]);
+                [(UIView *)self setValue:@NO forKey:@"opaque"];
+                return;
+            }
+        } @catch (NSException *e) {}
+    }
+    if (v188_orig_setBg) v188_orig_setBg(self, _cmd, color);
+}
+
+%ctor {
+    @autoreleasepool {
+        Class cls = objc_getClass("AWEBaseListSectionBackgroundView");
+        if (!cls) { DYYYProbeLog(@"v188: cls nil"); return; }
+        Method m = class_getInstanceMethod(cls, @selector(setBackgroundColor:));
+        if (m) {
+            v188_orig_setBg = (void (*)(id, SEL, id))method_getImplementation(m);
+            method_setImplementation(m, (IMP)v188_setBg);
+            DYYYProbeLog(@"v188: hooked setBackgroundColor");
+        } else DYYYProbeLog(@"v188: no setter");
+    }
+}
 
