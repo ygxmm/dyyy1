@@ -14239,20 +14239,17 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 %end
 
 %hook AWEPlayInteractionUserAvatarStoryController
-- (void)layoutElementView {
-    %orig;
+
+// v226: 只 hook shouldShowColorRing 返回 NO
+// 让抖音原生逻辑判断"不该显示彩环"，走原生路径（不触发异常日志）
+// 之前 hook showStory25RingView 直接 return 会导致抖音打印循环引用对象崩溃
+- (BOOL)shouldShowColorRing:(id)arg {
     if (DYYYGetBool(@"DYYYHideAvatarButton")) {
-        self.colorRingView.hidden = YES;
-        return;
+        return NO;
     }
-    DYYYApplyAvatarSurroundingSettingsForOwner(self);
+    return %orig;
 }
 
-- (void)showStory25RingView {
-    if (DYYYGetBool(@"DYYYHideAvatarButton")) return;   // v225: 拦截彩环创建
-    %orig;
-    DYYYApplyAvatarSurroundingSettingsForOwner(self);
-}
 %end
 
 %hook AWEPlayInteractionUserAvatarDecorationController
