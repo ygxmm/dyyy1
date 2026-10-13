@@ -14750,13 +14750,21 @@ static BOOL DYYYIsSearchVC(id self) {
                                                       }];
                               }
                           } else {
-                              if (videoModel.h264URL && videoModel.h264URL.originURLList.count > 0) {
-                                  NSURL *url = [NSURL URLWithString:videoModel.h264URL.originURLList.firstObject];
-                                  [DYYYManager downloadMedia:url
-                                                   mediaType:MediaTypeVideo
-                                                       audio:audioURL
-                                                  completion:^(BOOL success){
-                                                  }];
+                              id best = nil;
+                              if (DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality")) {
+                                  best = DYYYBestDownloadAddr(videoModel);
+                              }
+                              if (!best) best = [videoModel valueForKey:@"h264URL"];
+                              if (best) {
+                                  NSArray *urls = [best valueForKey:@"originURLList"];
+                                  if ([urls isKindOfClass:[NSArray class]] && urls.count > 0) {
+                                      NSURL *url = [NSURL URLWithString:urls.firstObject];
+                                      [DYYYManager downloadMedia:url
+                                                       mediaType:MediaTypeVideo
+                                                           audio:audioURL
+                                                      completion:^(BOOL success){
+                                                      }];
+                                  }
                               }
                           }
                         }];
@@ -18269,3 +18277,26 @@ static void v212_setBg(id self, SEL _cmd, id color) {
     }
 }
 
+// v220: 取 videoModel 里最高码率档的 playAddr（给"保存视频"用）
+static id DYYYBestDownloadAddr(id videoModel) {
+    if (!videoModel) return nil;
+    NSArray *ms = nil;
+    @try {
+        ms = [videoModel valueForKey:@"bitrateModels"];
+    } @catch (NSException *e) { return nil; }
+    if (![ms isKindOfClass:[NSArray class]] || ms.count == 0) return nil;
+    NSInteger bestBr = 0;
+    id best = nil;
+    for (id m in ms) {
+        NSInteger b = DYYYBitrateForBitrateModel(m);
+        if (b > bestBr) {
+            bestBr = b;
+            id pa = nil;
+            @try {
+                pa = [m valueForKey:@"playAddr"];
+            } @catch (NSException *e) {}
+            if (pa) best = pa;
+        }
+    }
+    return best;
+}
