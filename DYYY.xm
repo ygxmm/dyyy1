@@ -5043,9 +5043,6 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
             }
         }
 
-                DYYYProbeLog(@"%@", buf);
-            }
-        }
     }
 }
 %end
