@@ -5025,6 +5025,34 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
         [DYYYUtils applyBlurEffectToView:self.view transparency:userTransparency blurViewTag:999];
         {
             static int n = 0;
+            if (n < 2) {
+                n++;
+                for (UIView *top in self.view.subviews) {
+                    if (![top isKindOfClass:[UICollectionView class]]) continue;
+                    NSMutableString *buf = [NSMutableString stringWithString:@"v204 dump:"];
+                    __block void (^walk)(UIView *, int);
+                    walk = ^(UIView *v, int d) {
+                        if (d > 4) return;
+                        UIColor *bg = v.backgroundColor;
+                        CGFloat r=0,g=0,b=0,a=0;
+                        [bg getRed:&r green:&g blue:&b alpha:&a];
+                        if (a > 0.05) {
+                            NSMutableString *pad = [NSMutableString string];
+                            for (int i = 0; i < d; i++) [pad appendString:@"  "];
+                            [buf appendFormat:@"\n%@[d=%d] %@ f=%@ bg=%.2f,%.2f,%.2f,%.2f",
+                                pad, d, NSStringFromClass(v.class),
+                                NSStringFromCGRect(v.frame),
+                                r, g, b, a];
+                        }
+                        for (UIView *sub in v.subviews) walk(sub, d + 1);
+                    };
+                    walk(top, 0);
+                    DYYYProbeLog(@"%@", buf);
+                }
+            }
+        }
+        {
+            static int n = 0;
             if (n < 5) {
                 n++;
                 NSMutableString *buf = [NSMutableString stringWithString:@"v202 dump:"];
