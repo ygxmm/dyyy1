@@ -1102,7 +1102,7 @@ static void DYYYApplyDisplayLocationToLabel(UILabel *label, NSString *displayLoc
         UIVisualEffectView *blurEffectView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
         blurEffectView.frame = view.bounds;
         blurEffectView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        blurEffectView.alpha = 1.0;  // v192: 模糊渲染必须先满足 alpha=1
+        blurEffectView.alpha = userTransparency;
         blurEffectView.tag = tag;
 
         overlayView = [[UIView alloc] initWithFrame:view.bounds];
@@ -1113,7 +1113,7 @@ static void DYYYApplyDisplayLocationToLabel(UILabel *label, NSString *displayLoc
     } else {
         UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:blurStyle];
         [existingBlurView setEffect:blurEffect];
-        existingBlurView.alpha = 1.0;  // v192
+        existingBlurView.alpha = userTransparency;
 
         for (UIView *subview in existingBlurView.contentView.subviews) {
             if ([subview isKindOfClass:[UIView class]]) {
@@ -1128,14 +1128,8 @@ static void DYYYApplyDisplayLocationToLabel(UILabel *label, NSString *displayLoc
         }
     }
     if (overlayView) {
-        // v193: 用户设的值 = 遮罩浓度
-        // 0.0 → 纯模糊（后面完全清楚）
-        // 1.0 → 完全遮住后面（纯色）
-        CGFloat eff = userTransparency;
-        if (eff < 0.05) eff = 0.05;
-        if (eff > 0.95) eff = 0.95;
-        overlayView.alpha = 1.0;
-        overlayView.backgroundColor = [UIColor colorWithWhite:(isDarkMode ? 0 : 1) alpha:eff];
+        CGFloat alpha = isDarkMode ? 0.2 : 0.1;
+        overlayView.backgroundColor = [UIColor colorWithWhite:(isDarkMode ? 0 : 1) alpha:alpha];
     }
 }
 
