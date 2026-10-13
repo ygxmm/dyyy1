@@ -2410,6 +2410,14 @@ static NSInteger DYYYBitrateForBitrateModel(id model) {
 static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 
 - (NSString *)currentPlayingURLKey {
+    {
+        static int n = 0;
+        if (n < 10) {
+            n++;
+            NSString *orig = %orig;
+            DYYYProbeLog(@"v218 orig key=%@", orig);
+        }
+    }
     if (DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality")) {
         @try {
             NSArray *ms = [self bitrateModels];
