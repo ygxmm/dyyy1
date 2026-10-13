@@ -5022,7 +5022,7 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
         if (n < 10) {
             n++;
             Class target = NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController");
-            DYYYProbeLog(@"blur-check: self=%@ target=%@ isKind=%d switch=%d",
+            NSLog(@"[DYYY-blur] self=%@ target=%@ isKind=%d switch=%d",
                          NSStringFromClass([self class]),
                          target ? NSStringFromClass(target) : @"(nil)",
                          (target && [self isKindOfClass:target]),
