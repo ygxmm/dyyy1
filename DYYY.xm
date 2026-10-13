@@ -5030,32 +5030,26 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
         [DYYYUtils applyBlurEffectToView:self.view transparency:userTransparency blurViewTag:999];
 
         // v182: 清理抖音新版加的 section 背景（不透明深灰，会盖住 blurView）
-        // v183: 清 section bg + UICollectionView/UITableView 的深色背景
-        Class sbCls = NSClassFromString(@"AWEBaseListSectionBackgroundView");
-        NSMutableArray *q = [NSMutableArray arrayWithObject:self.view];
-        int safety = 0;
-        int hitSb = 0, hitCV = 0;
-        while (q.count > 0 && safety++ < 800) {
-            UIView *v = q.firstObject;
-            [q removeObjectAtIndex:0];
+        // v184: 清 section bg + UICollectionView/UITableView 背景（每个 VC.view 只做一次）
+        static char kDYYYBlurCleanedKey;
+        if (!objc_getAssociatedObject(self.view, &kDYYYBlurCleanedKey)) {
+            objc_setAssociatedObject(self.view, &kDYYYBlurCleanedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            Class sbCls = NSClassFromString(@"AWEBaseListSectionBackgroundView");
+            NSMutableArray *q = [NSMutableArray arrayWithObject:self.view];
+            int safety = 0;
+            while (q.count > 0 && safety++ < 800) {
+                UIView *v = q.firstObject;
+                [q removeObjectAtIndex:0];
 
-            if (sbCls && [v isKindOfClass:sbCls]) {
-                v.backgroundColor = [UIColor clearColor];
-                v.opaque = NO;
-                hitSb++;
-            } else if ([v isKindOfClass:[UICollectionView class]]
-                       || [v isKindOfClass:[UITableView class]]) {
-                v.backgroundColor = [UIColor clearColor];
-                v.opaque = NO;
-                hitCV++;
-            }
-            for (UIView *s in v.subviews) [q addObject:s];
-        }
-        {
-            static int m = 0;
-            if (m < 3) {
-                m++;
-                DYYYProbeLog(@"v183 sb=%d cv=%d", hitSb, hitCV);
+                if (sbCls && [v isKindOfClass:sbCls]) {
+                    v.backgroundColor = [UIColor clearColor];
+                    v.opaque = NO;
+                } else if ([v isKindOfClass:[UICollectionView class]]
+                           || [v isKindOfClass:[UITableView class]]) {
+                    v.backgroundColor = [UIColor clearColor];
+                    v.opaque = NO;
+                }
+                for (UIView *s in v.subviews) [q addObject:s];
             }
         }
     }
