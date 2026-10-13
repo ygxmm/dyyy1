@@ -4363,6 +4363,24 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
     %orig;
 }
 
+// v205: 评论面板内 UICollectionView 背景强制透明（抖音每次布局设深灰 0.086，会盖住 blurView）
+- (void)setBackgroundColor:(UIColor *)color {
+    if (DYYYGetBool(@"DYYYEnableCommentBlur")) {
+        UIResponder *r = self.nextResponder;
+        int n = 0;
+        while (r && n++ < 30) {
+            Class inner = NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController");
+            Class list = NSClassFromString(@"AWECommentPanelListSwiftImpl.CommentViewController");
+            if ((inner && [r isKindOfClass:inner]) || (list && [r isKindOfClass:list])) {
+                %orig([UIColor clearColor]);
+                return;
+            }
+            r = r.nextResponder;
+        }
+    }
+    %orig(color);
+}
+
 %end
 
 %hook AWELeftSideBarAddChildTransitionObject
@@ -5023,55 +5041,9 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
         float userTransparency = [[[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYCommentBlurTransparent"] floatValue];
         if (userTransparency <= 0 || userTransparency > 1) userTransparency = 0.9;
         [DYYYUtils applyBlurEffectToView:self.view transparency:userTransparency blurViewTag:999];
-        {
-            static int n = 0;
-            if (n < 2) {
-                n++;
-                for (UIView *top in self.view.subviews) {
-                    if (![top isKindOfClass:[UICollectionView class]]) continue;
-                    NSMutableString *buf = [NSMutableString stringWithString:@"v204 dump:"];
-                    __block void (^walk)(UIView *, int);
-                    walk = ^(UIView *v, int d) {
-                        if (d > 4) return;
-                        UIColor *bg = v.backgroundColor;
-                        CGFloat r=0,g=0,b=0,a=0;
-                        [bg getRed:&r green:&g blue:&b alpha:&a];
-                        if (a > 0.05) {
-                            NSMutableString *pad = [NSMutableString string];
-                            for (int i = 0; i < d; i++) [pad appendString:@"  "];
-                            [buf appendFormat:@"\n%@[d=%d] %@ f=%@ bg=%.2f,%.2f,%.2f,%.2f",
-                                pad, d, NSStringFromClass(v.class),
-                                NSStringFromCGRect(v.frame),
-                                r, g, b, a];
-                        }
-                        for (UIView *sub in v.subviews) walk(sub, d + 1);
-                    };
-                    walk(top, 0);
-                    DYYYProbeLog(@"%@", buf);
-                }
-            }
+
         }
-        {
-            static int n = 0;
-            if (n < 5) {
-                n++;
-                NSMutableString *buf = [NSMutableString stringWithString:@"v202 dump:"];
-                [buf appendFormat:@"\n  userTransparency=%.2f", userTransparency];
-                for (UIView *sv in self.view.subviews) {
-                    if ([sv isKindOfClass:[UIVisualEffectView class]]) {
-                        UIVisualEffectView *vev = (UIVisualEffectView *)sv;
-                        [buf appendFormat:@"\n  BLUR tag=%ld alpha=%.2f effect=%@ frame=%@",
-                            (long)sv.tag,
-                            vev.alpha,
-                            vev.effect ? NSStringFromClass(vev.effect.class) : @"nil",
-                            NSStringFromCGRect(vev.frame)];
-                        for (UIView *inner in vev.contentView.subviews) {
-                            [buf appendFormat:@"\n    inner=%@ alpha=%.2f bg=%@",
-                                NSStringFromClass(inner.class),
-                                inner.alpha,
-                                inner.backgroundColor];
-                        }
-                    } else if ([sv isKindOfClass:[UICollectionView class]]) {
+ else if ([sv isKindOfClass:[UICollectionView class]]) {
                         [buf appendFormat:@"\n  COLL tag=%ld bg=%@ alpha=%.2f hidden=%d",
                             (long)sv.tag,
                             sv.backgroundColor,
