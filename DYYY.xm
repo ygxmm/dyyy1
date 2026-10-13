@@ -18198,17 +18198,3 @@ static void v179_dcvLayout(id self, SEL _cmd) {
         } else DYYYProbeLog(@"v179: no method");
     }
 }
-
-%ctor {
-    @autoreleasepool {
-        Class cls = objc_getClass("AWEBaseListSectionBackgroundView");
-        if (!cls) { DYYYProbeLog(@"v190: cls nil"); return; }
-        Method m = class_getInstanceMethod(cls, @selector(setBackgroundColor:));
-        if (m) {
-            v190_orig_setBg = (void (*)(id, SEL, id))method_getImplementation(m);
-            method_setImplementation(m, (IMP)v190_setBg);
-            DYYYProbeLog(@"v190: hooked");
-        }
-    }
-}
-
