@@ -5359,52 +5359,56 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
     for (UIView *v in bgViews) {
         v.backgroundColor = [UIColor clearColor];
     }
-}
 
-// v231: 首页进度条容器贴底栏上方，随底栏显隐实时重算位置。
-// 只对首页生效（AWEPlayInteractionViewController 的 awemeBaseViewController 是 AWEFeedCellViewController），
-// 详情页 / 搜索页不动。
-- (void)setFrame:(CGRect)frame {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")
-        && frame.size.height > 100.0
-        && frame.origin.y > 400.0) {
+    // v232: 首页进度条容器贴底栏上方（用 transform，不触发 layout 递归）
+    if (!CGAffineTransformIsIdentity(self.transform)) {
+        self.transform = CGAffineTransformIdentity;
+    }
 
-        UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-        BOOL isHome = NO;
-        if (vc && [vc isKindOfClass:%c(AWEPlayInteractionViewController)]
-            && [vc respondsToSelector:NSSelectorFromString(@"awemeBaseViewController")]) {
-            id base = [vc valueForKey:@"awemeBaseViewController"];
-            if (base && [base isKindOfClass:%c(AWEFeedCellViewController)]) {
-                isHome = YES;
-            }
-        }
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) {
+        return;
+    }
 
-        if (isHome) {
-            UIWindow *win = self.window ?: [DYYYUtils getActiveWindow];
-            UIView *tabBar = nil;
-            for (UIView *v in win.subviews) {
-                if ([v isKindOfClass:NSClassFromString(@"AWEBaseTabBar")]) {
-                    tabBar = v;
-                    break;
+    UIViewController *pvc = [DYYYUtils firstAvailableViewControllerFromView:self];
+    if (!pvc || ![pvc isKindOfClass:%c(AWEPlayInteractionViewController)]) {
+        return;
+    }
+    id base = nil;
+    if ([pvc respondsToSelector:NSSelectorFromString(@"awemeBaseViewController")]) {
+        base = [pvc valueForKey:@"awemeBaseViewController"];
+    }
+    if (!base || ![base isKindOfClass:%c(AWEFeedCellViewController)]) {
+        return;
+    }
+
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    CGFloat tabH = 0.0;
+    UIWindow *win = self.window ?: [DYYYUtils getActiveWindow];
+    if (win) {
+        NSMutableArray *q = [NSMutableArray arrayWithObject:win];
+        while (q.count > 0) {
+            UIView *cur = q.firstObject;
+            [q removeObjectAtIndex:0];
+            if ([cur isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
+                if (!cur.hidden && cur.alpha > 0.01 && cur.window) {
+                    CGRect tf = [cur convertRect:cur.bounds toView:win];
+                    if (CGRectGetMinY(tf) < screenH - 1.0 && CGRectGetHeight(tf) > 1.0) {
+                        tabH = CGRectGetHeight(tf);
+                    }
                 }
+                break;
             }
-            CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-            BOOL visible = NO;
-            if (tabBar && tabBar.window && !tabBar.hidden && tabBar.alpha > 0.01) {
-                CGRect tabFrame = tabBar.frame;
-                if (CGRectGetMinY(tabFrame) < screenH - 1.0 && CGRectGetHeight(tabFrame) > 1.0) {
-                    visible = YES;
-                }
-            }
-            CGFloat tabH = visible ? CGRectGetHeight(tabBar.frame) : 0.0;
-            CGFloat targetY = screenH - tabH - frame.size.height;
-            if (targetY > 0 && fabs(frame.origin.y - targetY) > 0.5) {
-                frame.origin.y = targetY;
-            }
+            [q addObjectsFromArray:cur.subviews];
         }
     }
 
-    %orig(frame);
+    CGRect nativeFrame = self.frame;
+    CGFloat nativeH = nativeFrame.size.height;
+    CGFloat targetY = screenH - tabH - nativeH;
+    CGFloat dy = targetY - nativeFrame.origin.y;
+    if (fabs(dy) > 0.5) {
+        self.transform = CGAffineTransformMakeTranslation(0, dy);
+    }
 }
 
 %end
