@@ -16662,18 +16662,54 @@ static void DYYYProbeCellLog(NSString *format, ...) {
 }
 
 
+// ============ v283-diag: 抓 offset 回退瞬间 ============
+%hook UIScrollView
+
+- (void)setContentOffset:(CGPoint)offset {
+    if (object_getClass(self) == NSClassFromString(@"AWEFeedTableView")) {
+        CGFloat oldY = self.contentOffset.y;
+        CGFloat delta = offset.y - oldY;
+        if (delta < -200) {   // 只在明显回退时抓
+            DYYYDiagLog(@"[OFFSET-BACK] %.1f -> %.1f (delta=%.1f)",
+                        oldY, offset.y, delta);
+            NSArray *syms = [NSThread callStackSymbols];
+            NSInteger n = MIN(25, (NSInteger)syms.count);
+            for (NSInteger i = 0; i < n; i++) {
+                DYYYDiagLog(@"   %@", syms[i]);
+            }
+        }
+    }
+    %orig(offset);
+}
+
+- (void)setContentOffset:(CGPoint)offset animated:(BOOL)animated {
+    if (object_getClass(self) == NSClassFromString(@"AWEFeedTableView")) {
+        CGFloat oldY = self.contentOffset.y;
+        CGFloat delta = offset.y - oldY;
+        if (delta < -200) {
+            DYYYDiagLog(@"[OFFSET-BACK-A] %.1f -> %.1f (delta=%.1f anim=%d)",
+                        oldY, offset.y, delta, animated);
+            NSArray *syms = [NSThread callStackSymbols];
+            NSInteger n = MIN(25, (NSInteger)syms.count);
+            for (NSInteger i = 0; i < n; i++) {
+                DYYYDiagLog(@"   %@", syms[i]);
+            }
+        }
+    }
+    %orig(offset, animated);
+}
+
+%end
+
 %hook AWEFeedTableView
 - (void)layoutSubviews {
     %orig;
     {
-        static NSInteger sN = 0;
-        if (sN++ % 5 == 0) {
-            DYYYDiagLog(@"[TB] off=%.1f sizeH=%.1f boundH=%.1f cellH=%.1f vis=%lu",
-                        self.contentOffset.y, self.contentSize.height,
-                        self.bounds.size.height,
-                        self.visibleCells.firstObject.frame.size.height,
-                        (unsigned long)self.visibleCells.count);
-        }
+        DYYYDiagLog(@"[TB] off=%.1f sizeH=%.1f boundH=%.1f cellH=%.1f vis=%lu",
+                    self.contentOffset.y, self.contentSize.height,
+                    self.bounds.size.height,
+                    self.visibleCells.firstObject.frame.size.height,
+                    (unsigned long)self.visibleCells.count);
     }
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) {
         return;
