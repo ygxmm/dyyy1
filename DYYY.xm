@@ -16639,54 +16639,6 @@ static void DYYYProbeCellLog(NSString *format, ...) {
     });
 }
 
-static void DYYYExpandPlayerInCell(UIView *root, CGFloat targetH) {
-    if (!root || targetH <= 0) return;
-    Class playCls = NSClassFromString(@"AWEPlayInteractionViewController");
-    if (!playCls) return;
-    NSMutableArray *q = [NSMutableArray arrayWithObject:root];
-    int safety = 0;
-    while (q.count > 0 && safety++ < 300) {
-        UIView *v = q.firstObject;
-        [q removeObjectAtIndex:0];
-        UIResponder *r = v.nextResponder;
-        int d = 0;
-        while (r && d++ < 10) {
-            if ([r isKindOfClass:playCls]) {
-                UIView *vv = ((UIViewController *)r).view;
-                UIView *sv = vv.superview;
-                if (sv && vv.frame.size.height < targetH - 1) {
-                    static int sN = 0;
-                    if (sN < 100) {
-                        DYYYProbeCellLog(@"[expand] vv=%@ oldH=%.1f newH=%.1f",
-                            NSStringFromClass(object_getClass(vv)), vv.frame.size.height, targetH);
-                        sN++;
-                    }
-                    CGRect f = vv.frame;
-                    f.size.height = targetH;
-                    vv.frame = f;
-                    // v251: 改 clips 前先打标记，方便 cell 复用时恢复
-                    static char kDYYYClipsChangedKey;
-                    if (vv.clipsToBounds) {
-                        objc_setAssociatedObject(vv, &kDYYYClipsChangedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                        vv.clipsToBounds = NO;
-                    }
-                    if (sv.clipsToBounds) {
-                        objc_setAssociatedObject(sv, &kDYYYClipsChangedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                        sv.clipsToBounds = NO;
-                    }
-                }
-                break;
-            }
-            if ([r isKindOfClass:[UIViewController class]]) break;
-            r = r.nextResponder;
-        }
-        for (UIView *sub in v.subviews) {
-            [q addObject:sub];
-        }
-    }
-}
-
-// v251: cell 复用时恢复 DYYY 改过的 clipsToBounds
 static void DYYYRestoreClipsInCell(UIView *root) {
     if (!root) return;
     static char kDYYYClipsChangedKey;
@@ -16742,17 +16694,11 @@ static void DYYYRestoreClipsInCell(UIView *root) {
         self.frame = frame;
     }
 
-    // v250: 只对当前可见 cell 里的 player VC 拉高。
-    // 只拉 table frame 时，cell 里 player VC 还是原生高度 → 视频挤顶部。
-    // 只处理 visibleCells（1~2 个），不触发非可见 cell 的播放器重排。
-    // v253: 只处理屏幕中央那个 cell（真正在播放的），
-    // 预加载 cell（屏幕外）不处理 —— 避免跟抖音每帧打架累积错位。
     CGFloat centerY = self.contentOffset.y + self.bounds.size.height * 0.5;
     CGFloat halfH = self.bounds.size.height * 0.5;
     for (UITableViewCell *cell in [self visibleCells]) {
         CGFloat cellCenterY = cell.frame.origin.y + cell.frame.size.height * 0.5;
         if (fabs(cellCenterY - centerY) < halfH * 0.8) {
-            DYYYExpandPlayerInCell(cell, targetH);
         }
     }
 }
