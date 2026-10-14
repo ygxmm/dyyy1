@@ -15587,14 +15587,30 @@ static Class tabBarButtonClass = nil;
 %end
 
 // 精简平板底栏
-// ============ v282: 首页 Feed 底栏毛玻璃/皮肤层隐藏 ============
+
+// ============ v297: 底栏彻底透明（每次 layout 都压掉所有子层） ============
 %hook _UIBarBackground
 
-- (void)setHidden:(BOOL)hidden {
-    UIView *bg = (UIView *)self;
+- (void)layoutSubviews {
+    %orig;
+    UIView *v = (UIView *)self;
     if (DYYYGetBool(@"DYYYEnableFullScreen") &&
         DYYYIsFeedTabSelected() &&
-        [bg.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
+        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
+        if (v.alpha != 0.0) v.alpha = 0.0;
+        if (!v.hidden) v.hidden = YES;
+        for (UIView *sub in v.subviews) {
+            if (sub.alpha != 0.0) sub.alpha = 0.0;
+            if (!sub.hidden) sub.hidden = YES;
+        }
+    }
+}
+
+- (void)setHidden:(BOOL)hidden {
+    UIView *v = (UIView *)self;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
+        DYYYIsFeedTabSelected() &&
+        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
         %orig(YES);
         return;
     }
@@ -15602,10 +15618,10 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)setAlpha:(CGFloat)alpha {
-    UIView *bg = (UIView *)self;
+    UIView *v = (UIView *)self;
     if (DYYYGetBool(@"DYYYEnableFullScreen") &&
         DYYYIsFeedTabSelected() &&
-        [bg.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
+        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
         %orig(0.0);
         return;
     }
@@ -15613,7 +15629,6 @@ static Class tabBarButtonClass = nil;
 }
 
 %end
-
 
 %hook AWENormalModeTabBarBlurView
 - (void)layoutSubviews { %orig;
