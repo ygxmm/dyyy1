@@ -17367,7 +17367,8 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
                 CGRect frame = subview.frame;
                 if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-                    frame.size.height = subview.superview.frame.size.height - gCurrentTabBarHeight;
+                    // v289: HUD 容器从 792 → 852，点赞/进度条/文案铺到全屏底部
+                    frame.size.height = subview.superview.frame.size.height;
                     subview.frame = frame;
                 }
             }
