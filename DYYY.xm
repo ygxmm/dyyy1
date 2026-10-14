@@ -9,9 +9,12 @@
 #include <stdarg.h>
 #import <AVFoundation/AVFoundation.h>
 #import <UIKit/UIKit.h>
+#import <stdarg.h>
 
 // v278: 前向声明
 static BOOL DYYYIsHomePlayInteraction(UIView *view);
+// v282-diag: 沙盒日志前向声明
+static void DYYYDiagLog(NSString *fmt, ...);
 #import <dlfcn.h>
 #import <float.h>
 #import <math.h>
@@ -16662,7 +16665,16 @@ static void DYYYProbeCellLog(NSString *format, ...) {
 %hook AWEFeedTableView
 - (void)layoutSubviews {
     %orig;
-
+    {
+        static NSInteger sN = 0;
+        if (sN++ % 5 == 0) {
+            DYYYDiagLog(@"[TB] off=%.1f sizeH=%.1f boundH=%.1f cellH=%.1f vis=%lu",
+                        self.contentOffset.y, self.contentSize.height,
+                        self.bounds.size.height,
+                        self.visibleCells.firstObject.frame.size.height,
+                        (unsigned long)self.visibleCells.count);
+        }
+    }
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) {
         return;
     }
@@ -16682,6 +16694,8 @@ static void DYYYProbeCellLog(NSString *format, ...) {
 
 %hook AWEFeedTableViewCell
 - (void)prepareForReuse {
+    DYYYDiagLog(@"[REUSE] %@ idx=%ld", NSStringFromClass(self.class),
+                (long)self.tag);
     if (hideButton && hideButton.isElementsHidden) {
         [hideButton hideUIElements];
     }
@@ -16759,6 +16773,7 @@ static void DYYYProbeCellLog(NSString *format, ...) {
     if (hideButton && hideButton.isElementsHidden) {
         [hideButton hideUIElements];
     }
+    DYYYDiagLog(@"[IDX] newIndex=%ld", (long)arg2);
     %orig;
     // This callback is the feed's committed index transition. Do not validate it
     // against the controller hierarchy: old/new controllers can overlap briefly
@@ -16906,6 +16921,56 @@ static void DYYYRemoveAppLifecycleObservers(void) {
 %end
 
 // v234: 判定 view 是否在首页播放交互层（用来只挪首页，不动详情页/搜索页）
+// ============ v282-diag: 沙盒日志 ============
+static void DYYYDiagLog(NSString *fmt, ...) {
+    static dispatch_queue_t q;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        q = dispatch_queue_create("dyyy.diag.log", DISPATCH_QUEUE_SERIAL);
+    });
+
+    va_list args;
+    va_start(args, fmt);
+    NSString *body = [[NSString alloc] initWithFormat:fmt arguments:args];
+    va_end(args);
+
+    dispatch_async(q, ^{
+        // App 沙盒 Documents（抖音自己的沙盒）
+        NSArray *paths = NSSearchPathForDirectoriesInDomains(
+            NSDocumentDirectory, NSUserDomainMask, YES);
+        if (paths.count == 0) return;
+        NSString *dir = [paths.firstObject stringByAppendingPathComponent:@"DYYYDiag"];
+        NSFileManager *fm = [NSFileManager defaultManager];
+        if (![fm fileExistsAtPath:dir]) {
+            [fm createDirectoryAtPath:dir
+          withIntermediateDirectories:YES
+                           attributes:nil
+                                error:nil];
+        }
+        NSString *file = [dir stringByAppendingPathComponent:@"feed.log"];
+
+        NSDateFormatter *df = [[NSDateFormatter alloc] init];
+        df.dateFormat = @"HH:mm:ss.SSS";
+        NSString *line = [NSString stringWithFormat:@"%@ %@\n",
+                          [df stringFromDate:[NSDate date]], body];
+
+        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:file];
+        if (!fh) {
+            [line writeToFile:file
+                   atomically:YES
+                     encoding:NSUTF8StringEncoding
+                        error:nil];
+        } else {
+            [fh seekToEndOfFile];
+            [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+            [fh closeFile];
+        }
+
+        // 同时 NSLog 一份，方便看 Console
+        NSLog(@"[DYYY-DIAG] %@", body);
+    });
+}
+
 static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     if (!view) return NO;
     static Class sPlayInteractionVCClass = nil;
@@ -17335,6 +17400,8 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
         CGFloat offset = gCurrentTabBarHeight > 0 ? gCurrentTabBarHeight : originalTabBarHeight;
         if (offset > 0) {
             center.y -= offset * 0.5;
+            DYYYDiagLog(@"[METAL] adjust center=(%.1f,%.1f) offset=%.1f",
+                        center.x, center.y, offset);
         }
     }
 
@@ -17367,6 +17434,8 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
         CGFloat offset = gCurrentTabBarHeight > 0 ? gCurrentTabBarHeight : originalTabBarHeight;
         if (offset > 0) {
             center.y -= offset * 0.5;
+            DYYYDiagLog(@"[METAL] adjust center=(%.1f,%.1f) offset=%.1f",
+                        center.x, center.y, offset);
         }
     }
 
@@ -17399,6 +17468,8 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
         CGFloat offset = gCurrentTabBarHeight > 0 ? gCurrentTabBarHeight : originalTabBarHeight;
         if (offset > 0) {
             center.y -= offset * 0.5;
+            DYYYDiagLog(@"[METAL] adjust center=(%.1f,%.1f) offset=%.1f",
+                        center.x, center.y, offset);
         }
     }
 
