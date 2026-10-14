@@ -16664,36 +16664,25 @@ static void DYYYProbeCellLog(NSString *format, ...) {
 }
 %end
 
-// ============ v313: 只把视频渲染层拉到 852（cell 内 view 保持 792） ============
-%hook TTPlayerView
-- (void)layoutSubviews {
-    %orig;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    if (!DYYY_IsHomeTab()) return;
-    // cell 内 layer 保持原高度，只让视频层铺满
-    UIView *superView = self.superview;
-    if (!superView) return;
-    CGFloat targetH = 852.0;
-    if (fabs(self.frame.size.height - targetH) < 0.5) return;
-    CGRect f = self.frame;
-    f.size.height = targetH;
-    f.origin.y = 0;
-    self.frame = f;
-}
-%end
+// ============ v316: 只改 AWEPlayVideoViewController.view 高度到 852（不动 cell/view tree） ============
+%hook AWEPlayVideoViewController
 
-%hook TTMetalViewVP
-- (void)layoutSubviews {
+- (void)viewDidLayoutSubviews {
     %orig;
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
     if (!DYYY_IsHomeTab()) return;
+
+    UIView *v = self.view;
+    if (!v) return;
     CGFloat targetH = 852.0;
-    if (fabs(self.frame.size.height - targetH) < 0.5) return;
-    CGRect f = self.frame;
-    f.size.height = targetH;
+    CGRect f = v.frame;
+    if (fabs(f.size.height - targetH) < 0.5 && fabs(f.origin.y) < 0.5) return;
     f.origin.y = 0;
-    self.frame = f;
+    f.size.height = targetH;
+    v.frame = f;
+    if (v.clipsToBounds) v.clipsToBounds = NO;
 }
+
 %end
 
 %hook AWEFeedViewCell
