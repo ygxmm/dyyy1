@@ -17470,6 +17470,21 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     %orig(frame);
 }
 
+
+- (void)setMetalViewOpaque:(BOOL)opaque {
+    // v244: 强制视频层 Metal 不透明，看能否减轻 detach 时露黑
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        static int sProbe244 = 0;
+        if (sProbe244 < 10) {
+            DYYYProbeVideoLog(@"[v244] setMetalViewOpaque:%d (forced YES)", (int)opaque);
+            sProbe244++;
+        }
+        %orig(YES);
+        return;
+    }
+    %orig(opaque);
+}
+
 %end
 
 %hook TTMetalViewVP
