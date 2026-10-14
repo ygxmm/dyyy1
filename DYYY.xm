@@ -17378,33 +17378,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 %hook TTMetalView
 - (void)setCenter:(CGPoint)center {
-    BOOL shouldAdjust = NO;
-    UIView *view = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat viewWidth = CGRectGetWidth(view.bounds);
-        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-        if (viewWidth + 0.5f >= screenWidth) {
-            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
-            Class playClass = %c(AWEPlayVideoViewController);
-            if (playClass && [vc isKindOfClass:playClass]) {
-                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
-                AWEAwemeModel *model = playVC.model;
-                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
-                    shouldAdjust = YES;
-                }
-            }
-        }
-    }
-
-    if (shouldAdjust) {
-        CGFloat offset = gCurrentTabBarHeight > 0 ? gCurrentTabBarHeight : originalTabBarHeight;
-        if (offset > 0) {
-            center.y -= offset * 0.5;
-            DYYYDiagLog(@"[METAL] adjust center=(%.1f,%.1f) offset=%.1f",
-                        center.x, center.y, offset);
-        }
-    }
-
+    // v283: 删除整体上移逻辑（会与 cell 布局打架 → contentOffset 回退/错位）
     %orig(center);
 }
 
@@ -17412,33 +17386,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 %hook TTMetalViewNew
 - (void)setCenter:(CGPoint)center {
-    BOOL shouldAdjust = NO;
-    UIView *view = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat viewWidth = CGRectGetWidth(view.bounds);
-        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-        if (viewWidth + 0.5f >= screenWidth) {
-            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
-            Class playClass = %c(AWEPlayVideoViewController);
-            if (playClass && [vc isKindOfClass:playClass]) {
-                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
-                AWEAwemeModel *model = playVC.model;
-                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
-                    shouldAdjust = YES;
-                }
-            }
-        }
-    }
-
-    if (shouldAdjust) {
-        CGFloat offset = gCurrentTabBarHeight > 0 ? gCurrentTabBarHeight : originalTabBarHeight;
-        if (offset > 0) {
-            center.y -= offset * 0.5;
-            DYYYDiagLog(@"[METAL] adjust center=(%.1f,%.1f) offset=%.1f",
-                        center.x, center.y, offset);
-        }
-    }
-
+    // v283: 删除整体上移逻辑（会与 cell 布局打架 → contentOffset 回退/错位）
     %orig(center);
 }
 
@@ -17446,33 +17394,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 %hook TTMetalViewVP
 - (void)setCenter:(CGPoint)center {
-    BOOL shouldAdjust = NO;
-    UIView *view = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat viewWidth = CGRectGetWidth(view.bounds);
-        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-        if (viewWidth + 0.5f >= screenWidth) {
-            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
-            Class playClass = %c(AWEPlayVideoViewController);
-            if (playClass && [vc isKindOfClass:playClass]) {
-                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
-                AWEAwemeModel *model = playVC.model;
-                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
-                    shouldAdjust = YES;
-                }
-            }
-        }
-    }
-
-    if (shouldAdjust) {
-        CGFloat offset = gCurrentTabBarHeight > 0 ? gCurrentTabBarHeight : originalTabBarHeight;
-        if (offset > 0) {
-            center.y -= offset * 0.5;
-            DYYYDiagLog(@"[METAL] adjust center=(%.1f,%.1f) offset=%.1f",
-                        center.x, center.y, offset);
-        }
-    }
-
+    // v283: 删除整体上移逻辑（会与 cell 布局打架 → contentOffset 回退/错位）
     %orig(center);
 }
 
