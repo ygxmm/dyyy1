@@ -15,6 +15,8 @@
 static BOOL DYYYIsHomePlayInteraction(UIView *view);
 // v282-diag: 沙盒日志前向声明
 static void DYYYDiagLog(NSString *fmt, ...);
+// v291: 首页 tab 判定（前向声明）
+static BOOL DYYYIsFeedTabSelected(void);
 #import <dlfcn.h>
 #import <float.h>
 #import <math.h>
@@ -15586,43 +15588,6 @@ static Class tabBarButtonClass = nil;
 
 // 精简平板底栏
 // ============ v282: 首页 Feed 底栏毛玻璃/皮肤层隐藏 ============
-// ============ v291: 彻底堵死 _UIBarBackground 的显示 ============
-%hook _UIBarBackground
-
-- (void)setHidden:(BOOL)hidden {
-    UIView *v = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
-        DYYYIsFeedTabSelected() &&
-        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
-        %orig(YES);
-        return;
-    }
-    %orig(hidden);
-}
-
-- (void)setAlpha:(CGFloat)alpha {
-    UIView *v = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
-        DYYYIsFeedTabSelected() &&
-        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
-        %orig(0.0);
-        return;
-    }
-    %orig(alpha);
-}
-
-- (void)didMoveToSuperview {
-    %orig;
-    UIView *v = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
-        DYYYIsFeedTabSelected() &&
-        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
-        v.hidden = YES;
-    }
-}
-
-%end
-
 %hook AWENormalModeTabBarBlurView
 - (void)layoutSubviews { %orig;
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
@@ -17078,6 +17043,29 @@ static void DYYYDiagLog(NSString *fmt, ...) {
         // 同时 NSLog 一份，方便看 Console
         NSLog(@"[DYYY-DIAG] %@", body);
     });
+}
+
+// v291: 当前顶层 VC 是否首页 Feed tab
+static BOOL DYYYIsFeedTabSelected(void) {
+    UIWindow *win = nil;
+    for (UIWindow *w in [UIApplication sharedApplication].windows) {
+        if (w.isKeyWindow) { win = w; break; }
+    }
+    if (!win) win = [UIApplication sharedApplication].keyWindow;
+    if (!win) return NO;
+
+    UIViewController *root = win.rootViewController;
+    while (root.presentedViewController) root = root.presentedViewController;
+    if (![root isKindOfClass:[UITabBarController class]]) return NO;
+
+    UIViewController *sel = ((UITabBarController *)root).selectedViewController;
+    while (sel.presentedViewController) sel = sel.presentedViewController;
+    if ([sel isKindOfClass:[UINavigationController class]]) {
+        sel = ((UINavigationController *)sel).topViewController;
+    }
+
+    Class feedRoot = NSClassFromString(@"AWEFeedRootViewController");
+    return feedRoot && [sel isKindOfClass:feedRoot];
 }
 
 static BOOL DYYYIsHomePlayInteraction(UIView *view) {
