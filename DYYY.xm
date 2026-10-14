@@ -16611,30 +16611,6 @@ static void DYYYProbeCellLog(NSString *format, ...) {
     });
 }
 
-static void DYYYRestoreClipsInCell(UIView *root) {
-    if (!root) return;
-    static char kDYYYClipsChangedKey;
-    NSMutableArray *q = [NSMutableArray arrayWithObject:root];
-    int safety = 0;
-    int restoredCount = 0;
-    while (q.count > 0 && safety++ < 300) {
-        UIView *v = q.firstObject;
-        [q removeObjectAtIndex:0];
-        if (objc_getAssociatedObject(v, &kDYYYClipsChangedKey)) {
-            v.clipsToBounds = YES;
-            objc_setAssociatedObject(v, &kDYYYClipsChangedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            restoredCount++;
-        }
-        for (UIView *sub in v.subviews) {
-            [q addObject:sub];
-        }
-    }
-    static int sN = 0;
-    if (sN < 100) {
-        DYYYProbeCellLog(@"[restore] restoredCount=%d root=%@", restoredCount, NSStringFromClass(object_getClass(root)));
-        sN++;
-    }
-}
 
 // ============ v303: 抓 contentOffset 变化 ============
 %hook AWEFeedTableView
@@ -16678,8 +16654,6 @@ static void DYYYRestoreClipsInCell(UIView *root) {
 
 %hook AWEFeedTableViewCell
 - (void)prepareForReuse {
-    // v251: 恢复 DYYY 改过的 clipsToBounds，避免多次切页返回累积溢出
-    DYYYRestoreClipsInCell(self);
     if (hideButton && hideButton.isElementsHidden) {
         [hideButton hideUIElements];
     }
