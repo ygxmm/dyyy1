@@ -16636,12 +16636,7 @@ static void DYYYProbeCellLog(NSString *format, ...) {
 
     // v246: 首页改成 VexCove 上游做法 —— 只改 table 自己高度，不递归
     // 遍历子 view（避免每帧触发所有 player VC 重排 → 底栏闪黑）。
-    CGRect frame = self.frame;
-    CGFloat targetH = self.superview.frame.size.height;
-    if (fabs(frame.size.height - targetH) > 0.5) {
-        frame.size.height = targetH;
-        self.frame = frame;
-    }
+    // v315: 删 table 改高（会破坏 offset 计算）
 
     CGFloat centerY = self.contentOffset.y + self.bounds.size.height * 0.5;
     CGFloat halfH = self.bounds.size.height * 0.5;
