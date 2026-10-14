@@ -5601,6 +5601,8 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
     dispatch_async(dispatch_get_main_queue(), ^{
       [weakSelf dyyy_updateScheduleLabelsWithCurrentTime:0 totalDuration:0];
     });
+}
+
 - (void)setHidden:(BOOL)hidden {
     %orig;
     BOOL hideVideoProgress = DYYYGetBool(@"DYYYHideVideoProgress");
