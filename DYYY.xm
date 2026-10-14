@@ -16626,13 +16626,40 @@ static void DYYYExpandPlayerInCell(UIView *root, CGFloat targetH) {
                     CGRect f = vv.frame;
                     f.size.height = targetH;
                     vv.frame = f;
-                    vv.clipsToBounds = NO;
-                    sv.clipsToBounds = NO;
+                    // v251: 改 clips 前先打标记，方便 cell 复用时恢复
+                    static char kDYYYClipsChangedKey;
+                    if (vv.clipsToBounds) {
+                        objc_setAssociatedObject(vv, &kDYYYClipsChangedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                        vv.clipsToBounds = NO;
+                    }
+                    if (sv.clipsToBounds) {
+                        objc_setAssociatedObject(sv, &kDYYYClipsChangedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                        sv.clipsToBounds = NO;
+                    }
                 }
                 break;
             }
             if ([r isKindOfClass:[UIViewController class]]) break;
             r = r.nextResponder;
+        }
+        for (UIView *sub in v.subviews) {
+            [q addObject:sub];
+        }
+    }
+}
+
+// v251: cell 复用时恢复 DYYY 改过的 clipsToBounds
+static void DYYYRestoreClipsInCell(UIView *root) {
+    if (!root) return;
+    static char kDYYYClipsChangedKey;
+    NSMutableArray *q = [NSMutableArray arrayWithObject:root];
+    int safety = 0;
+    while (q.count > 0 && safety++ < 300) {
+        UIView *v = q.firstObject;
+        [q removeObjectAtIndex:0];
+        if (objc_getAssociatedObject(v, &kDYYYClipsChangedKey)) {
+            v.clipsToBounds = YES;
+            objc_setAssociatedObject(v, &kDYYYClipsChangedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         for (UIView *sub in v.subviews) {
             [q addObject:sub];
@@ -16668,6 +16695,8 @@ static void DYYYExpandPlayerInCell(UIView *root, CGFloat targetH) {
 
 %hook AWEFeedTableViewCell
 - (void)prepareForReuse {
+    // v251: 恢复 DYYY 改过的 clipsToBounds，避免多次切页返回累积溢出
+    DYYYRestoreClipsInCell(self);
     if (hideButton && hideButton.isElementsHidden) {
         [hideButton hideUIElements];
     }
