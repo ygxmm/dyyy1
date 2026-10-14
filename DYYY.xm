@@ -12,7 +12,6 @@
 
 // v278: 前向声明
 static BOOL DYYYIsHomePlayInteraction(UIView *view);
-static BOOL DYYY_IsHomeTab(void);
 #import <dlfcn.h>
 #import <float.h>
 #import <math.h>
@@ -3448,6 +3447,32 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
 
 - (void)setAwe_isHDRVideo:(BOOL)awe_isHDRVideo {
     %orig(DYYYShouldDisableAllHDR() ? NO : awe_isHDRVideo);
+}
+
+%end
+
+%hook AWEPlayVideoViewController
+
+- (BOOL)enableHDR {
+    if (DYYYShouldDisableAllHDR()) {
+        return NO;
+    }
+    return %orig;
+}
+
+- (void)setEnableHDR:(BOOL)enableHDR {
+    %orig(DYYYShouldDisableAllHDR() ? NO : enableHDR);
+}
+
+- (BOOL)awe_isCurrentVideoHDR {
+    if (DYYYShouldDisableAllHDR()) {
+        return NO;
+    }
+    return %orig;
+}
+
+- (void)setPlayerLutFilter:(id)lutFilter HDRLutImage:(id)HDRLutImage {
+    %orig(lutFilter, DYYYShouldDisableAllHDR() ? nil : HDRLutImage);
 }
 
 %end
@@ -16484,6 +16509,100 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 %end
 
+%hook AWEDPlayerFeedPlayerViewController
+
+- (BOOL)enableHDR {
+    if (DYYYShouldDisableAllHDR()) {
+        return NO;
+    }
+    return %orig;
+}
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        // DYYY修复：直接改主视图高度到屏幕高度，并解除裁剪
+        // 里面的 TTMetalViewVP 是 clips=0，会自动溢出到 852
+        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+        UIView *vw = self.view;
+        if (vw) {
+            vw.clipsToBounds = NO;
+            if (fabs(CGRectGetHeight(vw.frame) - screenH) > 0.5) {
+                CGRect f = vw.frame;
+                f.size.height = screenH;
+                vw.frame = f;
+            }
+        }
+    }
+}
+
+- (void)setIsAutoPlay:(BOOL)arg0 {
+    %orig(arg0);
+    DYYYApplyNormalPlaybackSpeedToPlayerFallback(self);
+}
+
+- (void)prepareForDisplay {
+    %orig;
+    if (!DYYYShouldHandleSpeedFeatures()) {
+        return;
+    }
+    BOOL autoRestoreSpeed = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYAutoRestoreSpeed"];
+    if (isFloatSpeedButtonEnabled && autoRestoreSpeed) {
+        setCurrentSpeedIndex(0);
+    }
+    DYYYApplyNormalPlaybackSpeedToPlayerFallback(self);
+    updateSpeedButtonUI();
+}
+
+%end
+
+%hook AWEDPlayerViewController_Merge
+
+- (BOOL)enableHDR {
+    if (DYYYShouldDisableAllHDR()) {
+        return NO;
+    }
+    return %orig;
+}
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        // DYYY修复：直接改主视图高度到屏幕高度，并解除裁剪
+        // 里面的 TTMetalViewVP 是 clips=0，会自动溢出到 852
+        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+        UIView *vw = self.view;
+        if (vw) {
+            vw.clipsToBounds = NO;
+            if (fabs(CGRectGetHeight(vw.frame) - screenH) > 0.5) {
+                CGRect f = vw.frame;
+                f.size.height = screenH;
+                vw.frame = f;
+            }
+        }
+    }
+}
+
+- (void)setIsAutoPlay:(BOOL)arg0 {
+    %orig(arg0);
+    DYYYApplyNormalPlaybackSpeedToPlayerFallback(self);
+}
+
+- (void)prepareForDisplay {
+    %orig;
+    if (!DYYYShouldHandleSpeedFeatures()) {
+        return;
+    }
+    BOOL autoRestoreSpeed = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYAutoRestoreSpeed"];
+    if (isFloatSpeedButtonEnabled && autoRestoreSpeed) {
+        setCurrentSpeedIndex(0);
+    }
+    DYYYApplyNormalPlaybackSpeedToPlayerFallback(self);
+    updateSpeedButtonUI();
+}
+
+%end
+
 static char kDYYYFeedTableOriginalHeightGapKey;
 static char kDYYYFeedTableFullScreenAppliedKey;
 
@@ -16520,13 +16639,78 @@ static void DYYYProbeCellLog(NSString *format, ...) {
     });
 }
 
-
-// ============ v303: 抓 contentOffset 变化 ============
-%hook AWEFeedTableView
-- (void)setContentOffset:(CGPoint)offset {
-    %orig(offset);
+static void DYYYExpandPlayerInCell(UIView *root, CGFloat targetH) {
+    if (!root || targetH <= 0) return;
+    Class playCls = NSClassFromString(@"AWEPlayInteractionViewController");
+    if (!playCls) return;
+    NSMutableArray *q = [NSMutableArray arrayWithObject:root];
+    int safety = 0;
+    while (q.count > 0 && safety++ < 300) {
+        UIView *v = q.firstObject;
+        [q removeObjectAtIndex:0];
+        UIResponder *r = v.nextResponder;
+        int d = 0;
+        while (r && d++ < 10) {
+            if ([r isKindOfClass:playCls]) {
+                UIView *vv = ((UIViewController *)r).view;
+                UIView *sv = vv.superview;
+                if (sv && vv.frame.size.height < targetH - 1) {
+                    static int sN = 0;
+                    if (sN < 100) {
+                        DYYYProbeCellLog(@"[expand] vv=%@ oldH=%.1f newH=%.1f",
+                            NSStringFromClass(object_getClass(vv)), vv.frame.size.height, targetH);
+                        sN++;
+                    }
+                    CGRect f = vv.frame;
+                    f.size.height = targetH;
+                    vv.frame = f;
+                    // v251: 改 clips 前先打标记，方便 cell 复用时恢复
+                    static char kDYYYClipsChangedKey;
+                    if (vv.clipsToBounds) {
+                        objc_setAssociatedObject(vv, &kDYYYClipsChangedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                        vv.clipsToBounds = NO;
+                    }
+                    if (sv.clipsToBounds) {
+                        objc_setAssociatedObject(sv, &kDYYYClipsChangedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                        sv.clipsToBounds = NO;
+                    }
+                }
+                break;
+            }
+            if ([r isKindOfClass:[UIViewController class]]) break;
+            r = r.nextResponder;
+        }
+        for (UIView *sub in v.subviews) {
+            [q addObject:sub];
+        }
+    }
 }
-%end
+
+// v251: cell 复用时恢复 DYYY 改过的 clipsToBounds
+static void DYYYRestoreClipsInCell(UIView *root) {
+    if (!root) return;
+    static char kDYYYClipsChangedKey;
+    NSMutableArray *q = [NSMutableArray arrayWithObject:root];
+    int safety = 0;
+    int restoredCount = 0;
+    while (q.count > 0 && safety++ < 300) {
+        UIView *v = q.firstObject;
+        [q removeObjectAtIndex:0];
+        if (objc_getAssociatedObject(v, &kDYYYClipsChangedKey)) {
+            v.clipsToBounds = YES;
+            objc_setAssociatedObject(v, &kDYYYClipsChangedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            restoredCount++;
+        }
+        for (UIView *sub in v.subviews) {
+            [q addObject:sub];
+        }
+    }
+    static int sN = 0;
+    if (sN < 100) {
+        DYYYProbeCellLog(@"[restore] restoredCount=%d root=%@", restoredCount, NSStringFromClass(object_getClass(root)));
+        sN++;
+    }
+}
 
 %hook AWEFeedTableView
 - (void)layoutSubviews {
@@ -16538,13 +16722,24 @@ static void DYYYProbeCellLog(NSString *format, ...) {
 
     // v246: 首页改成 VexCove 上游做法 —— 只改 table 自己高度，不递归
     // 遍历子 view（避免每帧触发所有 player VC 重排 → 底栏闪黑）。
-    // v315: 删 table 改高（会破坏 offset 计算）
+    CGRect frame = self.frame;
+    CGFloat targetH = self.superview.frame.size.height;
+    if (fabs(frame.size.height - targetH) > 0.5) {
+        frame.size.height = targetH;
+        self.frame = frame;
+    }
 
+    // v250: 只对当前可见 cell 里的 player VC 拉高。
+    // 只拉 table frame 时，cell 里 player VC 还是原生高度 → 视频挤顶部。
+    // 只处理 visibleCells（1~2 个），不触发非可见 cell 的播放器重排。
+    // v253: 只处理屏幕中央那个 cell（真正在播放的），
+    // 预加载 cell（屏幕外）不处理 —— 避免跟抖音每帧打架累积错位。
     CGFloat centerY = self.contentOffset.y + self.bounds.size.height * 0.5;
     CGFloat halfH = self.bounds.size.height * 0.5;
     for (UITableViewCell *cell in [self visibleCells]) {
         CGFloat cellCenterY = cell.frame.origin.y + cell.frame.size.height * 0.5;
         if (fabs(cellCenterY - centerY) < halfH * 0.8) {
+            DYYYExpandPlayerInCell(cell, targetH);
         }
     }
 }
@@ -16552,6 +16747,8 @@ static void DYYYProbeCellLog(NSString *format, ...) {
 
 %hook AWEFeedTableViewCell
 - (void)prepareForReuse {
+    // v251: 恢复 DYYY 改过的 clipsToBounds，避免多次切页返回累积溢出
+    DYYYRestoreClipsInCell(self);
     if (hideButton && hideButton.isElementsHidden) {
         [hideButton hideUIElements];
     }
@@ -16566,7 +16763,6 @@ static void DYYYProbeCellLog(NSString *format, ...) {
 }
 %end
 
-// ============ v316: 只改 AWEPlayVideoViewController.view 高度到 852（不动 cell/view tree） ============
 %hook AWEFeedViewCell
 - (void)layoutSubviews {
     if (hideButton && hideButton.isElementsHidden) {
@@ -16777,56 +16973,6 @@ static void DYYYRemoveAppLifecycleObservers(void) {
 %end
 
 // v234: 判定 view 是否在首页播放交互层（用来只挪首页，不动详情页/搜索页）
-static BOOL DYYY_IsHomeTab(void) {
-    UIWindow *win = nil;
-    for (UIWindow *w in [UIApplication sharedApplication].windows) {
-        if (w.isKeyWindow) { win = w; break; }
-    }
-    if (!win) win = [UIApplication sharedApplication].keyWindow;
-    if (!win) return NO;
-
-    UIViewController *root = win.rootViewController;
-    while (root.presentedViewController) root = root.presentedViewController;
-    if (![root isKindOfClass:[UITabBarController class]]) return NO;
-
-    UIViewController *sel = ((UITabBarController *)root).selectedViewController;
-    while (sel.presentedViewController) sel = sel.presentedViewController;
-    if ([sel isKindOfClass:[UINavigationController class]])
-        sel = ((UINavigationController *)sel).topViewController;
-
-    Class feedRoot = NSClassFromString(@"AWEFeedRootViewController");
-    if (!feedRoot || ![sel isKindOfClass:feedRoot]) return NO;
-
-    // v314: 进一步确认是"推荐"tab，不是"关注"
-    // 从 AWEFeedContainerViewController 取 currentIndex 判断
-    // 0 = 推荐，1 = 关注（如果抖音内部是这个约定）
-    UIViewController *container = nil;
-    for (UIViewController *child in sel.childViewControllers) {
-        NSString *cn = NSStringFromClass(child.class);
-        if ([cn isEqualToString:@"AWEFeedContainerViewController"]) {
-            container = child;
-            break;
-        }
-    }
-    if (!container) return YES;  // 找不到就默认 YES
-
-    // 尝试读 currentIndex
-    if ([container respondsToSelector:NSSelectorFromString(@"currentIndex")]) {
-        NSInteger idx = [[container valueForKey:@"currentIndex"] integerValue];
-        return idx == 0;  // 0 = 推荐
-    }
-    // 尝试读 currentViewController 的类名
-    if ([container respondsToSelector:NSSelectorFromString(@"currentViewController")]) {
-        id cur = [container valueForKey:@"currentViewController"];
-        NSString *cn = NSStringFromClass([cur class]);
-        if ([cn containsString:@"Follow"]) return NO;
-        if ([cn containsString:@"Concern"]) return NO;
-        if ([cn containsString:@"Recommend"]) return YES;
-        if ([cn containsString:@"FeedTable"]) return YES;
-    }
-    return YES;  // 拿不到信息就默认 YES
-}
-
 static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     if (!view) return NO;
     static Class sPlayInteractionVCClass = nil;
@@ -17149,6 +17295,11 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
                     continue;
                 }
 
+                CGRect frame = subview.frame;
+                if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+                    frame.size.height = subview.superview.frame.size.height - gCurrentTabBarHeight;
+                    subview.frame = frame;
+                }
             }
             // 处理作者主页的情况
             else if (isAuthorProfile) {
@@ -17213,6 +17364,158 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
         view.backgroundColor = [UIColor clearColor];
     }
 }
+%end
+
+%hook TTPlayerView
+
+- (void)layoutSubviews {
+    %orig;
+    UIView *parent = self.superview;
+    if (parent) {
+        parent.backgroundColor = self.backgroundColor;
+    }
+}
+
+%end
+
+%hook TTMetalView
+- (void)setCenter:(CGPoint)center {
+    BOOL shouldAdjust = NO;
+    UIView *view = (UIView *)self;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        CGFloat viewWidth = CGRectGetWidth(view.bounds);
+        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
+        if (viewWidth + 0.5f >= screenWidth) {
+            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
+            Class playClass = %c(AWEPlayVideoViewController);
+            if (playClass && [vc isKindOfClass:playClass]) {
+                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
+                AWEAwemeModel *model = playVC.model;
+                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
+                    shouldAdjust = YES;
+                }
+            }
+        }
+    }
+
+    if (shouldAdjust) {
+        CGFloat offset = gCurrentTabBarHeight > 0 ? gCurrentTabBarHeight : originalTabBarHeight;
+        if (offset > 0) {
+            center.y -= offset * 0.5;
+        }
+    }
+
+    %orig(center);
+}
+
+%end
+
+%hook TTMetalViewNew
+- (void)setCenter:(CGPoint)center {
+    BOOL shouldAdjust = NO;
+    UIView *view = (UIView *)self;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        CGFloat viewWidth = CGRectGetWidth(view.bounds);
+        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
+        if (viewWidth + 0.5f >= screenWidth) {
+            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
+            Class playClass = %c(AWEPlayVideoViewController);
+            if (playClass && [vc isKindOfClass:playClass]) {
+                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
+                AWEAwemeModel *model = playVC.model;
+                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
+                    shouldAdjust = YES;
+                }
+            }
+        }
+    }
+
+    if (shouldAdjust) {
+        CGFloat offset = gCurrentTabBarHeight > 0 ? gCurrentTabBarHeight : originalTabBarHeight;
+        if (offset > 0) {
+            center.y -= offset * 0.5;
+        }
+    }
+
+    %orig(center);
+}
+
+%end
+
+// ============ v318: 直接改 InteractionVC.view 高度到 852（不动 cell/table） ============
+%hook AWEPlayInteractionViewController
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (!DYYY_IsHomeTab()) return;
+    UIView *v = self.view;
+    if (!v) return;
+    CGFloat targetH = 852.0;
+    CGRect f = v.frame;
+    if (fabs(f.size.height - targetH) < 0.5 && fabs(f.origin.y) < 0.5) return;
+    f.origin.y = 0;
+    f.size.height = targetH;
+    v.frame = f;
+    if (v.clipsToBounds) v.clipsToBounds = NO;
+}
+
+%end
+
+%hook TTMetalViewVP
+- (void)setCenter:(CGPoint)center {
+    BOOL shouldAdjust = NO;
+    UIView *view = (UIView *)self;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        CGFloat viewWidth = CGRectGetWidth(view.bounds);
+        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
+        if (viewWidth + 0.5f >= screenWidth) {
+            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
+            Class playClass = %c(AWEPlayVideoViewController);
+            if (playClass && [vc isKindOfClass:playClass]) {
+                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
+                AWEAwemeModel *model = playVC.model;
+                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
+                    shouldAdjust = YES;
+                }
+            }
+        }
+    }
+
+    if (shouldAdjust) {
+        CGFloat offset = gCurrentTabBarHeight > 0 ? gCurrentTabBarHeight : originalTabBarHeight;
+        if (offset > 0) {
+            center.y -= offset * 0.5;
+        }
+    }
+
+    %orig(center);
+}
+
+- (void)layoutSubviews {
+    %orig;
+    // v278: vv 不动（保持 792 让抖音分页机制正常）。
+    // 只把视频渲染层 TTMetalViewVP 撑到 superview 高度，视觉全屏。
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (!DYYYIsHomePlayInteraction(self)) return;
+
+    UIView *sv = self.superview;
+    if (!sv) return;
+    CGFloat targetH = sv.bounds.size.height;
+    if (targetH < 100) return;
+
+    // v281: 改用 transform scale，避免改 frame 触发 cell 重排 → contentOffset 被调 → 跳视频。
+    // transform 不改 bounds/center，UIKit 布局完全不知情。
+    if (!CGAffineTransformIsIdentity(self.transform)) {
+        self.transform = CGAffineTransformIdentity;
+    }
+    CGFloat curH = self.bounds.size.height;
+    if (curH < 1) return;
+    if (fabs(curH - targetH) < 1.0) return;
+    CGFloat scale = targetH / curH;
+    self.transform = CGAffineTransformMakeScale(scale, scale);
+}
+
 %end
 
 // 隐藏图片滑条
