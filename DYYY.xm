@@ -16387,6 +16387,24 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 - (void)viewDidLayoutSubviews {
     %orig;
+    // v292: HUD 平移 60pt 到底部（transform 不改高度，避免死循环）
+    {
+        UIView *v292v = self.view;
+        if (v292v) {
+            BOOL e = DYYYGetBool(@"DYYYEnableFullScreen");
+            BOOL h = e ? DYYYIsHomePlayInteraction(v292v) : NO;
+            if (h && gCurrentTabBarHeight > 0) {
+                CGAffineTransform t = CGAffineTransformMakeTranslation(0, gCurrentTabBarHeight);
+                if (!CGAffineTransformEqualToTransform(v292v.transform, t)) {
+                    v292v.transform = t;
+                }
+            } else {
+                if (!CGAffineTransformIsIdentity(v292v.transform)) {
+                    v292v.transform = CGAffineTransformIdentity;
+                }
+            }
+        }
+    }
     DYYYApplySearchShiftIfNeeded(self);
     
 
