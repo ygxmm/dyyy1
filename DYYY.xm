@@ -16154,7 +16154,7 @@ static Class tabBarButtonClass = nil;
     }
 
     UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-    Class PlayVCClass1 = %c(AWEPlayVideoViewController);
+    Class PlayVCClass1 = %c(AWEAwemePlayVideoViewController);
     Class PlayVCClass2 = %c(AWEDPlayerFeedPlayerViewController);
     Class PlayVCClass3 = %c(AWEDPlayerViewController_Merge);
 
@@ -18022,7 +18022,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 %end
 
-
 %ctor {
 
     {
@@ -18436,6 +18435,38 @@ static void v212_setBg(id self, SEL _cmd, id color) {
     if (v212_orig_setBg) v212_orig_setBg(self, _cmd, color);
 }
 
+// ============ 首页视频全屏（照抄 VexCove 原版） ============
+%hook UIView
+- (void)setFrame:(CGRect)frame {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{ [self setFrame:frame]; });
+        return;
+    }
+
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) { %orig(frame); return; }
+
+    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
+    Class c1 = NSClassFromString(@"AWEPlayVideoViewController");
+    Class c2 = NSClassFromString(@"AWEDPlayerFeedPlayerViewController");
+    Class c3 = NSClassFromString(@"AWEDPlayerViewController_Merge");
+    BOOL isPlayVC = (c1 && [vc isKindOfClass:c1]) ||
+                    (c2 && [vc isKindOfClass:c2]) ||
+                    (c3 && [vc isKindOfClass:c3]);
+
+    if (isPlayVC) {
+        if (frame.origin.x != 0 && frame.origin.y != 0) { %orig(frame); return; }
+        CGRect superF = self.superview.frame;
+        if (CGRectGetHeight(superF) > 0 && CGRectGetHeight(frame) > 0 &&
+            CGRectGetHeight(frame) < CGRectGetHeight(superF)) {
+            CGFloat diff = CGRectGetHeight(superF) - CGRectGetHeight(frame);
+            if (fabs(diff - 60.0) < 1.0) {
+                frame.size.height = CGRectGetHeight(superF);
+            }
+        }
+    }
+    %orig(frame);
+}
+%end
 
 %ctor {
     @autoreleasepool {
