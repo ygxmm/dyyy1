@@ -12,6 +12,8 @@
 
 // v278: 前向声明
 static BOOL DYYYIsHomePlayInteraction(UIView *view);
+// v302
+static BOOL DYYY_IsHomeTab(void);
 #import <dlfcn.h>
 #import <float.h>
 #import <math.h>
@@ -16973,6 +16975,23 @@ static void DYYYRemoveAppLifecycleObservers(void) {
 %end
 
 // v234: 判定 view 是否在首页播放交互层（用来只挪首页，不动详情页/搜索页）
+static BOOL DYYY_IsHomeTab(void) {
+    UIWindow *win = nil;
+    for (UIWindow *w in [UIApplication sharedApplication].windows)
+        if (w.isKeyWindow) { win = w; break; }
+    if (!win) win = [UIApplication sharedApplication].keyWindow;
+    if (!win) return NO;
+    UIViewController *root = win.rootViewController;
+    while (root.presentedViewController) root = root.presentedViewController;
+    if (![root isKindOfClass:[UITabBarController class]]) return NO;
+    UIViewController *sel = ((UITabBarController *)root).selectedViewController;
+    while (sel.presentedViewController) sel = sel.presentedViewController;
+    if ([sel isKindOfClass:[UINavigationController class]])
+        sel = ((UINavigationController *)sel).topViewController;
+    Class feedRoot = NSClassFromString(@"AWEFeedRootViewController");
+    return feedRoot && [sel isKindOfClass:feedRoot];
+}
+
 static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     if (!view) return NO;
     static Class sPlayInteractionVCClass = nil;
@@ -17438,45 +17457,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     }
 
     %orig(center);
-}
-
-%end
-
-// ============ v302: 底栏透明（首页 Feed 时） ============
-%hook _UIBarBackground
-
-- (void)setHidden:(BOOL)hidden {
-    UIView *v = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
-        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
-        %orig(YES);
-        return;
-    }
-    %orig(hidden);
-}
-
-- (void)setAlpha:(CGFloat)alpha {
-    UIView *v = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
-        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
-        %orig(0.0);
-        return;
-    }
-    %orig(alpha);
-}
-
-- (void)layoutSubviews {
-    %orig;
-    UIView *v = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
-        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
-        if (v.alpha != 0.0) v.alpha = 0.0;
-        if (!v.hidden) v.hidden = YES;
-        for (UIView *sub in v.subviews) {
-            if (sub.alpha != 0.0) sub.alpha = 0.0;
-            if (!sub.hidden) sub.hidden = YES;
-        }
-    }
 }
 
 %end
