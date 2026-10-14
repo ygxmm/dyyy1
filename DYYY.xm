@@ -17209,8 +17209,23 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
         return;
 
     // 获取 enableEnterProfile 属性来判断是否是主页
-    id enableEnterProfile = [self valueForKey:@"enableEnterProfile"];
-    BOOL isHome = (enableEnterProfile != nil && [enableEnterProfile boolValue]);
+    // v236: KVC 返回可能是原始 BOOL（0x1），直接 [obj boolValue] 会 SIGSEGV。
+    // 先判指针是否落在合法对象内存区，再判类型。
+    id enableEnterProfile = nil;
+    @try {
+        enableEnterProfile = [self valueForKey:@"enableEnterProfile"];
+    } @catch (NSException *e) {
+        enableEnterProfile = nil;
+    }
+    BOOL isHome = NO;
+    uintptr_t raw = (uintptr_t)enableEnterProfile;
+    if (raw >= 0x100000000ULL && raw <= 0x0000FFFFFFFFFFFFULL) {
+        if ([enableEnterProfile isKindOfClass:[NSNumber class]]) {
+            isHome = [enableEnterProfile boolValue];
+        } else if ([enableEnterProfile respondsToSelector:@selector(boolValue)]) {
+            isHome = [enableEnterProfile boolValue];
+        }
+    }
 
     // 检查是否在作者主页
     BOOL isAuthorProfile = NO;
