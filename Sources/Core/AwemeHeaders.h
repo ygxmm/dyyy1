@@ -574,6 +574,12 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @interface AWEFeedTableView : UITableView
 @end
 
+@interface AWEFeedTableViewCell : UITableViewCell
+@end
+
+@interface AWEFeedViewCell : UITableViewCell
+@end
+
 @interface AWEAwemeDetailTableView : UITableView
 @property (nonatomic, weak) UIViewController *containerVC;
 - (void)setFrame:(CGRect)frame;
