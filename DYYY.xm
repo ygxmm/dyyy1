@@ -17274,6 +17274,32 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 }
 %end
 
+// ============ v309fix: TTMetalViewVP 只改叶子节点高度，不动 PlayerVC.view ============
+%hook TTMetalViewVP
+
+- (void)setCenter:(CGPoint)center {
+    // v283: 不再改 center（会破坏 offset）
+    %orig(center);
+}
+
+- (void)layoutSubviews {
+    %orig;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (!DYYYIsHomePlayInteraction(self)) return;
+    UIView *sv = self.superview;
+    if (!sv) return;
+    CGFloat targetH = sv.bounds.size.height + 60.0;
+    if (targetH < 100) return;
+    CGRect f = self.frame;
+    if (fabs(f.size.height - targetH) > 0.5) {
+        f.size.height = targetH;
+        f.origin.y = 0;
+        self.frame = f;
+    }
+}
+
+%end
+
 %hook TTPlayerView
 
 - (void)layoutSubviews {
@@ -17301,125 +17327,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 %end
 
 // v309: TTMetalViewVP 同样
-%hook TTMetalViewVP
-
-- (void)layoutSubviews {
-    %orig;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    if (!DYYYIsHomePlayInteraction(self)) return;
-    UIView *sv = self.superview;
-    if (!sv) return;
-    CGFloat targetH = sv.bounds.size.height + 60.0;
-    if (targetH < 100) return;
-    CGRect f = self.frame;
-    if (fabs(f.size.height - targetH) > 0.5) {
-        f.size.height = targetH;
-        f.origin.y = 0;
-        self.frame = f;
-    }
-}
-
-%end
-
-%hook TTMetalView
-- (void)setCenter:(CGPoint)center {
-    BOOL shouldAdjust = NO;
-    UIView *view = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat viewWidth = CGRectGetWidth(view.bounds);
-        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-        if (viewWidth + 0.5f >= screenWidth) {
-            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
-            Class playClass = %c(AWEPlayVideoViewController);
-            if (playClass && [vc isKindOfClass:playClass]) {
-                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
-                AWEAwemeModel *model = playVC.model;
-                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
-                    shouldAdjust = YES;
-                }
-            }
-        }
-    }
-
-    %orig(center);
-}
-
-%end
-
-%hook TTMetalViewNew
-- (void)setCenter:(CGPoint)center {
-    BOOL shouldAdjust = NO;
-    UIView *view = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat viewWidth = CGRectGetWidth(view.bounds);
-        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-        if (viewWidth + 0.5f >= screenWidth) {
-            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
-            Class playClass = %c(AWEPlayVideoViewController);
-            if (playClass && [vc isKindOfClass:playClass]) {
-                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
-                AWEAwemeModel *model = playVC.model;
-                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
-                    shouldAdjust = YES;
-                }
-            }
-        }
-    }
-
-    %orig(center);
-}
-
-%end
-
-%hook TTMetalViewVP
-- (void)setCenter:(CGPoint)center {
-    BOOL shouldAdjust = NO;
-    UIView *view = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat viewWidth = CGRectGetWidth(view.bounds);
-        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-        if (viewWidth + 0.5f >= screenWidth) {
-            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
-            Class playClass = %c(AWEPlayVideoViewController);
-            if (playClass && [vc isKindOfClass:playClass]) {
-                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
-                AWEAwemeModel *model = playVC.model;
-                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
-                    shouldAdjust = YES;
-                }
-            }
-        }
-    }
-
-    %orig(center);
-}
-
-- (void)layoutSubviews {
-    %orig;
-    // v278: vv 不动（保持 792 让抖音分页机制正常）。
-    // 只把视频渲染层 TTMetalViewVP 撑到 superview 高度，视觉全屏。
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    if (!DYYYIsHomePlayInteraction(self)) return;
-
-    UIView *sv = self.superview;
-    if (!sv) return;
-    CGFloat targetH = sv.bounds.size.height;
-    if (targetH < 100) return;
-
-    // v281: 改用 transform scale，避免改 frame 触发 cell 重排 → contentOffset 被调 → 跳视频。
-    // transform 不改 bounds/center，UIKit 布局完全不知情。
-    if (!CGAffineTransformIsIdentity(self.transform)) {
-        self.transform = CGAffineTransformIdentity;
-    }
-    CGFloat curH = self.bounds.size.height;
-    if (curH < 1) return;
-    if (fabs(curH - targetH) < 1.0) return;
-    CGFloat scale = targetH / curH;
-    self.transform = CGAffineTransformMakeScale(scale, scale);
-}
-
-%end
-
 // 隐藏图片滑条
 %hook AWEStoryProgressContainerView
 - (void)setCenter:(CGPoint)center {
