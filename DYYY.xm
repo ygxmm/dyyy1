@@ -17404,10 +17404,11 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     if (now - sLast > 0.05 && sN < 500) {
         sLast = now;
         sN++;
-        UIView *sv = self.superview;
+        UIView *selfV = (UIView *)self;
+        UIView *sv = selfV.superview;
         NSString *bgStr = sv.backgroundColor ? [NSString stringWithFormat:@"%@", sv.backgroundColor] : @"(nil)";
         DYYYProbeVideoLog(@"[v242 %@] setFrame=%@ super=%@ super.bg=%@ super.alpha=%.2f",
-            NSStringFromClass([self class]),
+            NSStringFromClass(object_getClass(selfV)),
             NSStringFromCGRect(frame),
             NSStringFromClass([sv class]),
             bgStr,
@@ -17456,10 +17457,11 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     if (now - sLast > 0.05 && sN < 500) {
         sLast = now;
         sN++;
-        UIView *sv = self.superview;
+        UIView *selfV = (UIView *)self;
+        UIView *sv = selfV.superview;
         NSString *bgStr = sv.backgroundColor ? [NSString stringWithFormat:@"%@", sv.backgroundColor] : @"(nil)";
         DYYYProbeVideoLog(@"[v242 %@] setFrame=%@ super=%@ super.bg=%@ super.alpha=%.2f",
-            NSStringFromClass([self class]),
+            NSStringFromClass(object_getClass(selfV)),
             NSStringFromCGRect(frame),
             NSStringFromClass([sv class]),
             bgStr,
@@ -17508,10 +17510,11 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     if (now - sLast > 0.05 && sN < 500) {
         sLast = now;
         sN++;
-        UIView *sv = self.superview;
+        UIView *selfV = (UIView *)self;
+        UIView *sv = selfV.superview;
         NSString *bgStr = sv.backgroundColor ? [NSString stringWithFormat:@"%@", sv.backgroundColor] : @"(nil)";
         DYYYProbeVideoLog(@"[v242 %@] setFrame=%@ super=%@ super.bg=%@ super.alpha=%.2f",
-            NSStringFromClass([self class]),
+            NSStringFromClass(object_getClass(selfV)),
             NSStringFromCGRect(frame),
             NSStringFromClass([sv class]),
             bgStr,
