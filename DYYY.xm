@@ -7239,6 +7239,38 @@ static void DYYYStartHideFeedAnchorHookInstaller(void) {
 
 %end
 
+%hook AWENormalModeTabBarController
+
+// v239b: 走抖音原生接口给 tabBar 填充背景色，避免视频层闪黑透过透明 tabBar。
+// 只对首页生效，其它页面视觉不变。
+- (void)viewDidAppear:(BOOL)animated {
+    %orig(animated);
+    [self dyyy_v239b_applyFill];
+}
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+    [self dyyy_v239b_applyFill];
+}
+
+%new
+- (void)dyyy_v239b_applyFill {
+    BOOL enable = DYYYGetBool(@"DYYYEnableFullScreen");
+    if (enable) {
+        // 打开：让 tabBar 填充背景色（不透明），视频闪黑被遮住
+        if ([self respondsToSelector:@selector(setTabBarBackgroundColorFill:animated:)]) {
+            [self setTabBarBackgroundColorFill:YES animated:NO];
+        }
+    } else {
+        // 关闭：还原原生透明
+        if ([self respondsToSelector:@selector(setTabBarBackgroundColorFill:animated:)]) {
+            [self setTabBarBackgroundColorFill:NO animated:NO];
+        }
+    }
+}
+
+%end
+
 %hook AWENormalModeTabBarGeneralPlusButton
 - (void)setImage:(UIImage *)image forState:(UIControlState)state {
     UIImage *imageToApply = image;
