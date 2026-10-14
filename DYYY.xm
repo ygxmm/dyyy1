@@ -16664,15 +16664,23 @@ static void DYYYRestoreClipsInCell(UIView *root) {
 }
 %end
 
+// v308: 递归把 cell 内所有层 clipsToBounds = NO，让 852 视频真正溢出
+static void DYYY_RecursiveClearClips(UIView *v, int depth) {
+    if (!v || depth > 12) return;
+    if (v.clipsToBounds) v.clipsToBounds = NO;
+    for (UIView *sub in v.subviews) {
+        DYYY_RecursiveClearClips(sub, depth + 1);
+    }
+}
+
 %hook AWEFeedViewCell
 - (void)layoutSubviews {
     if (hideButton && hideButton.isElementsHidden) {
         [hideButton hideUIElements];
     }
     %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen") && self.clipsToBounds) {
-        self.clipsToBounds = NO;
-        if (self.contentView.clipsToBounds) self.contentView.clipsToBounds = NO;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        DYYY_RecursiveClearClips(self, 0);
     }
 }
 
