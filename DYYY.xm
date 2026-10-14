@@ -16918,15 +16918,47 @@ static BOOL DYYY_IsHomeTab(void) {
     }
     if (!win) win = [UIApplication sharedApplication].keyWindow;
     if (!win) return NO;
+
     UIViewController *root = win.rootViewController;
     while (root.presentedViewController) root = root.presentedViewController;
     if (![root isKindOfClass:[UITabBarController class]]) return NO;
+
     UIViewController *sel = ((UITabBarController *)root).selectedViewController;
     while (sel.presentedViewController) sel = sel.presentedViewController;
     if ([sel isKindOfClass:[UINavigationController class]])
         sel = ((UINavigationController *)sel).topViewController;
+
     Class feedRoot = NSClassFromString(@"AWEFeedRootViewController");
-    return feedRoot && [sel isKindOfClass:feedRoot];
+    if (!feedRoot || ![sel isKindOfClass:feedRoot]) return NO;
+
+    // v314: 进一步确认是"推荐"tab，不是"关注"
+    // 从 AWEFeedContainerViewController 取 currentIndex 判断
+    // 0 = 推荐，1 = 关注（如果抖音内部是这个约定）
+    UIViewController *container = nil;
+    for (UIViewController *child in sel.childViewControllers) {
+        NSString *cn = NSStringFromClass(child.class);
+        if ([cn isEqualToString:@"AWEFeedContainerViewController"]) {
+            container = child;
+            break;
+        }
+    }
+    if (!container) return YES;  // 找不到就默认 YES
+
+    // 尝试读 currentIndex
+    if ([container respondsToSelector:NSSelectorFromString(@"currentIndex")]) {
+        NSInteger idx = [[container valueForKey:@"currentIndex"] integerValue];
+        return idx == 0;  // 0 = 推荐
+    }
+    // 尝试读 currentViewController 的类名
+    if ([container respondsToSelector:NSSelectorFromString(@"currentViewController")]) {
+        id cur = [container valueForKey:@"currentViewController"];
+        NSString *cn = NSStringFromClass([cur class]);
+        if ([cn containsString:@"Follow"]) return NO;
+        if ([cn containsString:@"Concern"]) return NO;
+        if ([cn containsString:@"Recommend"]) return YES;
+        if ([cn containsString:@"FeedTable"]) return YES;
+    }
+    return YES;  // 拿不到信息就默认 YES
 }
 
 static BOOL DYYYIsHomePlayInteraction(UIView *view) {
