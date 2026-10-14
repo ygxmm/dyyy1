@@ -18420,6 +18420,28 @@ static void v212_setBg(id self, SEL _cmd, id color) {
     if (v212_orig_setBg) v212_orig_setBg(self, _cmd, color);
 }
 
+// ============ 底栏透明（只隐藏背景层，不改任何 frame） ============
+%hook _UIBarBackground
+- (void)layoutSubviews {
+    %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) self.hidden = YES;
+}
+%end
+
+%hook AWENormalModeTabBarBlurView
+- (void)layoutSubviews {
+    %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) self.hidden = YES;
+}
+%end
+
+%hook AWETabBarSkinView
+- (void)layoutSubviews {
+    %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) self.hidden = YES;
+}
+%end
+
 %ctor {
     @autoreleasepool {
         Class cls = objc_getClass("AWEBaseListSectionBackgroundView");
