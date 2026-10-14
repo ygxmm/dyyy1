@@ -15416,6 +15416,25 @@ static Class tabBarButtonClass = nil;
         }
     }
 
+    // v286: 无条件隐藏 _UIBarBackground（黑边元凶），不依赖 status
+    {
+        BOOL enableFS = DYYYGetBool(@"DYYYEnableFullScreen");
+        if (enableFS) {
+            Class barBgCls = NSClassFromString(@"_UIBarBackground");
+            Class blurCls  = NSClassFromString(@"UIVisualEffectView");
+            for (UIView *sub in self.subviews) {
+                if (barBgCls && [sub isKindOfClass:barBgCls]) {
+                    sub.hidden = YES;
+                    sub.alpha = 0.0;
+                    for (UIView *inner in sub.subviews) {
+                        inner.hidden = YES;
+                        if (blurCls && [inner isKindOfClass:blurCls]) inner.hidden = YES;
+                    }
+                }
+            }
+        }
+    }
+
     // 背景和分隔线处理
     BOOL hideBottomBg = DYYYGetBool(@"DYYYHideBottomBg");
     BOOL enableFullScreen = DYYYGetBool(@"DYYYEnableFullScreen");
@@ -15480,6 +15499,23 @@ static Class tabBarButtonClass = nil;
     BOOL disableHomeRefresh = DYYYGetBool(@"DYYYDisableHomeRefresh");
     BOOL enableFullScreen = DYYYGetBool(@"DYYYEnableFullScreen");
     BOOL hideBottomBg = DYYYGetBool(@"DYYYHideBottomBg");
+
+    // v286: 只要开启全屏，无条件隐藏 _UIBarBackground（黑边元凶），
+    // 不再依赖 button.status == 2 的判断（40.7.0 上 status 值不一定是 2）。
+    if (enableFullScreen) {
+        Class barBgCls = NSClassFromString(@"_UIBarBackground");
+        Class blurCls  = NSClassFromString(@"UIVisualEffectView");
+        for (UIView *sub in self.subviews) {
+            if (barBgCls && [sub isKindOfClass:barBgCls]) {
+                sub.hidden = YES;
+                sub.alpha = 0.0;
+                for (UIView *inner in sub.subviews) {
+                    inner.hidden = YES;
+                    if (blurCls && [inner isKindOfClass:blurCls]) inner.hidden = YES;
+                }
+            }
+        }
+    }
     BOOL hideFriendsButton = DYYYGetBool(@"DYYYHideFriendsButton");
 
     BOOL isHomeSelected = NO;
@@ -16722,20 +16758,9 @@ static void DYYYProbeCellLog(NSString *format, ...) {
 - (void)layoutSubviews {
     %orig;
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-
-    DYYYDiagLog(@"[TB %p sup=%@ supVC=%@] off=%.1f boundH=%.1f sizeH=%.1f",
-                self,
-                NSStringFromClass(self.superview.class),
-                NSStringFromClass([self.superview.nextResponder class]),
-                self.contentOffset.y, self.bounds.size.height,
-                self.contentSize.height);
-
-    CGRect frame = self.frame;
-    CGFloat targetH = self.superview.frame.size.height;
-    if (fabs(frame.size.height - targetH) > 0.5) {
-        frame.size.height = targetH;
-        self.frame = frame;
-    }
+    // v287: 不改 table 高度（不改则抖音 offset/index 计算不乱）。
+    // 让 cell 的 852 视频从 table 底部溢出显示。
+    if (self.clipsToBounds) self.clipsToBounds = NO;
 }
 %end
 
