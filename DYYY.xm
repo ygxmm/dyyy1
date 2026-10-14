@@ -15320,6 +15320,23 @@ static Class tabBarButtonClass = nil;
 
 - (void)layoutSubviews {
     %orig;
+    {
+        static NSInteger sN = 0;
+        if (sN++ % 30 == 0) {
+            NSMutableString *sb = [NSMutableString string];
+            [sb appendFormat:@"[TABSUB] self=%@ f=%@ bg=%@",
+                NSStringFromClass(self.class),
+                NSStringFromCGRect(self.frame),
+                self.backgroundColor];
+            for (UIView *s in self.subviews) {
+                [sb appendFormat:@"\n   %@ f=%@ hidden=%d alpha=%.2f bg=%@",
+                    NSStringFromClass(s.class),
+                    NSStringFromCGRect(s.frame),
+                    s.hidden, s.alpha, s.backgroundColor];
+            }
+            DYYYDiagLog(@"%@", sb);
+        }
+    }
 
     if (originalTabBarHeight == kInvalidHeight) {
         [self initializeOriginalTabBarHeight];
