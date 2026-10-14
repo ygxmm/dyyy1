@@ -16148,7 +16148,8 @@ static Class tabBarButtonClass = nil;
 
     // -setFrame: 在滚动时每帧会被调用上千次，而下面的响应链回溯与类查找只有
     // 毛玻璃或全屏开启时才会用到。两者都关闭时直接放行，行为与未 Hook 时一致。
-    if (!enableBlur && !enableFS) {
+    // v319: 只保留 blur 判断（FullScreen 打开时每帧响应链回溯 → 卡顿源）
+    if (!enableBlur) {
         %orig(frame);
         return;
     }
@@ -16168,7 +16169,7 @@ static Class tabBarButtonClass = nil;
         }
     }
 
-    if (isPlayVC && enableFS) {
+    if (isPlayVC && NO /* v319: 禁用全屏改高（卡顿源） */) {
         if (frame.origin.x != 0 && frame.origin.y != 0) {
             %orig(frame);
             return;
