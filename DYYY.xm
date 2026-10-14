@@ -122,8 +122,6 @@ static void DLog(NSString *fmt, ...) {
     }
 }
 
-static void DYYYProbeLog(NSString *fmt, ...);
-
 static id DYYYBestDownloadAddr(id videoModel);
 
 %hook NSBundle
@@ -14556,7 +14554,6 @@ static void DYYYApplySearchShiftIfNeeded(id vc) {
             BOOL hit = [refer containsString:@"search"];
             objc_setAssociatedObject(vc, &kDYYYSearchHitKey, @(hit), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             isSearch = @(hit);
-            // if (hit) DYYYProbeLog(@"v141: 命中搜索页");  // v179 稳定后关闭
         }
         if (!isSearch.boolValue) return;
 
@@ -14575,9 +14572,7 @@ static void DYYYApplySearchShiftIfNeeded(id vc) {
 
         // 4) 应用
         v.transform = target;
-    } @catch (NSException *e) {
-        DYYYProbeLog(@"v141 异常: %@", e.reason);
-    }
+    } @catch (NSException *e) {}
 }
 
 static BOOL DYYYIsSearchVC(id self) {
@@ -14585,11 +14580,8 @@ static BOOL DYYYIsSearchVC(id self) {
         NSString *refer = [self valueForKey:@"referString"];
         NSString *enter = [self valueForKey:@"enterFrom"];
         BOOL hit = [refer isKindOfClass:[NSString class]] && [refer containsString:@"search"];
-        DYYYProbeLog(@"offset 被调 | refer=%@ enterFrom=%@ hit=%d",
-                     refer ?: @"(nil)", enter ?: @"(nil)", hit);
         return hit;
     } @catch (NSException *e) {
-        DYYYProbeLog(@"offset 异常: %@", e.reason);
         return NO;
     }
 }
@@ -18245,13 +18237,12 @@ static void v179_dcvLayout(id self, SEL _cmd) {
 %ctor {
     @autoreleasepool {
         Class cls = objc_getClass("AWEAwemeDetailCellViewController");
-        if (!cls) { DYYYProbeLog(@"v179: cls nil"); return; }
+        if (!cls) { return; }
         Method m = class_getInstanceMethod(cls, @selector(viewDidLayoutSubviews));
         if (m) {
             v179_orig_dcvLayout = (void (*)(id, SEL))method_getImplementation(m);
             method_setImplementation(m, (IMP)v179_dcvLayout);
-            DYYYProbeLog(@"v179: hooked DCV");
-        } else DYYYProbeLog(@"v179: no method");
+        }
     }
 }
 
@@ -18281,12 +18272,11 @@ static void v212_setBg(id self, SEL _cmd, id color) {
 %ctor {
     @autoreleasepool {
         Class cls = objc_getClass("AWEBaseListSectionBackgroundView");
-        if (!cls) { DYYYProbeLog(@"v212: cls nil"); return; }
+        if (!cls) { return; }
         Method m = class_getInstanceMethod(cls, @selector(setBackgroundColor:));
         if (m) {
             v212_orig_setBg = (void (*)(id, SEL, id))method_getImplementation(m);
             method_setImplementation(m, (IMP)v212_setBg);
-            DYYYProbeLog(@"v212: hooked");
         }
     }
 }
