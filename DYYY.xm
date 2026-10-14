@@ -3452,32 +3452,6 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
 
 %end
 
-%hook AWEPlayVideoViewController
-
-- (BOOL)enableHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (void)setEnableHDR:(BOOL)enableHDR {
-    %orig(DYYYShouldDisableAllHDR() ? NO : enableHDR);
-}
-
-- (BOOL)awe_isCurrentVideoHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (void)setPlayerLutFilter:(id)lutFilter HDRLutImage:(id)HDRLutImage {
-    %orig(lutFilter, DYYYShouldDisableAllHDR() ? nil : HDRLutImage);
-}
-
-%end
-
 %hook AWEDPlayerBrightnessContainer
 
 - (BOOL)awe_isCurrentVideoHDR {
@@ -16510,72 +16484,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 %end
 
-%hook AWEDPlayerFeedPlayerViewController
-
-- (BOOL)enableHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (void)viewDidLayoutSubviews {
-    %orig;
-}
-
-- (void)setIsAutoPlay:(BOOL)arg0 {
-    %orig(arg0);
-    DYYYApplyNormalPlaybackSpeedToPlayerFallback(self);
-}
-
-- (void)prepareForDisplay {
-    %orig;
-    if (!DYYYShouldHandleSpeedFeatures()) {
-        return;
-    }
-    BOOL autoRestoreSpeed = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYAutoRestoreSpeed"];
-    if (isFloatSpeedButtonEnabled && autoRestoreSpeed) {
-        setCurrentSpeedIndex(0);
-    }
-    DYYYApplyNormalPlaybackSpeedToPlayerFallback(self);
-    updateSpeedButtonUI();
-}
-
-%end
-
-%hook AWEDPlayerViewController_Merge
-
-- (BOOL)enableHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (void)viewDidLayoutSubviews {
-    %orig;
-}
-
-- (void)setIsAutoPlay:(BOOL)arg0 {
-    %orig(arg0);
-    DYYYApplyNormalPlaybackSpeedToPlayerFallback(self);
-}
-
-- (void)prepareForDisplay {
-    %orig;
-    if (!DYYYShouldHandleSpeedFeatures()) {
-        return;
-    }
-    BOOL autoRestoreSpeed = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYAutoRestoreSpeed"];
-    if (isFloatSpeedButtonEnabled && autoRestoreSpeed) {
-        setCurrentSpeedIndex(0);
-    }
-    DYYYApplyNormalPlaybackSpeedToPlayerFallback(self);
-    updateSpeedButtonUI();
-}
-
-%end
-
 static char kDYYYFeedTableOriginalHeightGapKey;
 static char kDYYYFeedTableFullScreenAppliedKey;
 
@@ -16615,15 +16523,9 @@ static void DYYYProbeCellLog(NSString *format, ...) {
 
 // ============ v303: 抓 contentOffset 变化 ============
 %hook AWEFeedTableView
-
 - (void)setContentOffset:(CGPoint)offset {
-    CGFloat old = self.contentOffset.y;
-    if (DYYYGetBool(@"DYYYEnableFullScreen") && fabs(old - offset.y) > 100) {
-        NSLog(@"[OFF] %.1f -> %.1f", old, offset.y);
-    }
     %orig(offset);
 }
-
 %end
 
 %hook AWEFeedTableView
@@ -16665,26 +16567,6 @@ static void DYYYProbeCellLog(NSString *format, ...) {
 %end
 
 // ============ v316: 只改 AWEPlayVideoViewController.view 高度到 852（不动 cell/view tree） ============
-%hook AWEPlayVideoViewController
-
-- (void)viewDidLayoutSubviews {
-    %orig;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    if (!DYYY_IsHomeTab()) return;
-
-    UIView *v = self.view;
-    if (!v) return;
-    CGFloat targetH = 852.0;
-    CGRect f = v.frame;
-    if (fabs(f.size.height - targetH) < 0.5 && fabs(f.origin.y) < 0.5) return;
-    f.origin.y = 0;
-    f.size.height = targetH;
-    v.frame = f;
-    if (v.clipsToBounds) v.clipsToBounds = NO;
-}
-
-%end
-
 %hook AWEFeedViewCell
 - (void)layoutSubviews {
     if (hideButton && hideButton.isElementsHidden) {
@@ -17331,56 +17213,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
         view.backgroundColor = [UIColor clearColor];
     }
 }
-%end
-
-%hook TTMetalView
-- (void)setCenter:(CGPoint)center {
-    BOOL shouldAdjust = NO;
-    UIView *view = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat viewWidth = CGRectGetWidth(view.bounds);
-        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-        if (viewWidth + 0.5f >= screenWidth) {
-            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
-            Class playClass = %c(AWEPlayVideoViewController);
-            if (playClass && [vc isKindOfClass:playClass]) {
-                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
-                AWEAwemeModel *model = playVC.model;
-                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
-                    shouldAdjust = YES;
-                }
-            }
-        }
-    }
-
-    %orig(center);
-}
-
-%end
-
-%hook TTMetalViewNew
-- (void)setCenter:(CGPoint)center {
-    BOOL shouldAdjust = NO;
-    UIView *view = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat viewWidth = CGRectGetWidth(view.bounds);
-        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-        if (viewWidth + 0.5f >= screenWidth) {
-            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
-            Class playClass = %c(AWEPlayVideoViewController);
-            if (playClass && [vc isKindOfClass:playClass]) {
-                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
-                AWEAwemeModel *model = playVC.model;
-                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
-                    shouldAdjust = YES;
-                }
-            }
-        }
-    }
-
-    %orig(center);
-}
-
 %end
 
 // 隐藏图片滑条
