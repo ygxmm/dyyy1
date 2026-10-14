@@ -16606,6 +16606,40 @@ static char kDYYYFeedTableFullScreenAppliedKey;
 // v229b: 前向声明，避免 v229 在 16630 处报 undeclared identifier
 static void DYYYExpandPlayInteraction(UIView *root);
 
+// v250: 只对单个 cell 里的 player VC 拉高。
+static void DYYYExpandPlayerInCell(UIView *root, CGFloat targetH) {
+    if (!root || targetH <= 0) return;
+    Class playCls = NSClassFromString(@"AWEPlayInteractionViewController");
+    if (!playCls) return;
+    NSMutableArray *q = [NSMutableArray arrayWithObject:root];
+    int safety = 0;
+    while (q.count > 0 && safety++ < 300) {
+        UIView *v = q.firstObject;
+        [q removeObjectAtIndex:0];
+        UIResponder *r = v.nextResponder;
+        int d = 0;
+        while (r && d++ < 10) {
+            if ([r isKindOfClass:playCls]) {
+                UIView *vv = ((UIViewController *)r).view;
+                UIView *sv = vv.superview;
+                if (sv && vv.frame.size.height < targetH - 1) {
+                    CGRect f = vv.frame;
+                    f.size.height = targetH;
+                    vv.frame = f;
+                    vv.clipsToBounds = NO;
+                    sv.clipsToBounds = NO;
+                }
+                break;
+            }
+            if ([r isKindOfClass:[UIViewController class]]) break;
+            r = r.nextResponder;
+        }
+        for (UIView *sub in v.subviews) {
+            [q addObject:sub];
+        }
+    }
+}
+
 %hook AWEFeedTableView
 - (void)layoutSubviews {
     %orig;
@@ -16615,15 +16649,19 @@ static void DYYYExpandPlayInteraction(UIView *root);
     }
 
     // v246: 首页改成 VexCove 上游做法 —— 只改 table 自己高度，不递归
-    // 遍历子 view。v229 的 DYYYExpandPlayInteraction 会每帧触发所有
-    // player VC 重排 → 播放器 detach TTMetalViewVP → 底栏闪黑。
-    // VexCove 只写一次 frame，不碰子 view，播放器不受打扰。
-    // 详情页保留原 DYYYExpandPlayInteraction（那边不闪）。
+    // 遍历子 view（避免每帧触发所有 player VC 重排 → 底栏闪黑）。
     CGRect frame = self.frame;
     CGFloat targetH = self.superview.frame.size.height;
     if (fabs(frame.size.height - targetH) > 0.5) {
         frame.size.height = targetH;
         self.frame = frame;
+    }
+
+    // v250: 只对当前可见 cell 里的 player VC 拉高。
+    // 只拉 table frame 时，cell 里 player VC 还是原生高度 → 视频挤顶部。
+    // 只处理 visibleCells（1~2 个），不触发非可见 cell 的播放器重排。
+    for (UITableViewCell *cell in [self visibleCells]) {
+        DYYYExpandPlayerInCell(cell, targetH);
     }
 }
 %end
