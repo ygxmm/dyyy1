@@ -5381,10 +5381,6 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
         return;
     }
 
-    // v237: 改成固定 60pt 下移，跟 v234 的点赞栏/文案保持一致。
-    // 之前动态查 tabBar 可见性 → 打开评论区时底栏被盖住 → tabH 从 83 变 0
-    // → 进度条位置突变 → 蹦跳。固定 60 后跟点赞/文案完全同步，不再跳。
-    self.transform = CGAffineTransformMakeTranslation(0, 60.0);
 }
 
 %end
@@ -17158,20 +17154,9 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
         }
         // 左侧昵称/文案元素按子元素分别缩放
         else if (hasScalableLeftElement) {
-            // v234: 先重置 self transform，避免反复 layout 累积 60pt 位移
-            self.transform = CGAffineTransformIdentity;
             DYYYApplyPlayInteractionLeftStackElementTransforms(self);
         }
 
-        // v234: 首页左右两个 AWEElementStackView 一起下移 60pt，
-        // 让点赞栏 + 文案跟进度条对齐。只对首页生效，详情页/搜索页不动。
-        // v235: 阈值从 100 降到 10 —— 无文案时左 stack 高度只有 85~97，
-        // 之前被误判为"空 stack"跳过 → 有进度条挪了、左 stack 没挪的错位。
-        if (DYYYGetBool(@"DYYYEnableFullScreen")
-            && self.frame.size.height > 10.0
-            && DYYYIsHomePlayInteraction(self)) {
-            self.transform = CGAffineTransformConcat(self.transform, CGAffineTransformMakeTranslation(0, 60.0));
-        }
     }
 }
 
