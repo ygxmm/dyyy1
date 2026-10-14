@@ -16640,6 +16640,14 @@ static void DYYYExpandPlayerInCell(UIView *root, CGFloat targetH) {
     }
 }
 
+// v250c: 给 AWEFeedTableView 加 visibleCells 声明。
+// DYYY.xm 里只有前向声明 @class AWEFeedTableView，编译器不知道它是
+// UITableView 子类，所以 [self visibleCells] 报 no visible interface。
+// category 显式声明方法签名即可。
+@interface AWEFeedTableView (DYYYCompile)
+- (NSArray<UITableViewCell *> *)visibleCells;
+@end
+
 %hook AWEFeedTableView
 - (void)layoutSubviews {
     %orig;
