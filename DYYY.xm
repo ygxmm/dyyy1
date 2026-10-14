@@ -17354,6 +17354,24 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 %end
 
+// ============ v306: cell/table clipsToBounds=NO，让 852 视频溢出 792 边界 ============
+%hook AWEFeedViewCell
+- (void)layoutSubviews {
+    %orig;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (self.clipsToBounds) self.clipsToBounds = NO;          // DYYY_v306_cell_clips
+    if (self.contentView.clipsToBounds) self.contentView.clipsToBounds = NO;
+}
+%end
+
+%hook AWEFeedTableView
+- (void)layoutSubviews {
+    %orig;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (self.clipsToBounds) self.clipsToBounds = NO;
+}
+%end
+
 %hook TTMetalViewVP
 - (void)setCenter:(CGPoint)center {
     BOOL shouldAdjust = NO;
