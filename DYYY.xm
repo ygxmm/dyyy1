@@ -15533,18 +15533,18 @@ static Class tabBarButtonClass = nil;
 %hook AWENormalModeTabBarBlurView
 - (void)layoutSubviews { %orig;
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    self.hidden = YES;
+    ((UIView *)self).hidden = YES;
 }
 - (void)didMoveToWindow { %orig;
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    self.hidden = YES;
+    ((UIView *)self).hidden = YES;
 }
 %end
 
 %hook AWETabBarSkinView
 - (void)layoutSubviews { %orig;
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    self.hidden = YES;
+    ((UIView *)self).hidden = YES;
 }
 %end
 
