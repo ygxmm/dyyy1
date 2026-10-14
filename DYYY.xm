@@ -16704,8 +16704,21 @@ static void DYYYProbeCellLog(NSString *format, ...) {
 %hook AWEFeedTableView
 - (void)layoutSubviews {
     %orig;
-    // v284: 不再改 table.frame.height（会让 cell 高度 792↔852 混杂 → contentOffset 重算回退）。
-    // 视频全屏由 TTPlayerView 852 + clips=0 保证，不需要动 table 高度。
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+
+    DYYYDiagLog(@"[TB %p sup=%@ supVC=%@] off=%.1f boundH=%.1f sizeH=%.1f",
+                self,
+                NSStringFromClass(self.superview.class),
+                NSStringFromClass([self.superview.nextResponder class]),
+                self.contentOffset.y, self.bounds.size.height,
+                self.contentSize.height);
+
+    CGRect frame = self.frame;
+    CGFloat targetH = self.superview.frame.size.height;
+    if (fabs(frame.size.height - targetH) > 0.5) {
+        frame.size.height = targetH;
+        self.frame = frame;
+    }
 }
 %end
 
