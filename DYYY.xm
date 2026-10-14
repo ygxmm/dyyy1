@@ -17461,6 +17461,68 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 %end
 
+// ============ v302: 底栏透明 ============
+%hook _UIBarBackground
+
+- (void)layoutSubviews {
+    %orig;
+    UIView *v = (UIView *)self;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYY_IsHomeTab() &&
+        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
+        if (v.alpha != 0.0) v.alpha = 0.0;
+        if (!v.hidden) v.hidden = YES;
+        for (UIView *sub in v.subviews) {
+            if (sub.alpha != 0.0) sub.alpha = 0.0;
+            if (!sub.hidden) sub.hidden = YES;
+        }
+    }
+}
+
+- (void)setHidden:(BOOL)hidden {
+    UIView *v = (UIView *)self;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYY_IsHomeTab() &&
+        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
+        %orig(YES);
+        return;
+    }
+    %orig(hidden);
+}
+
+- (void)setAlpha:(CGFloat)alpha {
+    UIView *v = (UIView *)self;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYY_IsHomeTab() &&
+        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
+        %orig(0.0);
+        return;
+    }
+    %orig(alpha);
+}
+
+%end
+
+// ============ v302: HUD 子容器下移 60pt ============
+%hook AWEPlayInteractionProgressContainerView
+- (void)layoutSubviews {
+    %orig;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (!DYYYIsHomePlayInteraction(self)) return;
+    CGAffineTransform t = C GAffineTransformMakeTranslation(0, 60.0);
+    if (!CGAffineTransformEqualToTransform(self期望.transform, t))
+        self.transform = t;
+}
+%end
+
+%hook AW输出EElementStackView
+- (void)layoutSubviews {
+    %orig;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (!DYYYIsHomePlayInteraction(self)) return;
+    CGAffineTransform t = CGAffineTransformMakeTranslation(0, 60.0);
+    if (!CGAffineTransformEqualToTransform(self.transform, t))
+        self.transform = t;
+}
+%end
+
 %hook TTMetalViewVP
 - (void)setCenter:(CGPoint)center {
     BOOL shouldAdjust = NO;
