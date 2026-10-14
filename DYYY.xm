@@ -12,6 +12,7 @@
 
 // v278: 前向声明
 static BOOL DYYYIsHomePlayInteraction(UIView *view);
+static BOOL DYYY_IsHomeTab(void);
 #import <dlfcn.h>
 #import <float.h>
 #import <math.h>
@@ -16310,6 +16311,20 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 - (void)viewDidLayoutSubviews {
     %orig;
+    // v318fix: InteractionVC.view 拉到 852（只改这一层，不动 cell/table）
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        UIView *v318v = self.view;
+        if (v318v) {
+            CGFloat th = 852.0;
+            CGRect f = v318v.frame;
+            if (fabs(f.size.height - th) > 0.5 || fabs(f.origin.y) > 0.5) {
+                f.origin.y = 0;
+                f.size.height = th;
+                v318v.frame = f;
+                if (v318v.clipsToBounds) v318v.clipsToBounds = NO;
+            }
+        }
+    }
     DYYYApplySearchShiftIfNeeded(self);
     
 
@@ -16973,6 +16988,24 @@ static void DYYYRemoveAppLifecycleObservers(void) {
 %end
 
 // v234: 判定 view 是否在首页播放交互层（用来只挪首页，不动详情页/搜索页）
+static BOOL DYYY_IsHomeTab(void) {
+    UIWindow *win = nil;
+    for (UIWindow *w in [UIApplication sharedApplication].windows) {
+        if (w.isKeyWindow) { win = w; break; }
+    }
+    if (!win) win = [UIApplication sharedApplication].keyWindow;
+    if (!win) return NO;
+    UIViewController *root = win.rootViewController;
+    while (root.presentedViewController) root = root.presentedViewController;
+    if (![root isKindOfClass:[UITabBarController class]]) return NO;
+    UIViewController *sel = ((UITabBarController *)root).selectedViewController;
+    while (sel.presentedViewController) sel = sel.presentedViewController;
+    if ([sel isKindOfClass:[UINavigationController class]])
+        sel = ((UINavigationController *)sel).topViewController;
+    Class feedRoot = NSClassFromString(@"AWEFeedRootViewController");
+    return feedRoot && [sel isKindOfClass:feedRoot];
+}
+
 static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     if (!view) return NO;
     static Class sPlayInteractionVCClass = nil;
@@ -17438,26 +17471,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     }
 
     %orig(center);
-}
-
-%end
-
-// ============ v318: 直接改 InteractionVC.view 高度到 852（不动 cell/table） ============
-%hook AWEPlayInteractionViewController
-
-- (void)viewDidLayoutSubviews {
-    %orig;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    if (!DYYY_IsHomeTab()) return;
-    UIView *v = self.view;
-    if (!v) return;
-    CGFloat targetH = 852.0;
-    CGRect f = v.frame;
-    if (fabs(f.size.height - targetH) < 0.5 && fabs(f.origin.y) < 0.5) return;
-    f.origin.y = 0;
-    f.size.height = targetH;
-    v.frame = f;
-    if (v.clipsToBounds) v.clipsToBounds = NO;
 }
 
 %end
