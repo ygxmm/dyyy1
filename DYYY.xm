@@ -17282,6 +17282,41 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     if (parent) {
         parent.backgroundColor = self.backgroundColor;
     }
+
+    // v309: 只改叶子节点 TTPlayerView 高度到 852（不改 PlayerVC.view）
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (!DYYYIsHomePlayInteraction(self)) return;
+    UIView *sv = self.superview;
+    if (!sv) return;
+    CGFloat targetH = sv.bounds.size.height + 60.0;
+    if (targetH < 100) return;
+    CGRect f = self.frame;
+    if (fabs(f.size.height - targetH) > 0.5) {
+        f.size.height = targetH;
+        f.origin.y = 0;
+        self.frame = f;
+    }
+}
+
+%end
+
+// v309: TTMetalViewVP 同样
+%hook TTMetalViewVP
+
+- (void)layoutSubviews {
+    %orig;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (!DYYYIsHomePlayInteraction(self)) return;
+    UIView *sv = self.superview;
+    if (!sv) return;
+    CGFloat targetH = sv.bounds.size.height + 60.0;
+    if (targetH < 100) return;
+    CGRect f = self.frame;
+    if (fabs(f.size.height - targetH) > 0.5) {
+        f.size.height = targetH;
+        f.origin.y = 0;
+        self.frame = f;
+    }
 }
 
 %end
