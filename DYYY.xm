@@ -12,8 +12,6 @@
 
 // v278: 前向声明
 static BOOL DYYYIsHomePlayInteraction(UIView *view);
-// v302
-static BOOL DYYY_IsHomeTab(void);
 #import <dlfcn.h>
 #import <float.h>
 #import <math.h>
@@ -16975,23 +16973,6 @@ static void DYYYRemoveAppLifecycleObservers(void) {
 %end
 
 // v234: 判定 view 是否在首页播放交互层（用来只挪首页，不动详情页/搜索页）
-static BOOL DYYY_IsHomeTab(void) {
-    UIWindow *win = nil;
-    for (UIWindow *w in [UIApplication sharedApplication].windows)
-        if (w.isKeyWindow) { win = w; break; }
-    if (!win) win = [UIApplication sharedApplication].keyWindow;
-    if (!win) return NO;
-    UIViewController *root = win.rootViewController;
-    while (root.presentedViewController) root = root.presentedViewController;
-    if (![root isKindOfClass:[UITabBarController class]]) return NO;
-    UIViewController *sel = ((UITabBarController *)root).selectedViewController;
-    while (sel.presentedViewController) sel = sel.presentedViewController;
-    if ([sel isKindOfClass:[UINavigationController class]])
-        sel = ((UINavigationController *)sel).topViewController;
-    Class feedRoot = NSClassFromString(@"AWEFeedRootViewController");
-    return feedRoot && [sel isKindOfClass:feedRoot];
-}
-
 static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     if (!view) return NO;
     static Class sPlayInteractionVCClass = nil;
