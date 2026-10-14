@@ -15586,26 +15586,26 @@ static Class tabBarButtonClass = nil;
 
 // 精简平板底栏
 // ============ v282: 首页 Feed 底栏毛玻璃/皮肤层隐藏 ============
-// ============ v290: 彻底堵死 _UIBarBackground 的显示 ============
+// ============ v291: 彻底堵死 _UIBarBackground 的显示 ============
 %hook _UIBarBackground
 
 - (void)setHidden:(BOOL)hidden {
+    UIView *v = (UIView *)self;
     if (DYYYGetBool(@"DYYYEnableFullScreen") &&
         DYYYIsFeedTabSelected() &&
-        [self.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
+        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
         %orig(YES);
-        [super setHidden:YES];
         return;
     }
     %orig(hidden);
 }
 
 - (void)setAlpha:(CGFloat)alpha {
+    UIView *v = (UIView *)self;
     if (DYYYGetBool(@"DYYYEnableFullScreen") &&
         DYYYIsFeedTabSelected() &&
-        [self.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
+        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
         %orig(0.0);
-        [super setAlpha:0.0];
         return;
     }
     %orig(alpha);
@@ -15613,11 +15613,11 @@ static Class tabBarButtonClass = nil;
 
 - (void)didMoveToSuperview {
     %orig;
+    UIView *v = (UIView *)self;
     if (DYYYGetBool(@"DYYYEnableFullScreen") &&
         DYYYIsFeedTabSelected() &&
-        [self.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
-        %orig(0.0);
-        self.hidden = YES;
+        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
+        v.hidden = YES;
     }
 }
 
@@ -17404,8 +17404,8 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
                 CGRect frame = subview.frame;
                 if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-                    // v289: HUD 容器从 792 → 852，点赞/进度条/文案铺到全屏底部
-                    frame.size.height = subview.superview.frame.size.height;
+                    // v291: HUD 容器恢复 792（直接改成 852 会让内部子视图重排死循环）
+                    frame.size.height = subview.superview.frame.size.height - gCurrentTabBarHeight;
                     subview.frame = frame;
                 }
             }
