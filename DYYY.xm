@@ -16636,46 +16636,6 @@ static void DYYYRestoreClipsInCell(UIView *root) {
     }
 }
 
-// ============ v303: 抓 contentOffset 变化 ============
-%hook AWEFeedTableView
-
-- (void)setContentOffset:(CGPoint)offset {
-    CGFloat old = self.contentOffset.y;
-    if (DYYYGetBool(@"DYYYEnableFullScreen") && fabs(old - offset.y) > 100) {
-        NSLog(@"[OFF] %.1f -> %.1f", old, offset.y);
-    }
-    %orig(offset);
-}
-
-%end
-
-%hook AWEFeedTableView
-- (void)layoutSubviews {
-    %orig;
-
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) {
-        return;
-    }
-
-    // v246: 首页改成 VexCove 上游做法 —— 只改 table 自己高度，不递归
-    // 遍历子 view（避免每帧触发所有 player VC 重排 → 底栏闪黑）。
-    CGRect frame = self.frame;
-    CGFloat targetH = self.superview.frame.size.height;
-    if (fabs(frame.size.height - targetH) > 0.5) {
-        frame.size.height = targetH;
-        self.frame = frame;
-    }
-
-    CGFloat centerY = self.contentOffset.y + self.bounds.size.height * 0.5;
-    CGFloat halfH = self.bounds.size.height * 0.5;
-    for (UITableViewCell *cell in [self visibleCells]) {
-        CGFloat cellCenterY = cell.frame.origin.y + cell.frame.size.height * 0.5;
-        if (fabs(cellCenterY - centerY) < halfH * 0.8) {
-        }
-    }
-}
-%end
-
 %hook AWEFeedTableViewCell
 - (void)prepareForReuse {
     // v251: 恢复 DYYY 改过的 clipsToBounds，避免多次切页返回累积溢出
@@ -16694,12 +16654,26 @@ static void DYYYRestoreClipsInCell(UIView *root) {
 }
 %end
 
+// ============ v307: 只 clipsToBounds=NO，让 852 视频溢出 792 cell ============
+%hook AWEFeedTableView
+- (void)layoutSubviews {
+    %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && self.clipsToBounds) {
+        self.clipsToBounds = NO;
+    }
+}
+%end
+
 %hook AWEFeedViewCell
 - (void)layoutSubviews {
     if (hideButton && hideButton.isElementsHidden) {
         [hideButton hideUIElements];
     }
     %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && self.clipsToBounds) {
+        self.clipsToBounds = NO;
+        if (self.contentView.clipsToBounds) self.contentView.clipsToBounds = NO;
+    }
 }
 
 - (void)setModel:(id)model {
@@ -17352,24 +17326,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     %orig(center);
 }
 
-%end
-
-// ============ v306: cell/table clipsToBounds=NO，让 852 视频溢出 792 边界 ============
-%hook AWEFeedViewCell
-- (void)layoutSubviews {
-    %orig;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    if (self.clipsToBounds) self.clipsToBounds = NO;          // DYYY_v306_cell_clips
-    if (self.contentView.clipsToBounds) self.contentView.clipsToBounds = NO;
-}
-%end
-
-%hook AWEFeedTableView
-- (void)layoutSubviews {
-    %orig;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    if (self.clipsToBounds) self.clipsToBounds = NO;
-}
 %end
 
 %hook TTMetalViewVP
