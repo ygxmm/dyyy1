@@ -16712,6 +16712,19 @@ static void DYYYRestoreClipsInCell(UIView *root) {
     }
 }
 
+// ============ v303: 抓 contentOffset 变化 ============
+%hook AWEFeedTableView
+
+- (void)setContentOffset:(CGPoint)offset {
+    CGFloat old = self.contentOffset.y;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && fabs(old - offset.y) > 100) {
+        NSLog(@"[OFF] %.1f -> %.1f", old, offset.y);
+    }
+    %orig(offset);
+}
+
+%end
+
 %hook AWEFeedTableView
 - (void)layoutSubviews {
     %orig;
