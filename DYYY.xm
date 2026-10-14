@@ -17128,8 +17128,10 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
         // v234: 首页左右两个 AWEElementStackView 一起下移 60pt，
         // 让点赞栏 + 文案跟进度条对齐。只对首页生效，详情页/搜索页不动。
+        // v235: 阈值从 100 降到 10 —— 无文案时左 stack 高度只有 85~97，
+        // 之前被误判为"空 stack"跳过 → 有进度条挪了、左 stack 没挪的错位。
         if (DYYYGetBool(@"DYYYEnableFullScreen")
-            && self.frame.size.height >= 100.0
+            && self.frame.size.height > 10.0
             && DYYYIsHomePlayInteraction(self)) {
             self.transform = CGAffineTransformConcat(self.transform, CGAffineTransformMakeTranslation(0, 60.0));
         }
