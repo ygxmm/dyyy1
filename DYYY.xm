@@ -15586,7 +15586,6 @@ static Class tabBarButtonClass = nil;
 
 // 精简平板底栏
 // ============ v282: 首页 Feed 底栏毛玻璃/皮肤层隐藏 ============
-// ============ v294: 稳定隐藏 _UIBarBackground（不被抖音每帧拉回） ============
 %hook _UIBarBackground
 
 - (void)setHidden:(BOOL)hidden {
@@ -15611,6 +15610,30 @@ static Class tabBarButtonClass = nil;
     %orig(alpha);
 }
 
+%end
+
+// ============ v295: 稳定隐藏 _UIBarBackground（用 UIView 强转，避免编译问题） ============
+%hook _UIBarBackground
+- (void)setHidden:(BOOL)hidden {
+    UIView *v = (UIView *)self;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
+        DYYYIsFeedTabSelected() &&
+        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
+        %orig(YES);
+        return;
+    }
+    %orig(hidden);
+}
+- (void)setAlpha:(CGFloat)alpha {
+    UIView *v = (UIView *)self;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
+        DYYYIsFeedTabSelected() &&
+        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
+        %orig(0.0);
+        return;
+    }
+    %orig(alpha);
+}
 %end
 
 %hook AWENormalModeTabBarBlurView
