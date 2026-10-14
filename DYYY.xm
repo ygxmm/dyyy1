@@ -4444,7 +4444,6 @@ static inline BOOL DYYYLayerHookNeeded(void) {
     %orig;
 }
 
-
 %end
 
 %hook AWELeftSideBarAddChildTransitionObject
@@ -14531,40 +14530,6 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 %end
 
 // ============================================================
-// DYYY - 探针函数（落盘抖音沙盒 Documents/DYYY_probe_offset.log）
-// ============================================================
-static void DYYYProbeLog(NSString *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
-    va_end(ap);
-
-    static dispatch_queue_t q;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        q = dispatch_queue_create("dyyy.probe.offset", DISPATCH_QUEUE_SERIAL);
-    });
-    dispatch_async(q, ^{
-        NSArray *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-        if (docs.count == 0) return;
-        NSString *p = [docs.firstObject stringByAppendingPathComponent:@"DYYY_probe_offset.log"];
-
-        NSDateFormatter *df = [[NSDateFormatter alloc] init];
-        df.dateFormat = @"HH:mm:ss.SSS";
-        NSString *ts = [df stringFromDate:[NSDate date]];
-        NSString *line = [NSString stringWithFormat:@"[%@] %@\n", ts, msg];
-
-        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:p];
-        if (!fh) {
-            [line writeToFile:p atomically:YES encoding:NSUTF8StringEncoding error:nil];
-        } else {
-            @try { [fh seekToEndOfFile]; [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]]; }
-            @finally { [fh closeFile]; }
-        }
-    });
-}
-
-// ============================================================
 // DYYY v141: 搜索页 UI 下移 60pt（幂等 transform 方案）
 // 原理：抖音自己用 transform 做布局，我们在其基础上再 +60pt
 // 幂等：transform 已达标则跳过，不触发重排 → 不卡帧
@@ -15303,37 +15268,6 @@ static void DYYYLogHidePlusOverlayOnce(NSString *target) {
 
 %end
 
-// v241probe: 探针 —— 记录底栏背景状态波动到沙盒
-// 目的：定位"底栏闪黑"时 _UIBarBackground 的 hidden/alpha 是否在变
-// 沙盒路径通过 NSSearchPathForDirectoriesInDomains 获取，不写死
-static void DYYYProbeVideoLog(NSString *format, ...) {
-    static dispatch_queue_t sDQ;
-    static dispatch_once_t sOnce;
-    dispatch_once(&sOnce, ^{
-        sDQ = dispatch_queue_create("dyyy.probe.video", DISPATCH_QUEUE_SERIAL);
-    });
-    va_list args;
-    va_start(args, format);
-    NSString *msg = [[NSString alloc] initWithFormat:format arguments:args];
-    va_end(args);
-    dispatch_async(sDQ, ^{
-        NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-        if (dir.length == 0) return;
-        NSString *path = [dir stringByAppendingPathComponent:@"DYYY_probe_video.log"];
-        NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
-        fmt.dateFormat = @"HH:mm:ss.SSS";
-        NSString *line = [NSString stringWithFormat:@"[%@] %@\n", [fmt stringFromDate:[NSDate date]], msg];
-        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
-        if (!fh) {
-            [line writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
-        } else {
-            [fh seekToEndOfFile];
-            [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
-            [fh closeFile];
-        }
-    });
-}
-
 %hook AWENormalModeTabBar
 
 static Class barBackgroundClass = nil;
@@ -15391,30 +15325,6 @@ static Class tabBarButtonClass = nil;
 
     if (originalTabBarHeight == kInvalidHeight) {
         [self initializeOriginalTabBarHeight];
-    }
-
-    // v241probe: 记录 _UIBarBackground 状态
-    {
-        static int sProbeN = 0;
-        if (sProbeN < 1000) {
-            UIView *bg = nil;
-            for (UIView *sv in self.subviews) {
-                if ([sv isKindOfClass:NSClassFromString(@"_UIBarBackground")]) {
-                    bg = sv;
-                    break;
-                }
-            }
-            CGFloat tabH = self.frame.size.height;
-            CGFloat fullScreen = DYYYGetBool(@"DYYYEnableFullScreen") ? 1 : 0;
-            if (bg) {
-                DYYYProbeVideoLog(@"tabBar bg.hidden=%d bg.alpha=%.2f tabH=%.1f fullScreen=%d",
-                    bg.hidden, bg.alpha, tabH, (int)fullScreen);
-            } else {
-                DYYYProbeVideoLog(@"tabBar NO _UIBarBackground tabH=%.1f fullScreen=%d",
-                    tabH, (int)fullScreen);
-            }
-            sProbeN++;
-        }
     }
 
     if (gCurrentTabBarHeight == kInvalidHeight) {
@@ -17387,27 +17297,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     %orig(center);
 }
 
-- (void)setFrame:(CGRect)frame {
-    // v242probe: 记录视频层 frame 变化 / superview 状态
-    static NSTimeInterval sLast = 0;
-    static int sN = 0;
-    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-    if (now - sLast > 0.05 && sN < 500) {
-        sLast = now;
-        sN++;
-        UIView *selfV = (UIView *)self;
-        UIView *sv = selfV.superview;
-        NSString *bgStr = sv.backgroundColor ? [NSString stringWithFormat:@"%@", sv.backgroundColor] : @"(nil)";
-        DYYYProbeVideoLog(@"[v242 %@] setFrame=%@ super=%@ super.bg=%@ super.alpha=%.2f",
-            NSStringFromClass(object_getClass(selfV)),
-            NSStringFromCGRect(frame),
-            NSStringFromClass([sv class]),
-            bgStr,
-            sv.alpha);
-    }
-    %orig(frame);
-}
-
 %end
 
 %hook TTMetalViewNew
@@ -17440,42 +17329,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     %orig(center);
 }
 
-- (void)setFrame:(CGRect)frame {
-    // v242probe: 记录视频层 frame 变化 / superview 状态
-    static NSTimeInterval sLast = 0;
-    static int sN = 0;
-    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-    if (now - sLast > 0.05 && sN < 500) {
-        sLast = now;
-        sN++;
-        UIView *selfV = (UIView *)self;
-        UIView *sv = selfV.superview;
-        NSString *bgStr = sv.backgroundColor ? [NSString stringWithFormat:@"%@", sv.backgroundColor] : @"(nil)";
-        DYYYProbeVideoLog(@"[v242 %@] setFrame=%@ super=%@ super.bg=%@ super.alpha=%.2f",
-            NSStringFromClass(object_getClass(selfV)),
-            NSStringFromCGRect(frame),
-            NSStringFromClass([sv class]),
-            bgStr,
-            sv.alpha);
-    }
-    %orig(frame);
-}
-
-
-- (void)setMetalViewOpaque:(BOOL)opaque {
-    // v244: 强制视频层 Metal 不透明，看能否减轻 detach 时露黑
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        static int sProbe244 = 0;
-        if (sProbe244 < 10) {
-            DYYYProbeVideoLog(@"[v244] setMetalViewOpaque:%d (forced YES)", (int)opaque);
-            sProbe244++;
-        }
-        %orig(YES);
-        return;
-    }
-    %orig(opaque);
-}
-
 %end
 
 %hook TTMetalViewVP
@@ -17506,27 +17359,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     }
 
     %orig(center);
-}
-
-- (void)setFrame:(CGRect)frame {
-    // v242probe: 记录视频层 frame 变化 / superview 状态
-    static NSTimeInterval sLast = 0;
-    static int sN = 0;
-    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-    if (now - sLast > 0.05 && sN < 500) {
-        sLast = now;
-        sN++;
-        UIView *selfV = (UIView *)self;
-        UIView *sv = selfV.superview;
-        NSString *bgStr = sv.backgroundColor ? [NSString stringWithFormat:@"%@", sv.backgroundColor] : @"(nil)";
-        DYYYProbeVideoLog(@"[v242 %@] setFrame=%@ super=%@ super.bg=%@ super.alpha=%.2f",
-            NSStringFromClass(object_getClass(selfV)),
-            NSStringFromCGRect(frame),
-            NSStringFromClass([sv class]),
-            bgStr,
-            sv.alpha);
-    }
-    %orig(frame);
 }
 
 %end
@@ -18041,14 +17873,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 %end
 
 %ctor {
-
-    {
-        NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-        if (dir.length > 0) {
-            NSString *path = [dir stringByAppendingPathComponent:@"DYYY_probe_video.log"];
-            [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
-        }
-    }
     [DYYYLoginBypassManager configureInitialStateIfNeeded];
 
     [[NSUserDefaults standardUserDefaults] registerDefaults:@{
