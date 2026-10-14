@@ -16668,6 +16668,38 @@ static void DYYYProbeCellLog(NSString *format, ...) {
 }
 %end
 
+// ============ v313: 只把视频渲染层拉到 852（cell 内 view 保持 792） ============
+%hook TTPlayerView
+- (void)layoutSubviews {
+    %orig;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (!DYYY_IsHomeTab()) return;
+    // cell 内 layer 保持原高度，只让视频层铺满
+    UIView *superView = self.superview;
+    if (!superView) return;
+    CGFloat targetH = 852.0;
+    if (fabs(self.frame.size.height - targetH) < 0.5) return;
+    CGRect f = self.frame;
+    f.size.height = targetH;
+    f.origin.y = 0;
+    self.frame = f;
+}
+%end
+
+%hook TTMetalViewVP
+- (void)layoutSubviews {
+    %orig;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (!DYYY_IsHomeTab()) return;
+    CGFloat targetH = 852.0;
+    if (fabs(self.frame.size.height - targetH) < 0.5) return;
+    CGRect f = self.frame;
+    f.size.height = targetH;
+    f.origin.y = 0;
+    self.frame = f;
+}
+%end
+
 %hook AWEFeedViewCell
 - (void)layoutSubviews {
     if (hideButton && hideButton.isElementsHidden) {
@@ -17266,18 +17298,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 }
 %end
 
-%hook TTPlayerView
-
-- (void)layoutSubviews {
-    %orig;
-    UIView *parent = self.superview;
-    if (parent) {
-        parent.backgroundColor = self.backgroundColor;
-    }
-}
-
-%end
-
 %hook TTMetalView
 - (void)setCenter:(CGPoint)center {
     BOOL shouldAdjust = NO;
@@ -17324,55 +17344,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     }
 
     %orig(center);
-}
-
-%end
-
-%hook TTMetalViewVP
-- (void)setCenter:(CGPoint)center {
-    BOOL shouldAdjust = NO;
-    UIView *view = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat viewWidth = CGRectGetWidth(view.bounds);
-        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-        if (viewWidth + 0.5f >= screenWidth) {
-            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
-            Class playClass = %c(AWEPlayVideoViewController);
-            if (playClass && [vc isKindOfClass:playClass]) {
-                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
-                AWEAwemeModel *model = playVC.model;
-                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
-                    shouldAdjust = YES;
-                }
-            }
-        }
-    }
-
-    %orig(center);
-}
-
-- (void)layoutSubviews {
-    %orig;
-    // v278: vv 不动（保持 792 让抖音分页机制正常）。
-    // 只把视频渲染层 TTMetalViewVP 撑到 superview 高度，视觉全屏。
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    if (!DYYYIsHomePlayInteraction(self)) return;
-
-    UIView *sv = self.superview;
-    if (!sv) return;
-    CGFloat targetH = sv.bounds.size.height;
-    if (targetH < 100) return;
-
-    // v281: 改用 transform scale，避免改 frame 触发 cell 重排 → contentOffset 被调 → 跳视频。
-    // transform 不改 bounds/center，UIKit 布局完全不知情。
-    if (!CGAffineTransformIsIdentity(self.transform)) {
-        self.transform = CGAffineTransformIdentity;
-    }
-    CGFloat curH = self.bounds.size.height;
-    if (curH < 1) return;
-    if (fabs(curH - targetH) < 1.0) return;
-    CGFloat scale = targetH / curH;
-    self.transform = CGAffineTransformMakeScale(scale, scale);
 }
 
 %end
