@@ -16716,11 +16716,17 @@ static void DYYYExpandPlayInteraction(UIView *root);
         return;
     }
 
-    // v229: 参考 AWEAwemeDetailTableView 的做法 —— 不改 frame，
-    // 靠 clipsToBounds=NO + ExpandPlayInteraction 让 cell 内容溢出显示，
-    // 视觉上实现全屏。彻底无状态 → 切页返回不会残留旧 gap 导致错位。
-    self.clipsToBounds = NO;
-    DYYYExpandPlayInteraction(self);
+    // v246: 首页改成 VexCove 上游做法 —— 只改 table 自己高度，不递归
+    // 遍历子 view。v229 的 DYYYExpandPlayInteraction 会每帧触发所有
+    // player VC 重排 → 播放器 detach TTMetalViewVP → 底栏闪黑。
+    // VexCove 只写一次 frame，不碰子 view，播放器不受打扰。
+    // 详情页保留原 DYYYExpandPlayInteraction（那边不闪）。
+    CGRect frame = self.frame;
+    CGFloat targetH = self.superview.frame.size.height;
+    if (fabs(frame.size.height - targetH) > 0.5) {
+        frame.size.height = targetH;
+        self.frame = frame;
+    }
 }
 %end
 
