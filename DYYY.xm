@@ -16704,7 +16704,7 @@ static void DYYYRestoreClipsInCell(UIView *root) {
     }
     static int sN = 0;
     if (sN < 100) {
-        DYYYProbeCellLog(@"[restore] restoredCount=%d root=%@", restoredCount, NSStringFromClass(objectGetClass(root)));
+        DYYYProbeCellLog(@"[restore] restoredCount=%d root=%@", restoredCount, NSStringFromClass(object_getClass(root)));
         sN++;
     }
 }
