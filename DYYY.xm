@@ -15586,6 +15586,43 @@ static Class tabBarButtonClass = nil;
 
 // 精简平板底栏
 // ============ v282: 首页 Feed 底栏毛玻璃/皮肤层隐藏 ============
+// ============ v290: 彻底堵死 _UIBarBackground 的显示 ============
+%hook _UIBarBackground
+
+- (void)setHidden:(BOOL)hidden {
+    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
+        DYYYIsFeedTabSelected() &&
+        [self.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
+        %orig(YES);
+        [super setHidden:YES];
+        return;
+    }
+    %orig(hidden);
+}
+
+- (void)setAlpha:(CGFloat)alpha {
+    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
+        DYYYIsFeedTabSelected() &&
+        [self.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
+        %orig(0.0);
+        [super setAlpha:0.0];
+        return;
+    }
+    %orig(alpha);
+}
+
+- (void)didMoveToSuperview {
+    %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
+        DYYYIsFeedTabSelected() &&
+        [self.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
+        %orig(0.0);
+        self.hidden = YES;
+    }
+}
+
+%end
+
 %hook AWENormalModeTabBarBlurView
 - (void)layoutSubviews { %orig;
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
