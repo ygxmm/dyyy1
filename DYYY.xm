@@ -17274,6 +17274,59 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 }
 %end
 
+// ============ v310: 底栏彻底透明 ============
+%hook _UIBarBackground
+- (void)layoutSubviews {
+    %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYY_IsHomeTab()) {
+        if (self.alpha != 0.0) self.alpha = 0.0;
+        if (!self.hidden) self.hidden = YES;
+    }
+}
+- (void)setHidden:(BOOL)h {
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYY_IsHomeTab()) { %orig(YES); return; }
+    %orig(h);
+}
+- (void)setAlpha:(CGFloat)a {
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYY_IsHomeTab()) { %orig(0.0); return; }
+    %orig(a);
+}
+%end
+
+%hook AWENormalModeTabBarBlurView
+- (void)layoutSubviews {
+    %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYY_IsHomeTab()) {
+        if (self.alpha != 0.0) self.alpha = 0.0;
+        if (!self.hidden) self.hidden = YES;
+    }
+}
+- (void)didMoveToWindow {
+    %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYY_IsHomeTab()) self.hidden = YES;
+}
+%end
+
+%hook AWETabBarSkinView
+- (void)layoutSubviews {
+    %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYY_IsHomeTab()) {
+        if (self.alpha != 0.0) self.alpha = 0.0;
+        if (!self.hidden) self.hidden = YES;
+    }
+}
+%end
+
+%hook AWETabBarSkinContainerView
+- (void)layoutSubviews {
+    %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYY_IsHomeTab()) {
+        if (self.alpha != 0.0) self.alpha = 0.0;
+        if (!self.hidden) self.hidden = YES;
+    }
+}
+%end
+
 // ============ v309fix: TTMetalViewVP 只改叶子节点高度，不动 PlayerVC.view ============
 %hook TTMetalViewVP
 
@@ -17285,7 +17338,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 - (void)layoutSubviews {
     %orig;
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    if (!DYYYIsHomePlayInteraction(self)) return;
+    if (!DYYY_IsHomeTab()) return;
     UIView *sv = self.superview;
     if (!sv) return;
     CGFloat targetH = sv.bounds.size.height + 60.0;
@@ -17311,7 +17364,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
     // v309: 只改叶子节点 TTPlayerView 高度到 852（不改 PlayerVC.view）
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    if (!DYYYIsHomePlayInteraction(self)) return;
+    if (!DYYY_IsHomeTab()) return;
     UIView *sv = self.superview;
     if (!sv) return;
     CGFloat targetH = sv.bounds.size.height + 60.0;
