@@ -16704,27 +16704,8 @@ static void DYYYProbeCellLog(NSString *format, ...) {
 %hook AWEFeedTableView
 - (void)layoutSubviews {
     %orig;
-    {
-        DYYYDiagLog(@"[TB] off=%.1f sizeH=%.1f boundH=%.1f cellH=%.1f vis=%lu",
-                    self.contentOffset.y, self.contentSize.height,
-                    self.bounds.size.height,
-                    self.visibleCells.firstObject.frame.size.height,
-                    (unsigned long)self.visibleCells.count);
-    }
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) {
-        return;
-    }
-
-    // v246: 首页改成 VexCove 上游做法 —— 只改 table 自己高度，不递归
-    // 遍历子 view（避免每帧触发所有 player VC 重排 → 底栏闪黑）。
-    CGRect frame = self.frame;
-    CGFloat targetH = self.superview.frame.size.height;
-    if (fabs(frame.size.height - targetH) > 0.5) {
-        frame.size.height = targetH;
-        self.frame = frame;
-    }
-
-    // v282: 删除 cell 内 InteractionVC 改高逻辑（会导致 contentOffset 定位错位）
+    // v284: 不再改 table.frame.height（会让 cell 高度 792↔852 混杂 → contentOffset 重算回退）。
+    // 视频全屏由 TTPlayerView 852 + clips=0 保证，不需要动 table 高度。
 }
 %end
 
