@@ -15495,6 +15495,21 @@ static Class tabBarButtonClass = nil;
     }
 }
 
+    // v293b: layoutSubviews 里也把 _UIBarBackground 挪出屏幕（防止抖音布局拉回 0,0）
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYYIsFeedTabSelected()) {
+        Class bgCls2 = NSClassFromString(@"_UIBarBackground");
+        for (UIView *sub in self.subviews) {
+            if (bgCls2 && [sub isKindOfClass:bgCls2]) {
+                CGRect f = sub.frame;
+                if (f.origin.y > -1000) {
+                    f.origin.y = -2000;
+                    sub.frame = f;
+                }
+            }
+        }
+    }
+}
+
 - (void)setHidden:(BOOL)hidden {
     %orig(hidden);
 
