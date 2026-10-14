@@ -16607,6 +16607,35 @@ static char kDYYYFeedTableFullScreenAppliedKey;
 static void DYYYExpandPlayInteraction(UIView *root);
 
 // v250: 只对单个 cell 里的 player VC 拉高。
+// v252probe: 写沙盒日志，定位错位时 cell/player VC 的状态
+static void DYYYProbeCellLog(NSString *format, ...) {
+    static dispatch_queue_t sDQ;
+    static dispatch_once_t sOnce;
+    dispatch_once(&sOnce, ^{
+        sDQ = dispatch_queue_create("dyyy.probe.cell", DISPATCH_QUEUE_SERIAL);
+    });
+    va_list args;
+    va_start(args, format);
+    NSString *msg = [[NSString alloc] initWithFormat:format arguments:args];
+    va_end(args);
+    dispatch_async(sDQ, ^{
+        NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+        if (dir.length == 0) return;
+        NSString *path = [dir stringByAppendingPathComponent:@"DYYY_probe_cell.log"];
+        NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
+        fmt.dateFormat = @"HH:mm:ss.SSS";
+        NSString *line = [NSString stringWithFormat:@"[%@] %@\n", [fmt stringFromDate:[NSDate date]], msg];
+        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+        if (!fh) {
+            [line writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        } else {
+            [fh seekToEndOfFile];
+            [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+            [fh closeFile];
+        }
+    });
+}
+
 static void DYYYExpandPlayerInCell(UIView *root, CGFloat targetH) {
     if (!root || targetH <= 0) return;
     Class playCls = NSClassFromString(@"AWEPlayInteractionViewController");
@@ -16623,6 +16652,12 @@ static void DYYYExpandPlayerInCell(UIView *root, CGFloat targetH) {
                 UIView *vv = ((UIViewController *)r).view;
                 UIView *sv = vv.superview;
                 if (sv && vv.frame.size.height < targetH - 1) {
+                    static int sN = 0;
+                    if (sN < 100) {
+                        DYYYProbeCellLog(@"[expand] vv=%@ oldH=%.1f newH=%.1f",
+                            NSStringFromClass(object_getClass(vv)), vv.frame.size.height, targetH);
+                        sN++;
+                    }
                     CGRect f = vv.frame;
                     f.size.height = targetH;
                     vv.frame = f;
@@ -16654,16 +16689,23 @@ static void DYYYRestoreClipsInCell(UIView *root) {
     static char kDYYYClipsChangedKey;
     NSMutableArray *q = [NSMutableArray arrayWithObject:root];
     int safety = 0;
+    int restoredCount = 0;
     while (q.count > 0 && safety++ < 300) {
         UIView *v = q.firstObject;
         [q removeObjectAtIndex:0];
         if (objc_getAssociatedObject(v, &kDYYYClipsChangedKey)) {
             v.clipsToBounds = YES;
             objc_setAssociatedObject(v, &kDYYYClipsChangedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            restoredCount++;
         }
         for (UIView *sub in v.subviews) {
             [q addObject:sub];
         }
+    }
+    static int sN = 0;
+    if (sN < 100) {
+        DYYYProbeCellLog(@"[restore] restoredCount=%d root=%@", restoredCount, NSStringFromClass(objectGetClass(root)));
+        sN++;
     }
 }
 
@@ -17932,6 +17974,14 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 %end
 
 %ctor {
+
+    {
+        NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+        if (dir.length > 0) {
+            NSString *path = [dir stringByAppendingPathComponent:@"DYYY_probe_cell.log"];
+            [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+        }
+    }
     [DYYYLoginBypassManager configureInitialStateIfNeeded];
 
     [[NSUserDefaults standardUserDefaults] registerDefaults:@{
