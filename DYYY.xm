@@ -16802,9 +16802,13 @@ static void DYYYProbeCellLog(NSString *format, ...) {
 - (void)layoutSubviews {
     %orig;
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    // v287: 不改 table 高度（不改则抖音 offset/index 计算不乱）。
-    // 让 cell 的 852 视频从 table 底部溢出显示。
-    if (self.clipsToBounds) self.clipsToBounds = NO;
+    // v298: table 高度 = superview 高度，抖音自己按这个算 cell / offset
+    CGRect frame = self.frame;
+    CGFloat targetH = self.superview.frame.size.height;
+    if (fabs(frame.size.height - targetH) > 0.5) {
+        frame.size.height = targetH;
+        self.frame = frame;
+    }
 }
 %end
 
