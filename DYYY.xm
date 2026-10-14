@@ -16520,20 +16520,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        // DYYY修复：直接改主视图高度到屏幕高度，并解除裁剪
-        // 里面的 TTMetalViewVP 是 clips=0，会自动溢出到 852
-        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-        UIView *vw = self.view;
-        if (vw) {
-            vw.clipsToBounds = NO;
-            if (fabs(CGRectGetHeight(vw.frame) - screenH) > 0.5) {
-                CGRect f = vw.frame;
-                f.size.height = screenH;
-                vw.frame = f;
-            }
-        }
-    }
 }
 
 - (void)setIsAutoPlay:(BOOL)arg0 {
@@ -16567,20 +16553,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        // DYYY修复：直接改主视图高度到屏幕高度，并解除裁剪
-        // 里面的 TTMetalViewVP 是 clips=0，会自动溢出到 852
-        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-        UIView *vw = self.view;
-        if (vw) {
-            vw.clipsToBounds = NO;
-            if (fabs(CGRectGetHeight(vw.frame) - screenH) > 0.5) {
-                CGRect f = vw.frame;
-                f.size.height = screenH;
-                vw.frame = f;
-            }
-        }
-    }
 }
 
 - (void)setIsAutoPlay:(BOOL)arg0 {
@@ -17254,11 +17226,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
                     continue;
                 }
 
-                CGRect frame = subview.frame;
-                if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-                    frame.size.height = subview.superview.frame.size.height - gCurrentTabBarHeight;
-                    subview.frame = frame;
-                }
             }
             // 处理作者主页的情况
             else if (isAuthorProfile) {
@@ -17357,13 +17324,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
         }
     }
 
-    if (shouldAdjust) {
-        CGFloat offset = gCurrentTabBarHeight > 0 ? gCurrentTabBarHeight : originalTabBarHeight;
-        if (offset > 0) {
-            center.y -= offset * 0.5;
-        }
-    }
-
     %orig(center);
 }
 
@@ -17389,13 +17349,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
         }
     }
 
-    if (shouldAdjust) {
-        CGFloat offset = gCurrentTabBarHeight > 0 ? gCurrentTabBarHeight : originalTabBarHeight;
-        if (offset > 0) {
-            center.y -= offset * 0.5;
-        }
-    }
-
     %orig(center);
 }
 
@@ -17418,13 +17371,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
                     shouldAdjust = YES;
                 }
             }
-        }
-    }
-
-    if (shouldAdjust) {
-        CGFloat offset = gCurrentTabBarHeight > 0 ? gCurrentTabBarHeight : originalTabBarHeight;
-        if (offset > 0) {
-            center.y -= offset * 0.5;
         }
     }
 
