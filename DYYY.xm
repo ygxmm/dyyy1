@@ -17508,31 +17508,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 %end
 
-// ============ v292: HUD 整体平移到底部（transform 不改高度，避免死循环） ============
-%hook AWEPlayInteractionViewController
-
-- (void)viewDidLayoutSubviews {
-    %orig;
-    UIView *v = self.view;
-    if (!v) return;
-
-    BOOL enable = DYYYGetBool(@"DYYYEnableFullScreen");
-    BOOL isHome = enable ? DYYYIsHomePlayInteraction(v) : NO;
-
-    if (isHome && gCurrentTabBarHeight > 0) {
-        CGAffineTransform t = CGAffineTransformMakeTranslation(0, gCurrentTabBarHeight);
-        if (!CGAffineTransformEqualToTransform(v.transform, t)) {
-            v.transform = t;
-        }
-    } else {
-        if (!CGAffineTransformIsIdentity(v.transform)) {
-            v.transform = CGAffineTransformIdentity;
-        }
-    }
-}
-
-%end
-
 %hook TTMetalViewVP
 - (void)setCenter:(CGPoint)center {
     // v283: 删除整体上移逻辑（会与 cell 布局打架 → contentOffset 回退/错位）
