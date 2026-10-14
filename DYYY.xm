@@ -17395,6 +17395,27 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
     %orig(center);
 }
+
+- (void)setFrame:(CGRect)frame {
+    // v242probe: 记录视频层 frame 变化 / superview 状态
+    static NSTimeInterval sLast = 0;
+    static int sN = 0;
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+    if (now - sLast > 0.05 && sN < 500) {
+        sLast = now;
+        sN++;
+        UIView *sv = self.superview;
+        NSString *bgStr = sv.backgroundColor ? [NSString stringWithFormat:@"%@", sv.backgroundColor] : @"(nil)";
+        DYYYProbeVideoLog(@"[v242 %@] setFrame=%@ super=%@ super.bg=%@ super.alpha=%.2f",
+            NSStringFromClass([self class]),
+            NSStringFromCGRect(frame),
+            NSStringFromClass([sv class]),
+            bgStr,
+            sv.alpha);
+    }
+    %orig(frame);
+}
+
 %end
 
 %hook TTMetalViewNew
@@ -17426,6 +17447,27 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
     %orig(center);
 }
+
+- (void)setFrame:(CGRect)frame {
+    // v242probe: 记录视频层 frame 变化 / superview 状态
+    static NSTimeInterval sLast = 0;
+    static int sN = 0;
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+    if (now - sLast > 0.05 && sN < 500) {
+        sLast = now;
+        sN++;
+        UIView *sv = self.superview;
+        NSString *bgStr = sv.backgroundColor ? [NSString stringWithFormat:@"%@", sv.backgroundColor] : @"(nil)";
+        DYYYProbeVideoLog(@"[v242 %@] setFrame=%@ super=%@ super.bg=%@ super.alpha=%.2f",
+            NSStringFromClass([self class]),
+            NSStringFromCGRect(frame),
+            NSStringFromClass([sv class]),
+            bgStr,
+            sv.alpha);
+    }
+    %orig(frame);
+}
+
 %end
 
 %hook TTMetalViewVP
@@ -17457,6 +17499,27 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
     %orig(center);
 }
+
+- (void)setFrame:(CGRect)frame {
+    // v242probe: 记录视频层 frame 变化 / superview 状态
+    static NSTimeInterval sLast = 0;
+    static int sN = 0;
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+    if (now - sLast > 0.05 && sN < 500) {
+        sLast = now;
+        sN++;
+        UIView *sv = self.superview;
+        NSString *bgStr = sv.backgroundColor ? [NSString stringWithFormat:@"%@", sv.backgroundColor] : @"(nil)";
+        DYYYProbeVideoLog(@"[v242 %@] setFrame=%@ super=%@ super.bg=%@ super.alpha=%.2f",
+            NSStringFromClass([self class]),
+            NSStringFromCGRect(frame),
+            NSStringFromClass([sv class]),
+            bgStr,
+            sv.alpha);
+    }
+    %orig(frame);
+}
+
 %end
 
 // 隐藏图片滑条
