@@ -16802,10 +16802,65 @@ static void DYYYProbeCellLog(NSString *format, ...) {
 - (void)layoutSubviews {
     %orig;
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    // v299: 不改 table 高度（v298/v284 证实会错位）
-    // 只 clipsToBounds=NO 让 852 视频溢出 cell 底部
-    if (self.clipsToBounds) self.clipsToBounds = NO;
+
+    // v300: 高度和 offset 全部统一到 852
+    CGFloat screenH = self.superview.frame.size.height;
+    if (screenH < 100) return;
+
+    CGRect f = self.frame;
+    if (fabs(f.size.height - screenH) > 0.5) {
+        f.size.height = screenH;
+        self.frame = f;
+    }
+
+    // 补偿 contentSize：cellCount * 852
+    NSInteger rowCount = [self numberOfRowsInSection:0];
+    CGFloat expectSize = rowCount * screenH;
+    if (fabs(self.contentSize.height - expectSize) > 1.0) {
+        CGSize cs = self.contentSize;
+        cs.height = expectSize;
+        self.contentSize = cs;
+    }
+
+    // 补偿 contentOffset：吸附到 852 边界
+    CGFloat off = self.contentOffset.y;
+    CGFloat snap = round(off / screenH) * screenH;
+    if (fabs(off - snap) > 1.0 && fabs(off - snap) < screenH * 0.5) {
+        [self setContentOffset:CGPointMake(0, snap) animated:NO];
+    }
 }
+
+// 拦截返回时的 offset 恢复：抖音会按 792 算，这里换算成 852
+- (void)setContentOffset:(CGPoint)offset {
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        CGFloat screenH = self.superview.frame.size.height;
+        if (screenH > 100) {
+            CGFloat oldH = 792.0;
+            if (fabs(oldH - screenH) > 1.0) {
+                CGFloat idx = offset.y / oldH;
+                CGFloat newY = idx * screenH;
+                if (fabs(newY - offset.y) > 1.0) {
+                    offset.y = newY;
+                }
+            }
+        }
+    }
+    %orig(offset);
+}
+%end
+
+// ============ v300: cell 高 = 屏高，与 table 一致 ============
+%hook AWEFeedTableView
+
+- (CGFloat)heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    CGFloat orig = %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        CGFloat screenH = self.superview.frame.size.height;
+        if (screenH > 100) return screenH;
+    }
+    return orig;
+}
+
 %end
 
 %hook AWEFeedTableViewCell
