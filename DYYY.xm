@@ -15307,6 +15307,37 @@ static void DYYYLogHidePlusOverlayOnce(NSString *target) {
 
 %end
 
+// v241probe: 探针 —— 记录底栏背景状态波动到沙盒
+// 目的：定位"底栏闪黑"时 _UIBarBackground 的 hidden/alpha 是否在变
+// 沙盒路径通过 NSSearchPathForDirectoriesInDomains 获取，不写死
+static void DYYYProbeVideoLog(NSString *format, ...) {
+    static dispatch_queue_t sDQ;
+    static dispatch_once_t sOnce;
+    dispatch_once(&sOnce, ^{
+        sDQ = dispatch_queue_create("dyyy.probe.video", DISPATCH_QUEUE_SERIAL);
+    });
+    va_list args;
+    va_start(args, format);
+    NSString *msg = [[NSString alloc] initWithFormat:format arguments:args];
+    va_end(args);
+    dispatch_async(sDQ, ^{
+        NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+        if (dir.length == 0) return;
+        NSString *path = [dir stringByAppendingPathComponent:@"DYYY_probe_video.log"];
+        NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
+        fmt.dateFormat = @"HH:mm:ss.SSS";
+        NSString *line = [NSString stringWithFormat:@"[%@] %@\n", [fmt stringFromDate:[NSDate date]], msg];
+        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+        if (!fh) {
+            [line writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        } else {
+            [fh seekToEndOfFile];
+            [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+            [fh closeFile];
+        }
+    });
+}
+
 %hook AWENormalModeTabBar
 
 static Class barBackgroundClass = nil;
@@ -15364,6 +15395,30 @@ static Class tabBarButtonClass = nil;
 
     if (originalTabBarHeight == kInvalidHeight) {
         [self initializeOriginalTabBarHeight];
+    }
+
+    // v241probe: 记录 _UIBarBackground 状态
+    {
+        static int sProbeN = 0;
+        if (sProbeN < 1000) {
+            UIView *bg = nil;
+            for (UIView *sv in self.subviews) {
+                if ([sv isKindOfClass:NSClassFromString(@"_UIBarBackground")]) {
+                    bg = sv;
+                    break;
+                }
+            }
+            CGFloat tabH = self.frame.size.height;
+            CGFloat fullScreen = DYYYGetBool(@"DYYYEnableFullScreen") ? 1 : 0;
+            if (bg) {
+                DYYYProbeVideoLog(@"tabBar bg.hidden=%d bg.alpha=%.2f tabH=%.1f fullScreen=%d",
+                    bg.hidden, bg.alpha, tabH, (int)fullScreen);
+            } else {
+                DYYYProbeVideoLog(@"tabBar NO _UIBarBackground tabH=%.1f fullScreen=%d",
+                    tabH, (int)fullScreen);
+            }
+            sProbeN++;
+        }
     }
 
     if (gCurrentTabBarHeight == kInvalidHeight) {
@@ -17914,6 +17969,14 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 %end
 
 %ctor {
+
+    {
+        NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+        if (dir.length > 0) {
+            NSString *path = [dir stringByAppendingPathComponent:@"DYYY_probe_video.log"];
+            [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+        }
+    }
     [DYYYLoginBypassManager configureInitialStateIfNeeded];
 
     [[NSUserDefaults standardUserDefaults] registerDefaults:@{
