@@ -15498,6 +15498,20 @@ static Class tabBarButtonClass = nil;
 - (void)setHidden:(BOOL)hidden {
     %orig(hidden);
 
+    // v293: 把 _UIBarBackground 挪出屏幕（比 hidden 更稳，抖音重置也不显示）
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYYIsFeedTabSelected()) {
+        Class bgCls = NSClassFromString(@"_UIBarBackground");
+        for (UIView *sub in self.subviews) {
+            if (bgCls && [sub isKindOfClass:bgCls]) {
+                CGRect f = sub.frame;
+                if (f.origin.y > -1000) {
+                    f.origin.y = -2000;
+                    sub.frame = f;
+                }
+            }
+        }
+    }
+
     BOOL disableHomeRefresh = DYYYGetBool(@"DYYYDisableHomeRefresh");
     BOOL enableFullScreen = DYYYGetBool(@"DYYYEnableFullScreen");
     BOOL hideBottomBg = DYYYGetBool(@"DYYYHideBottomBg");
