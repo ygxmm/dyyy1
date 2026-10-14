@@ -571,7 +571,7 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 - (void)playVideoOnScrollDidEnd;
 @end
 
-@interface AWEFeedTableView : UIView
+@interface AWEFeedTableView : UITableView
 @end
 
 @interface AWEAwemeDetailTableView : UITableView
