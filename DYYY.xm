@@ -9,14 +9,9 @@
 #include <stdarg.h>
 #import <AVFoundation/AVFoundation.h>
 #import <UIKit/UIKit.h>
-#import <stdarg.h>
 
 // v278: 前向声明
 static BOOL DYYYIsHomePlayInteraction(UIView *view);
-// v282-diag: 沙盒日志前向声明
-static void DYYYDiagLog(NSString *fmt, ...);
-// v291: 首页 tab 判定（前向声明）
-static BOOL DYYYIsFeedTabSelected(void);
 #import <dlfcn.h>
 #import <float.h>
 #import <math.h>
@@ -15322,23 +15317,6 @@ static Class tabBarButtonClass = nil;
 
 - (void)layoutSubviews {
     %orig;
-    {
-        static NSInteger sN = 0;
-        if (sN++ % 30 == 0) {
-            NSMutableString *sb = [NSMutableString string];
-            [sb appendFormat:@"[TABSUB] self=%@ f=%@ bg=%@",
-                NSStringFromClass(self.class),
-                NSStringFromCGRect(self.frame),
-                self.backgroundColor];
-            for (UIView *s in self.subviews) {
-                [sb appendFormat:@"\n   %@ f=%@ hidden=%d alpha=%.2f bg=%@",
-                    NSStringFromClass(s.class),
-                    NSStringFromCGRect(s.frame),
-                    s.hidden, s.alpha, s.backgroundColor];
-            }
-            DYYYDiagLog(@"%@", sb);
-        }
-    }
 
     if (originalTabBarHeight == kInvalidHeight) {
         [self initializeOriginalTabBarHeight];
@@ -15418,25 +15396,6 @@ static Class tabBarButtonClass = nil;
         }
     }
 
-    // v286: 无条件隐藏 _UIBarBackground（黑边元凶），不依赖 status
-    {
-        BOOL enableFS = DYYYGetBool(@"DYYYEnableFullScreen");
-        if (enableFS) {
-            Class barBgCls = NSClassFromString(@"_UIBarBackground");
-            Class blurCls  = NSClassFromString(@"UIVisualEffectView");
-            for (UIView *sub in self.subviews) {
-                if (barBgCls && [sub isKindOfClass:barBgCls]) {
-                    sub.hidden = YES;
-                    sub.alpha = 0.0;
-                    for (UIView *inner in sub.subviews) {
-                        inner.hidden = YES;
-                        if (blurCls && [inner isKindOfClass:blurCls]) inner.hidden = YES;
-                    }
-                }
-            }
-        }
-    }
-
     // 背景和分隔线处理
     BOOL hideBottomBg = DYYYGetBool(@"DYYYHideBottomBg");
     BOOL enableFullScreen = DYYYGetBool(@"DYYYEnableFullScreen");
@@ -15501,23 +15460,6 @@ static Class tabBarButtonClass = nil;
     BOOL disableHomeRefresh = DYYYGetBool(@"DYYYDisableHomeRefresh");
     BOOL enableFullScreen = DYYYGetBool(@"DYYYEnableFullScreen");
     BOOL hideBottomBg = DYYYGetBool(@"DYYYHideBottomBg");
-
-    // v286: 只要开启全屏，无条件隐藏 _UIBarBackground（黑边元凶），
-    // 不再依赖 button.status == 2 的判断（40.7.0 上 status 值不一定是 2）。
-    if (enableFullScreen) {
-        Class barBgCls = NSClassFromString(@"_UIBarBackground");
-        Class blurCls  = NSClassFromString(@"UIVisualEffectView");
-        for (UIView *sub in self.subviews) {
-            if (barBgCls && [sub isKindOfClass:barBgCls]) {
-                sub.hidden = YES;
-                sub.alpha = 0.0;
-                for (UIView *inner in sub.subviews) {
-                    inner.hidden = YES;
-                    if (blurCls && [inner isKindOfClass:blurCls]) inner.hidden = YES;
-                }
-            }
-        }
-    }
     BOOL hideFriendsButton = DYYYGetBool(@"DYYYHideFriendsButton");
 
     BOOL isHomeSelected = NO;
@@ -15587,67 +15529,6 @@ static Class tabBarButtonClass = nil;
 %end
 
 // 精简平板底栏
-
-// ============ v297: 底栏彻底透明（每次 layout 都压掉所有子层） ============
-%hook _UIBarBackground
-
-- (void)layoutSubviews {
-    %orig;
-    UIView *v = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
-        DYYYIsFeedTabSelected() &&
-        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
-        if (v.alpha != 0.0) v.alpha = 0.0;
-        if (!v.hidden) v.hidden = YES;
-        for (UIView *sub in v.subviews) {
-            if (sub.alpha != 0.0) sub.alpha = 0.0;
-            if (!sub.hidden) sub.hidden = YES;
-        }
-    }
-}
-
-- (void)setHidden:(BOOL)hidden {
-    UIView *v = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
-        DYYYIsFeedTabSelected() &&
-        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
-        %orig(YES);
-        return;
-    }
-    %orig(hidden);
-}
-
-- (void)setAlpha:(CGFloat)alpha {
-    UIView *v = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
-        DYYYIsFeedTabSelected() &&
-        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
-        %orig(0.0);
-        return;
-    }
-    %orig(alpha);
-}
-
-%end
-
-%hook AWENormalModeTabBarBlurView
-- (void)layoutSubviews { %orig;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    ((UIView *)self).hidden = YES;
-}
-- (void)didMoveToWindow { %orig;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    ((UIView *)self).hidden = YES;
-}
-%end
-
-%hook AWETabBarSkinView
-- (void)layoutSubviews { %orig;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    ((UIView *)self).hidden = YES;
-}
-%end
-
 %hook AWETabBarElementContainerView
 
 - (void)setHidden:(BOOL)hidden {
@@ -16758,115 +16639,116 @@ static void DYYYProbeCellLog(NSString *format, ...) {
     });
 }
 
-
-// ============ v283-diag: 抓 offset 回退瞬间 ============
-%hook UIScrollView
-
-- (void)setContentOffset:(CGPoint)offset {
-    if (object_getClass(self) == NSClassFromString(@"AWEFeedTableView")) {
-        CGFloat oldY = self.contentOffset.y;
-        CGFloat delta = offset.y - oldY;
-        if (delta < -200) {   // 只在明显回退时抓
-            DYYYDiagLog(@"[OFFSET-BACK] %.1f -> %.1f (delta=%.1f)",
-                        oldY, offset.y, delta);
-            NSArray *syms = [NSThread callStackSymbols];
-            NSInteger n = MIN(25, (NSInteger)syms.count);
-            for (NSInteger i = 0; i < n; i++) {
-                DYYYDiagLog(@"   %@", syms[i]);
+static void DYYYExpandPlayerInCell(UIView *root, CGFloat targetH) {
+    if (!root || targetH <= 0) return;
+    Class playCls = NSClassFromString(@"AWEPlayInteractionViewController");
+    if (!playCls) return;
+    NSMutableArray *q = [NSMutableArray arrayWithObject:root];
+    int safety = 0;
+    while (q.count > 0 && safety++ < 300) {
+        UIView *v = q.firstObject;
+        [q removeObjectAtIndex:0];
+        UIResponder *r = v.nextResponder;
+        int d = 0;
+        while (r && d++ < 10) {
+            if ([r isKindOfClass:playCls]) {
+                UIView *vv = ((UIViewController *)r).view;
+                UIView *sv = vv.superview;
+                if (sv && vv.frame.size.height < targetH - 1) {
+                    static int sN = 0;
+                    if (sN < 100) {
+                        DYYYProbeCellLog(@"[expand] vv=%@ oldH=%.1f newH=%.1f",
+                            NSStringFromClass(object_getClass(vv)), vv.frame.size.height, targetH);
+                        sN++;
+                    }
+                    CGRect f = vv.frame;
+                    f.size.height = targetH;
+                    vv.frame = f;
+                    // v251: 改 clips 前先打标记，方便 cell 复用时恢复
+                    static char kDYYYClipsChangedKey;
+                    if (vv.clipsToBounds) {
+                        objc_setAssociatedObject(vv, &kDYYYClipsChangedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                        vv.clipsToBounds = NO;
+                    }
+                    if (sv.clipsToBounds) {
+                        objc_setAssociatedObject(sv, &kDYYYClipsChangedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                        sv.clipsToBounds = NO;
+                    }
+                }
+                break;
             }
+            if ([r isKindOfClass:[UIViewController class]]) break;
+            r = r.nextResponder;
+        }
+        for (UIView *sub in v.subviews) {
+            [q addObject:sub];
         }
     }
-    %orig(offset);
 }
 
-- (void)setContentOffset:(CGPoint)offset animated:(BOOL)animated {
-    if (object_getClass(self) == NSClassFromString(@"AWEFeedTableView")) {
-        CGFloat oldY = self.contentOffset.y;
-        CGFloat delta = offset.y - oldY;
-        if (delta < -200) {
-            DYYYDiagLog(@"[OFFSET-BACK-A] %.1f -> %.1f (delta=%.1f anim=%d)",
-                        oldY, offset.y, delta, animated);
-            NSArray *syms = [NSThread callStackSymbols];
-            NSInteger n = MIN(25, (NSInteger)syms.count);
-            for (NSInteger i = 0; i < n; i++) {
-                DYYYDiagLog(@"   %@", syms[i]);
-            }
+// v251: cell 复用时恢复 DYYY 改过的 clipsToBounds
+static void DYYYRestoreClipsInCell(UIView *root) {
+    if (!root) return;
+    static char kDYYYClipsChangedKey;
+    NSMutableArray *q = [NSMutableArray arrayWithObject:root];
+    int safety = 0;
+    int restoredCount = 0;
+    while (q.count > 0 && safety++ < 300) {
+        UIView *v = q.firstObject;
+        [q removeObjectAtIndex:0];
+        if (objc_getAssociatedObject(v, &kDYYYClipsChangedKey)) {
+            v.clipsToBounds = YES;
+            objc_setAssociatedObject(v, &kDYYYClipsChangedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            restoredCount++;
+        }
+        for (UIView *sub in v.subviews) {
+            [q addObject:sub];
         }
     }
-    %orig(offset, animated);
+    static int sN = 0;
+    if (sN < 100) {
+        DYYYProbeCellLog(@"[restore] restoredCount=%d root=%@", restoredCount, NSStringFromClass(object_getClass(root)));
+        sN++;
+    }
 }
-
-%end
 
 %hook AWEFeedTableView
 - (void)layoutSubviews {
     %orig;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
 
-    // v300: 高度和 offset 全部统一到 852
-    CGFloat screenH = self.superview.frame.size.height;
-    if (screenH < 100) return;
-
-    CGRect f = self.frame;
-    if (fabs(f.size.height - screenH) > 0.5) {
-        f.size.height = screenH;
-        self.frame = f;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) {
+        return;
     }
 
-    // 补偿 contentSize：cellCount * 852
-    NSInteger rowCount = [self numberOfRowsInSection:0];
-    CGFloat expectSize = rowCount * screenH;
-    if (fabs(self.contentSize.height - expectSize) > 1.0) {
-        CGSize cs = self.contentSize;
-        cs.height = expectSize;
-        self.contentSize = cs;
+    // v246: 首页改成 VexCove 上游做法 —— 只改 table 自己高度，不递归
+    // 遍历子 view（避免每帧触发所有 player VC 重排 → 底栏闪黑）。
+    CGRect frame = self.frame;
+    CGFloat targetH = self.superview.frame.size.height;
+    if (fabs(frame.size.height - targetH) > 0.5) {
+        frame.size.height = targetH;
+        self.frame = frame;
     }
 
-    // 补偿 contentOffset：吸附到 852 边界
-    CGFloat off = self.contentOffset.y;
-    CGFloat snap = round(off / screenH) * screenH;
-    if (fabs(off - snap) > 1.0 && fabs(off - snap) < screenH * 0.5) {
-        [self setContentOffset:CGPointMake(0, snap) animated:NO];
-    }
-}
-
-// 拦截返回时的 offset 恢复：抖音会按 792 算，这里换算成 852
-- (void)setContentOffset:(CGPoint)offset {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat screenH = self.superview.frame.size.height;
-        if (screenH > 100) {
-            CGFloat oldH = 792.0;
-            if (fabs(oldH - screenH) > 1.0) {
-                CGFloat idx = offset.y / oldH;
-                CGFloat newY = idx * screenH;
-                if (fabs(newY - offset.y) > 1.0) {
-                    offset.y = newY;
-                }
-            }
+    // v250: 只对当前可见 cell 里的 player VC 拉高。
+    // 只拉 table frame 时，cell 里 player VC 还是原生高度 → 视频挤顶部。
+    // 只处理 visibleCells（1~2 个），不触发非可见 cell 的播放器重排。
+    // v253: 只处理屏幕中央那个 cell（真正在播放的），
+    // 预加载 cell（屏幕外）不处理 —— 避免跟抖音每帧打架累积错位。
+    CGFloat centerY = self.contentOffset.y + self.bounds.size.height * 0.5;
+    CGFloat halfH = self.bounds.size.height * 0.5;
+    for (UITableViewCell *cell in [self visibleCells]) {
+        CGFloat cellCenterY = cell.frame.origin.y + cell.frame.size.height * 0.5;
+        if (fabs(cellCenterY - centerY) < halfH * 0.8) {
+            DYYYExpandPlayerInCell(cell, targetH);
         }
     }
-    %orig(offset);
 }
-%end
-
-// ============ v300: cell 高 = 屏高，与 table 一致 ============
-%hook AWEFeedTableView
-
-- (CGFloat)heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    CGFloat orig = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat screenH = self.superview.frame.size.height;
-        if (screenH > 100) return screenH;
-    }
-    return orig;
-}
-
 %end
 
 %hook AWEFeedTableViewCell
 - (void)prepareForReuse {
-    DYYYDiagLog(@"[REUSE] %@ idx=%ld", NSStringFromClass(self.class),
-                (long)self.tag);
+    // v251: 恢复 DYYY 改过的 clipsToBounds，避免多次切页返回累积溢出
+    DYYYRestoreClipsInCell(self);
     if (hideButton && hideButton.isElementsHidden) {
         [hideButton hideUIElements];
     }
@@ -16944,7 +16826,6 @@ static void DYYYProbeCellLog(NSString *format, ...) {
     if (hideButton && hideButton.isElementsHidden) {
         [hideButton hideUIElements];
     }
-    DYYYDiagLog(@"[IDX] newIndex=%ld", (long)arg2);
     %orig;
     // This callback is the feed's committed index transition. Do not validate it
     // against the controller hierarchy: old/new controllers can overlap briefly
@@ -17092,79 +16973,6 @@ static void DYYYRemoveAppLifecycleObservers(void) {
 %end
 
 // v234: 判定 view 是否在首页播放交互层（用来只挪首页，不动详情页/搜索页）
-// ============ v282-diag: 沙盒日志 ============
-static void DYYYDiagLog(NSString *fmt, ...) {
-    static dispatch_queue_t q;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        q = dispatch_queue_create("dyyy.diag.log", DISPATCH_QUEUE_SERIAL);
-    });
-
-    va_list args;
-    va_start(args, fmt);
-    NSString *body = [[NSString alloc] initWithFormat:fmt arguments:args];
-    va_end(args);
-
-    dispatch_async(q, ^{
-        // App 沙盒 Documents（抖音自己的沙盒）
-        NSArray *paths = NSSearchPathForDirectoriesInDomains(
-            NSDocumentDirectory, NSUserDomainMask, YES);
-        if (paths.count == 0) return;
-        NSString *dir = [paths.firstObject stringByAppendingPathComponent:@"DYYYDiag"];
-        NSFileManager *fm = [NSFileManager defaultManager];
-        if (![fm fileExistsAtPath:dir]) {
-            [fm createDirectoryAtPath:dir
-          withIntermediateDirectories:YES
-                           attributes:nil
-                                error:nil];
-        }
-        NSString *file = [dir stringByAppendingPathComponent:@"feed.log"];
-
-        NSDateFormatter *df = [[NSDateFormatter alloc] init];
-        df.dateFormat = @"HH:mm:ss.SSS";
-        NSString *line = [NSString stringWithFormat:@"%@ %@\n",
-                          [df stringFromDate:[NSDate date]], body];
-
-        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:file];
-        if (!fh) {
-            [line writeToFile:file
-                   atomically:YES
-                     encoding:NSUTF8StringEncoding
-                        error:nil];
-        } else {
-            [fh seekToEndOfFile];
-            [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
-            [fh closeFile];
-        }
-
-        // 同时 NSLog 一份，方便看 Console
-        NSLog(@"[DYYY-DIAG] %@", body);
-    });
-}
-
-// v291: 当前顶层 VC 是否首页 Feed tab
-static BOOL DYYYIsFeedTabSelected(void) {
-    UIWindow *win = nil;
-    for (UIWindow *w in [UIApplication sharedApplication].windows) {
-        if (w.isKeyWindow) { win = w; break; }
-    }
-    if (!win) win = [UIApplication sharedApplication].keyWindow;
-    if (!win) return NO;
-
-    UIViewController *root = win.rootViewController;
-    while (root.presentedViewController) root = root.presentedViewController;
-    if (![root isKindOfClass:[UITabBarController class]]) return NO;
-
-    UIViewController *sel = ((UITabBarController *)root).selectedViewController;
-    while (sel.presentedViewController) sel = sel.presentedViewController;
-    if ([sel isKindOfClass:[UINavigationController class]]) {
-        sel = ((UINavigationController *)sel).topViewController;
-    }
-
-    Class feedRoot = NSClassFromString(@"AWEFeedRootViewController");
-    return feedRoot && [sel isKindOfClass:feedRoot];
-}
-
 static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     if (!view) return NO;
     static Class sPlayInteractionVCClass = nil;
@@ -17489,7 +17297,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
                 CGRect frame = subview.frame;
                 if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-                    // v291: HUD 容器恢复 792（直接改成 852 会让内部子视图重排死循环）
                     frame.size.height = subview.superview.frame.size.height - gCurrentTabBarHeight;
                     subview.frame = frame;
                 }
@@ -17573,7 +17380,31 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 %hook TTMetalView
 - (void)setCenter:(CGPoint)center {
-    // v283: 删除整体上移逻辑（会与 cell 布局打架 → contentOffset 回退/错位）
+    BOOL shouldAdjust = NO;
+    UIView *view = (UIView *)self;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        CGFloat viewWidth = CGRectGetWidth(view.bounds);
+        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
+        if (viewWidth + 0.5f >= screenWidth) {
+            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
+            Class playClass = %c(AWEPlayVideoViewController);
+            if (playClass && [vc isKindOfClass:playClass]) {
+                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
+                AWEAwemeModel *model = playVC.model;
+                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
+                    shouldAdjust = YES;
+                }
+            }
+        }
+    }
+
+    if (shouldAdjust) {
+        CGFloat offset = gCurrentTabBarHeight > 0 ? gCurrentTabBarHeight : originalTabBarHeight;
+        if (offset > 0) {
+            center.y -= offset * 0.5;
+        }
+    }
+
     %orig(center);
 }
 
@@ -17581,22 +17412,127 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 %hook TTMetalViewNew
 - (void)setCenter:(CGPoint)center {
-    // v283: 删除整体上移逻辑（会与 cell 布局打架 → contentOffset 回退/错位）
+    BOOL shouldAdjust = NO;
+    UIView *view = (UIView *)self;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        CGFloat viewWidth = CGRectGetWidth(view.bounds);
+        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
+        if (viewWidth + 0.5f >= screenWidth) {
+            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
+            Class playClass = %c(AWEPlayVideoViewController);
+            if (playClass && [vc isKindOfClass:playClass]) {
+                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
+                AWEAwemeModel *model = playVC.model;
+                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
+                    shouldAdjust = YES;
+                }
+            }
+        }
+    }
+
+    if (shouldAdjust) {
+        CGFloat offset = gCurrentTabBarHeight > 0 ? gCurrentTabBarHeight : originalTabBarHeight;
+        if (offset > 0) {
+            center.y -= offset * 0.5;
+        }
+    }
+
     %orig(center);
+}
+
+%end
+
+// ============ v302: 底栏透明（首页 Feed 时） ============
+%hook _UIBarBackground
+
+- (void)setHidden:(BOOL)hidden {
+    UIView *v = (UIView *)self;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
+        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
+        %orig(YES);
+        return;
+    }
+    %orig(hidden);
+}
+
+- (void)setAlpha:(CGFloat)alpha {
+    UIView *v = (UIView *)self;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
+        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
+        %orig(0.0);
+        return;
+    }
+    %orig(alpha);
+}
+
+- (void)layoutSubviews {
+    %orig;
+    UIView *v = (UIView *)self;
+    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
+        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
+        if (v.alpha != 0.0) v.alpha = 0.0;
+        if (!v.hidden) v.hidden = YES;
+        for (UIView *sub in v.subviews) {
+            if (sub.alpha != 0.0) sub.alpha = 0.0;
+            if (!sub.hidden) sub.hidden = YES;
+        }
+    }
 }
 
 %end
 
 %hook TTMetalViewVP
 - (void)setCenter:(CGPoint)center {
-    // v283: 删除整体上移逻辑（会与 cell 布局打架 → contentOffset 回退/错位）
+    BOOL shouldAdjust = NO;
+    UIView *view = (UIView *)self;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        CGFloat viewWidth = CGRectGetWidth(view.bounds);
+        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
+        if (viewWidth + 0.5f >= screenWidth) {
+            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
+            Class playClass = %c(AWEPlayVideoViewController);
+            if (playClass && [vc isKindOfClass:playClass]) {
+                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
+                AWEAwemeModel *model = playVC.model;
+                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
+                    shouldAdjust = YES;
+                }
+            }
+        }
+    }
+
+    if (shouldAdjust) {
+        CGFloat offset = gCurrentTabBarHeight > 0 ? gCurrentTabBarHeight : originalTabBarHeight;
+        if (offset > 0) {
+            center.y -= offset * 0.5;
+        }
+    }
+
     %orig(center);
 }
 
 - (void)layoutSubviews {
     %orig;
-    // v282: metal view 本来就是 852 全屏（见 2026-10-14 dump），
-    // 不再做任何缩放/改帧。原 v281 transform 逻辑永久移除。
+    // v278: vv 不动（保持 792 让抖音分页机制正常）。
+    // 只把视频渲染层 TTMetalViewVP 撑到 superview 高度，视觉全屏。
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (!DYYYIsHomePlayInteraction(self)) return;
+
+    UIView *sv = self.superview;
+    if (!sv) return;
+    CGFloat targetH = sv.bounds.size.height;
+    if (targetH < 100) return;
+
+    // v281: 改用 transform scale，避免改 frame 触发 cell 重排 → contentOffset 被调 → 跳视频。
+    // transform 不改 bounds/center，UIKit 布局完全不知情。
+    if (!CGAffineTransformIsIdentity(self.transform)) {
+        self.transform = CGAffineTransformIdentity;
+    }
+    CGFloat curH = self.bounds.size.height;
+    if (curH < 1) return;
+    if (fabs(curH - targetH) < 1.0) return;
+    CGFloat scale = targetH / curH;
+    self.transform = CGAffineTransformMakeScale(scale, scale);
 }
 
 %end
