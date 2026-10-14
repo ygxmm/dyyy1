@@ -5381,34 +5381,10 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
         return;
     }
 
-    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-    CGFloat tabH = 0.0;
-    UIWindow *win = self.window ?: [DYYYUtils getActiveWindow];
-    if (win) {
-        NSMutableArray *q = [NSMutableArray arrayWithObject:win];
-        while (q.count > 0) {
-            UIView *cur = q.firstObject;
-            [q removeObjectAtIndex:0];
-            if ([cur isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
-                if (!cur.hidden && cur.alpha > 0.01 && cur.window) {
-                    CGRect tf = [cur convertRect:cur.bounds toView:win];
-                    if (CGRectGetMinY(tf) < screenH - 1.0 && CGRectGetHeight(tf) > 1.0) {
-                        tabH = CGRectGetHeight(tf);
-                    }
-                }
-                break;
-            }
-            [q addObjectsFromArray:cur.subviews];
-        }
-    }
-
-    CGRect nativeFrame = self.frame;
-    CGFloat nativeH = nativeFrame.size.height;
-    CGFloat targetY = screenH - tabH - nativeH;
-    CGFloat dy = targetY - nativeFrame.origin.y;
-    if (fabs(dy) > 0.5) {
-        self.transform = CGAffineTransformMakeTranslation(0, dy);
-    }
+    // v237: 改成固定 60pt 下移，跟 v234 的点赞栏/文案保持一致。
+    // 之前动态查 tabBar 可见性 → 打开评论区时底栏被盖住 → tabH 从 83 变 0
+    // → 进度条位置突变 → 蹦跳。固定 60 后跟点赞/文案完全同步，不再跳。
+    self.transform = CGAffineTransformMakeTranslation(0, 60.0);
 }
 
 %end
