@@ -5601,6 +5601,19 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
     dispatch_async(dispatch_get_main_queue(), ^{
       [weakSelf dyyy_updateScheduleLabelsWithCurrentTime:0 totalDuration:0];
     });
+    // v293c: layoutSubviews 末尾把 _UIBarBackground 挪出屏幕
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYYIsFeedTabSelected()) {
+        Class bgCls3 = NSClassFromString(@"_UIBarBackground");
+        for (UIView *sub in self.subviews) {
+            if (bgCls3 && [sub isKindOfClass:bgCls3]) {
+                CGRect f = sub.frame;
+                if (f.origin.y > -1000) {
+                    f.origin.y = -2000;
+                    sub.frame = f;
+                }
+            }
+        }
+    }
 }
 
 - (void)setHidden:(BOOL)hidden {
@@ -15490,21 +15503,6 @@ static Class tabBarButtonClass = nil;
         for (UIView *subview in self.subviews) {
             if ([subview isKindOfClass:barBackgroundClass] || [subview isMemberOfClass:[UIView class]]) {
                 subview.hidden = NO;
-            }
-        }
-    }
-}
-
-    // v293b: layoutSubviews 里也把 _UIBarBackground 挪出屏幕（防止抖音布局拉回 0,0）
-    if (DYYYGetBool(@"DYYYEnableFullScreen") && DYYYIsFeedTabSelected()) {
-        Class bgCls2 = NSClassFromString(@"_UIBarBackground");
-        for (UIView *sub in self.subviews) {
-            if (bgCls2 && [sub isKindOfClass:bgCls2]) {
-                CGRect f = sub.frame;
-                if (f.origin.y > -1000) {
-                    f.origin.y = -2000;
-                    sub.frame = f;
-                }
             }
         }
     }
