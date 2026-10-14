@@ -16148,8 +16148,7 @@ static Class tabBarButtonClass = nil;
 
     // -setFrame: 在滚动时每帧会被调用上千次，而下面的响应链回溯与类查找只有
     // 毛玻璃或全屏开启时才会用到。两者都关闭时直接放行，行为与未 Hook 时一致。
-    // v319: 只保留 blur 判断（FullScreen 打开时每帧响应链回溯 → 卡顿源）
-    if (!enableBlur) {
+    if (!enableBlur && !enableFS) {
         %orig(frame);
         return;
     }
@@ -16169,7 +16168,7 @@ static Class tabBarButtonClass = nil;
         }
     }
 
-    if (isPlayVC && NO /* v319: 禁用全屏改高（卡顿源） */) {
+    if (isPlayVC && enableFS) {
         if (frame.origin.x != 0 && frame.origin.y != 0) {
             %orig(frame);
             return;
@@ -16311,20 +16310,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    // v318fix: InteractionVC.view 拉到 852（只改这一层，不动 cell/table）
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIView *v318v = self.view;
-        if (v318v) {
-            CGFloat th = 852.0;
-            CGRect f = v318v.frame;
-            if (fabs(f.size.height - th) > 0.5 || fabs(f.origin.y) > 0.5) {
-                f.origin.y = 0;
-                f.size.height = th;
-                v318v.frame = f;
-                if (v318v.clipsToBounds) v318v.clipsToBounds = NO;
-            }
-        }
-    }
     DYYYApplySearchShiftIfNeeded(self);
     
 
@@ -16988,7 +16973,6 @@ static void DYYYRemoveAppLifecycleObservers(void) {
 %end
 
 // v234: 判定 view 是否在首页播放交互层（用来只挪首页，不动详情页/搜索页）
-
 static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     if (!view) return NO;
     static Class sPlayInteractionVCClass = nil;
@@ -18435,7 +18419,6 @@ static void v212_setBg(id self, SEL _cmd, id color) {
     }
     if (v212_orig_setBg) v212_orig_setBg(self, _cmd, color);
 }
-
 
 %ctor {
     @autoreleasepool {
