@@ -17484,11 +17484,16 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     CGFloat targetH = sv.bounds.size.height;
     if (targetH < 100) return;
 
-    if (fabs(self.frame.size.height - targetH) > 0.5) {
-        CGRect f = self.frame;
-        f.size.height = targetH;
-        self.frame = f;
+    // v281: 改用 transform scale，避免改 frame 触发 cell 重排 → contentOffset 被调 → 跳视频。
+    // transform 不改 bounds/center，UIKit 布局完全不知情。
+    if (!CGAffineTransformIsIdentity(self.transform)) {
+        self.transform = CGAffineTransformIdentity;
     }
+    CGFloat curH = self.bounds.size.height;
+    if (curH < 1) return;
+    if (fabs(curH - targetH) < 1.0) return;
+    CGFloat scale = targetH / curH;
+    self.transform = CGAffineTransformMakeScale(scale, scale);
 }
 
 %end
