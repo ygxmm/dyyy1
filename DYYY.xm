@@ -9,6 +9,9 @@
 #include <stdarg.h>
 #import <AVFoundation/AVFoundation.h>
 #import <UIKit/UIKit.h>
+
+// v278: 前向声明
+static BOOL DYYYIsHomePlayInteraction(UIView *view);
 #import <dlfcn.h>
 #import <float.h>
 #import <math.h>
@@ -17467,6 +17470,25 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     }
 
     %orig(center);
+}
+
+- (void)layoutSubviews {
+    %orig;
+    // v278: vv 不动（保持 792 让抖音分页机制正常）。
+    // 只把视频渲染层 TTMetalViewVP 撑到 superview 高度，视觉全屏。
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (!DYYYIsHomePlayInteraction(self)) return;
+
+    UIView *sv = self.superview;
+    if (!sv) return;
+    CGFloat targetH = sv.bounds.size.height;
+    if (targetH < 100) return;
+
+    if (fabs(self.frame.size.height - targetH) > 0.5) {
+        CGRect f = self.frame;
+        f.size.height = targetH;
+        self.frame = f;
+    }
 }
 
 %end
