@@ -15614,29 +15614,6 @@ static Class tabBarButtonClass = nil;
 
 %end
 
-// ============ v295: 稳定隐藏 _UIBarBackground（用 UIView 强转，避免编译问题） ============
-%hook _UIBarBackground
-- (void)setHidden:(BOOL)hidden {
-    UIView *v = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
-        DYYYIsFeedTabSelected() &&
-        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
-        %orig(YES);
-        return;
-    }
-    %orig(hidden);
-}
-- (void)setAlpha:(CGFloat)alpha {
-    UIView *v = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen") &&
-        DYYYIsFeedTabSelected() &&
-        [v.superview isKindOfClass:NSClassFromString(@"AWENormalModeTabBar")]) {
-        %orig(0.0);
-        return;
-    }
-    %orig(alpha);
-}
-%end
 
 %hook AWENormalModeTabBarBlurView
 - (void)layoutSubviews { %orig;
