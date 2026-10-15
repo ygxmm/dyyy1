@@ -285,7 +285,6 @@ static id DYYYBestDownloadAddr(id videoModel);
     %orig;
 }
 %end
-%end
 
 %group DYYYLoginBypassVersionUpdatePopup
 %hook AWEVersionUpdatePopup
@@ -16754,7 +16753,8 @@ static void DYYYRestoreClipsInCell(UIView *root) {
     }
     if (self.clipsToBounds) self.clipsToBounds = NO;
 }
-%end%end
+%end
+%end
 
 %hook AWEFeedTableViewCell
 - (void)prepareForReuse {
