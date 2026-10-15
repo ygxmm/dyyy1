@@ -16387,24 +16387,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    // v344: HUD 容器不动，所有"非满屏"子元素 layer.transform 上移 60
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIView *hud = self.view;
-        if (hud) {
-            CGFloat hudH = hud.bounds.size.height;
-            CATransform3D up = CATransform3DMakeTranslation(0, -60.0, 0);
-            CATransform3D identity = CATransform3DIdentity;
-            for (UIView *sub in hud.subviews) {
-                // 满屏容器（贴纸层/弹幕层）不动，其他都上移
-                BOOL isFullscreen = (fabs(sub.frame.size.height - hudH) < 1.0)
-                                    && (fabs(sub.frame.origin.y) < 1.0);
-                CATransform3D target = isFullscreen ? identity : up;
-                if (!CATransform3DEqualToTransform(sub.layer.transform, target)) {
-                    sub.layer.transform = target;
-                }
-            }
-        }
-    }
     DYYYApplySearchShiftIfNeeded(self);
     
 
