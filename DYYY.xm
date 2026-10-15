@@ -16479,6 +16479,8 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
                     sub.backgroundColor = [UIColor clearColor];
                     sub.layer.backgroundColor = [UIColor clearColor].CGColor;
                     sub.layer.contents = nil;
+                    // v372: 隐藏占位空 UIView（清背景不够，抖音可能每帧重设，直接藏）
+                    sub.hidden = YES;
                 }
             }
         }
