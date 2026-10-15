@@ -16715,24 +16715,13 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
     // v334: 删掉改 self.view.frame 的代码（和抖音 layout 打架 → 频闪）
 
-    // v369: 临时放宽触发条件 + 加日志，验证代码路径能否命中黑条
-    {
+    // v374: 打开评论时清一次已存在的顶部黑条（v379 底层拦截的保底层）
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") || DYYYGetBoolCached(@"DYYYEnableCommentBlur")) {
         CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
         CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
         CGFloat safeTop = 0;
         if (@available(iOS 11.0, *)) {
             safeTop = self.view.safeAreaInsets.top;
-        }
-        // 临时日志（写沙盒 Documents/dyyy-v369.log）
-        static NSInteger sDYYY369Count = 0;
-        if (sDYYY369Count < 500) {
-            sDYYY369Count++;
-            NSString *line = [NSString stringWithFormat:
-                @"vc=%@ view=%p safeTop=%.1f subCount=%lu\n",
-                NSStringFromClass([self class]), self.view, safeTop, (unsigned long)self.view.subviews.count];
-            NSString *logPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy-v369.log"];
-            FILE *fp = fopen([logPath UTF8String], "a");
-            if (fp) { fputs([line UTF8String], fp); fclose(fp); }
         }
         if (safeTop > 0.5) {
             DYYYClearBlackEdgeBars(self.view, screenW, screenH, safeTop, 0);
@@ -16811,38 +16800,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
             DYYYHideVideoAIParseBar(self.view);
         });
     }
-}
-
-// v375: 评论打开入口——立即 + 0.1/0.3/0.8s 各清一次黑条（C 函数，绕开 Logos %new 检查）
-static void DYYYClearTopBarForVC(UIViewController *vc) {
-    if (!vc) return;
-    CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
-    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-    CGFloat safeTop = 0;
-    if (@available(iOS 11.0, *)) {
-        safeTop = vc.view.safeAreaInsets.top;
-    }
-    if (safeTop > 0.5) {
-        DYYYClearBlackEdgeBars(vc.view, screenW, screenH, safeTop, 0);
-    }
-}
-
-static void DYYYClearTopBarForVCScheduled(UIViewController *vc) {
-    __weak UIViewController *weakVC = vc;
-    DYYYClearTopBarForVC(vc);
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ DYYYClearTopBarForVC(weakVC); });
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ DYYYClearTopBarForVC(weakVC); });
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ DYYYClearTopBarForVC(weakVC); });
-}
-
-- (void)showCommentPanelWithInsertIDs:(id)a0 {
-    %orig(a0);
-    DYYYClearTopBarForVCScheduled(self);
-}
-
-- (void)showCommentPanelWithParams:(id)a0 {
-    %orig(a0);
-    DYYYClearTopBarForVCScheduled(self);
 }
 
 %end
