@@ -17460,39 +17460,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 - (void)layoutSubviews {
     %orig;
-
-    static char kDYYYTTMetalViewVPOriginalTransformKey;
-
-    NSValue *saved = objc_getAssociatedObject(self, &kDYYYTTMetalViewVPOriginalTransformKey);
-    BOOL shouldFullscreen = DYYYGetBool(@"DYYYEnableFullScreen") && DYYYIsHomePlayInteraction(self);
-
-    if (!shouldFullscreen) {
-        if (saved) {
-            self.transform = [saved CGAffineTransformValue];
-            objc_setAssociatedObject(self, &kDYYYTTMetalViewVPOriginalTransformKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        return;
-    }
-
-    UIView *sv = self.superview;
-    if (!sv) return;
-
-    CGFloat targetH = sv.bounds.size.height;
-    CGFloat curH = self.bounds.size.height;
-    if (targetH < 100 || curH < 1) return;
-
-    if (!saved) {
-        saved = [NSValue valueWithCGAffineTransform:self.transform];
-        objc_setAssociatedObject(self, &kDYYYTTMetalViewVPOriginalTransformKey, saved, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-
-    CGFloat scaleY = targetH / curH;
-    CGAffineTransform original = [saved CGAffineTransformValue];
-    CGAffineTransform desired = CGAffineTransformScale(original, 1.0, scaleY);
-
-    if (!CGAffineTransformEqualToTransform(self.transform, desired)) {
-        self.transform = desired;
-    }
+    // 暂停 DYYY 自定义纵向 transform，交由抖音原生布局处理。
 }
 
 %end
