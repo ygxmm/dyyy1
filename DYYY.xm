@@ -17197,6 +17197,19 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     %orig;
 }
 
+
+// v362: 右栈（点赞栏 x≈329）上移 60
+- (void)setFrame:(CGRect)frame {
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        // 只对右栈（点赞栏 x≈329）上移 60
+        if (fabs(frame.origin.x - 329.0) < 8.0 &&
+            frame.size.width > 50 && frame.size.width < 100) {
+            frame.origin.y -= 60.0;
+        }
+    }
+    %orig(frame);
+}
+
 - (void)layoutSubviews {
     BOOL insidePlayInteraction = DYYYViewIsInsidePlayInteraction(self);
     // 只清理播放交互层左侧栏。全局 reset 会把作品详情等页面里 element hook 已写好的缩放清掉。
