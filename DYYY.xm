@@ -16457,19 +16457,28 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
                 }
 
                 if (shouldClear) {
-                    sub.backgroundColor = [UIColor clearColor];
-                    sub.layer.backgroundColor = [UIColor clearColor].CGColor;
-                    // 临时日志
-                    static NSInteger sDYYY370Count = 0;
-                    if (sDYYY370Count < 200) {
-                        sDYYY370Count++;
+                    // v371: 先诊断（打印 contents/sublayers/subviews），再同时清 backgroundColor/layer.backgroundColor/contents
+                    static NSInteger sDYYY371Count = 0;
+                    if (sDYYY371Count < 100) {
+                        sDYYY371Count++;
                         NSString *line = [NSString stringWithFormat:
-                            @"cleared %@ frame=%@ depth=%ld\n",
-                            NSStringFromClass([sub class]), NSStringFromCGRect(f), (long)depth];
-                        NSString *logPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy-v370.log"];
+                            @"hit cls=%@ frame=%@ depth=%ld bg=%@ lyrBg=%p contents=%p subviews=%lu sublayers=%lu hidden=%d alpha=%.2f\n",
+                            NSStringFromClass([sub class]),
+                            NSStringFromCGRect(f), (long)depth,
+                            sub.backgroundColor ?: @"nil",
+                            sub.layer.backgroundColor,
+                            sub.layer.contents,
+                            (unsigned long)sub.subviews.count,
+                            (unsigned long)sub.layer.sublayers.count,
+                            sub.hidden, sub.alpha];
+                        NSString *logPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy-v371.log"];
                         FILE *fp = fopen([logPath UTF8String], "a");
                         if (fp) { fputs([line UTF8String], fp); fclose(fp); }
                     }
+
+                    sub.backgroundColor = [UIColor clearColor];
+                    sub.layer.backgroundColor = [UIColor clearColor].CGColor;
+                    sub.layer.contents = nil;
                 }
             }
         }
