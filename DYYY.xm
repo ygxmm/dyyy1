@@ -17262,6 +17262,20 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
             }
         }
 
+        // v365: 屏幕位置兜底 —— 右栈在屏幕右半边，且不是全宽
+        // 依据：AWEElementStackView 布局走 autolayout（setFrame: 只收到 0,0,0,0），
+        // 上面三条字符串/类名判定在 40.7.0 探针里都没命中，改用几何位置判定。
+        if (!isRightStack) {
+            CGRect selfFrame = self.frame;
+            CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
+            CGFloat midX = selfFrame.origin.x + selfFrame.size.width * 0.5;
+            if (selfFrame.size.width > 20.0 &&
+                selfFrame.size.width < screenW * 0.5 &&
+                midX > screenW * 0.5) {
+                isRightStack = YES;
+            }
+        }
+
         BOOL hasScalableLeftElement = DYYYStackViewContainsScalableLeftElement(self);
 
         // 右侧元素的处理逻辑
