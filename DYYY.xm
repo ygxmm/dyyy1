@@ -16385,6 +16385,31 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
     }
 }
 
+// v346: HUD 容器底部偏移 +60（让左右栈和栈容器都上移 60）
+- (double)leftContainerBottomOffset {
+    double orig = %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        return orig + 60.0;
+    }
+    return orig;
+}
+
+- (double)p_leftAndRightContainerBottomOffset {
+    double orig = %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        return orig + 60.0;
+    }
+    return orig;
+}
+
+- (double)p_stackContainerViewBottomOffset {
+    double orig = %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        return orig + 60.0;
+    }
+    return orig;
+}
+
 - (void)viewDidLayoutSubviews {
     %orig;
     DYYYApplySearchShiftIfNeeded(self);
