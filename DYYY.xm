@@ -5360,6 +5360,14 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
         v.backgroundColor = [UIColor clearColor];
     }
 
+    // v331fix: 进度条容器下移 60
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        CGAffineTransform t = CGAffineTransformMakeTranslation(0, 60.0);
+        if (!CGAffineTransformEqualToTransform(self.transform, t)) {
+            self.transform = t;
+        }
+    }
+
     // v232: 首页进度条容器贴底栏上方（用 transform，不触发 layout 递归）
     if (!CGAffineTransformIsIdentity(self.transform)) {
         self.transform = CGAffineTransformIdentity;
@@ -18435,31 +18443,6 @@ static void v212_setBg(id self, SEL _cmd, id color) {
     if (v212_orig_setBg) v212_orig_setBg(self, _cmd, color);
 }
 
-// v331: HUD 子视图（进度条 + 元素栈）用 transform 下移 60
-%hook AWEPlayInteractionProgressContainerView
-- (void)layoutSubviews {
-    %orig;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    if (!DYYYIsHomePlayInteraction(self)) return;
-    CGAffineTransform t = CGAffineTransformMakeTranslation(0, 60.0);
-    if (!CGAffineTransformEqualToTransform(self.transform, t)) {
-        self.transform = t;
-    }
-}
-%end
-
-%hook AWEElementStackView
-- (void)layoutSubviews {
-    %orig;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    if (!DYYYIsHomePlayInteraction(self)) return;
-    if (self.frame.size.height < 50 || self.frame.size.height > 400) return;
-    CGAffineTransform t = CGAffineTransformMakeTranslation(0, 60.0);
-    if (!CGAffineTransformEqualToTransform(self.transform, t)) {
-        self.transform = t;
-    }
-}
-%end
 
 %ctor {
     @autoreleasepool {
