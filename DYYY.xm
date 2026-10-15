@@ -5307,6 +5307,7 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
 }
 
 %hook AWEFeedVideoButton
+
 - (id)touchUpInsideBlock {
     id r = %orig;
 
@@ -5332,6 +5333,101 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
 
     return r;
 }
+
+- (void)setImage:(id)arg1 {
+    UIImage *imageToApply = arg1;
+    NSString *nameString = nil;
+
+    if ([self respondsToSelector:@selector(imageNameString)]) {
+        IMP imp = [self methodForSelector:@selector(imageNameString)];
+        if (imp) {
+            NSString *(*func)(id, SEL) = (NSString * (*)(id, SEL)) imp;
+            if (func) {
+                nameString = func(self, @selector(imageNameString));
+            }
+        }
+	}
+
+    BOOL isCollectButton = DYYYIsFeedVideoCollectButton(self) || DYYYFeedVideoCollectKeywordMatches(nameString);
+    if (isCollectButton && DYYYFeedVideoCollectButtonHideEnabled()) {
+        DYYYMarkFeedVideoCollectButtonViewHidden(self);
+        %orig(nil);
+        return;
+    }
+
+    NSString *customFileName = DYYYCustomIconFileNameForButtonName(nameString);
+    if (customFileName.length > 0) {
+        UIImage *customImage = DYYYLoadCustomImage(customFileName, CGSizeMake(44.0, 44.0));
+        if (customImage) {
+            imageToApply = customImage;
+        }
+	}
+
+    %orig(imageToApply);
+    if (isCollectButton) {
+        DYYYApplyFeedVideoCollectButtonSettingsWithRetry(self);
+    }
+}
+
+- (void)layoutSubviews {
+    %orig;
+
+    NSString *accessibilityLabel = self.accessibilityLabel;
+    BOOL isCollectButton = DYYYIsFeedVideoCollectButton(self);
+
+    BOOL hideBtn = NO;
+    BOOL hideLabel = NO;
+
+    if ([accessibilityLabel isEqualToString:@"点赞"]) {
+        hideBtn = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideLikeButton"];
+        hideLabel = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideLikeLabel"];
+    } else if ([accessibilityLabel isEqualToString:@"评论"]) {
+        hideBtn = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideCommentButton"];
+        hideLabel = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideCommentLabel"];
+    } else if ([accessibilityLabel isEqualToString:@"分享"]) {
+        hideBtn = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideShareButton"];
+        hideLabel = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideShareLabel"];
+    } else if (isCollectButton) {
+        hideBtn = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideCollectButton"];
+        hideLabel = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideCollectLabel"];
+    }
+
+    if (!hideBtn && !hideLabel) {
+        return; // 设置未启用，无需额外处理
+    }
+
+    if (hideBtn) {
+        if (isCollectButton) {
+            DYYYApplyFeedVideoCollectButtonSettingsWithRetry(self);
+            return;
+        }
+        [self removeFromSuperview];
+        return;
+    }
+
+    if (isCollectButton && hideLabel) {
+        DYYYSetFeedVideoButtonLabelsHidden(self, YES);
+        return;
+    }
+
+    static char kDYLabelCacheKey;
+    NSArray *cachedLabels = objc_getAssociatedObject(self, &kDYLabelCacheKey);
+    if (!cachedLabels) {
+        NSMutableArray *labels = [NSMutableArray array];
+        for (UIView *subview in self.subviews) {
+            if ([subview isKindOfClass:[UILabel class]]) {
+                [labels addObject:subview];
+            }
+        }
+        cachedLabels = [labels copy];
+        objc_setAssociatedObject(self, &kDYLabelCacheKey, cachedLabels, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+
+    for (UILabel *label in cachedLabels) {
+        label.hidden = hideLabel;
+    }
+}
+
 %end
 
 %hook AWEPlayInteractionProgressContainerView
@@ -7247,44 +7343,6 @@ static void DYYYStartHideFeedAnchorHookInstaller(void) {
 
 %end
 
-%hook AWEFeedVideoButton
-
-- (void)setImage:(id)arg1 {
-    UIImage *imageToApply = arg1;
-    NSString *nameString = nil;
-
-    if ([self respondsToSelector:@selector(imageNameString)]) {
-        IMP imp = [self methodForSelector:@selector(imageNameString)];
-        if (imp) {
-            NSString *(*func)(id, SEL) = (NSString * (*)(id, SEL)) imp;
-            if (func) {
-                nameString = func(self, @selector(imageNameString));
-            }
-        }
-	}
-
-    BOOL isCollectButton = DYYYIsFeedVideoCollectButton(self) || DYYYFeedVideoCollectKeywordMatches(nameString);
-    if (isCollectButton && DYYYFeedVideoCollectButtonHideEnabled()) {
-        DYYYMarkFeedVideoCollectButtonViewHidden(self);
-        %orig(nil);
-        return;
-    }
-
-    NSString *customFileName = DYYYCustomIconFileNameForButtonName(nameString);
-    if (customFileName.length > 0) {
-        UIImage *customImage = DYYYLoadCustomImage(customFileName, CGSizeMake(44.0, 44.0));
-        if (customImage) {
-            imageToApply = customImage;
-        }
-	}
-
-    %orig(imageToApply);
-    if (isCollectButton) {
-        DYYYApplyFeedVideoCollectButtonSettingsWithRetry(self);
-    }
-}
-
-%end
 
 %hook AWENormalModeTabBarGeneralPlusButton
 - (void)setImage:(UIImage *)image forState:(UIControlState)state {
@@ -10074,68 +10132,6 @@ static BOOL DYYYShouldVerifiedCollapseCommentHeaderModel(id model) {
 
 %end
 
-%hook AWEFeedVideoButton
-
-- (void)layoutSubviews {
-    %orig;
-
-    NSString *accessibilityLabel = self.accessibilityLabel;
-    BOOL isCollectButton = DYYYIsFeedVideoCollectButton(self);
-
-    BOOL hideBtn = NO;
-    BOOL hideLabel = NO;
-
-    if ([accessibilityLabel isEqualToString:@"点赞"]) {
-        hideBtn = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideLikeButton"];
-        hideLabel = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideLikeLabel"];
-    } else if ([accessibilityLabel isEqualToString:@"评论"]) {
-        hideBtn = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideCommentButton"];
-        hideLabel = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideCommentLabel"];
-    } else if ([accessibilityLabel isEqualToString:@"分享"]) {
-        hideBtn = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideShareButton"];
-        hideLabel = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideShareLabel"];
-    } else if (isCollectButton) {
-        hideBtn = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideCollectButton"];
-        hideLabel = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideCollectLabel"];
-    }
-
-    if (!hideBtn && !hideLabel) {
-        return; // 设置未启用，无需额外处理
-    }
-
-    if (hideBtn) {
-        if (isCollectButton) {
-            DYYYApplyFeedVideoCollectButtonSettingsWithRetry(self);
-            return;
-        }
-        [self removeFromSuperview];
-        return;
-    }
-
-    if (isCollectButton && hideLabel) {
-        DYYYSetFeedVideoButtonLabelsHidden(self, YES);
-        return;
-    }
-
-    static char kDYLabelCacheKey;
-    NSArray *cachedLabels = objc_getAssociatedObject(self, &kDYLabelCacheKey);
-    if (!cachedLabels) {
-        NSMutableArray *labels = [NSMutableArray array];
-        for (UIView *subview in self.subviews) {
-            if ([subview isKindOfClass:[UILabel class]]) {
-                [labels addObject:subview];
-            }
-        }
-        cachedLabels = [labels copy];
-        objc_setAssociatedObject(self, &kDYLabelCacheKey, cachedLabels, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-
-    for (UILabel *label in cachedLabels) {
-        label.hidden = hideLabel;
-    }
-}
-
-%end
 
 %hook UIButton
 
