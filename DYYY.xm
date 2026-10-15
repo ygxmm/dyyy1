@@ -17474,26 +17474,39 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 - (void)layoutSubviews {
     %orig;
-    // v278: vv 不动（保持 792 让抖音分页机制正常）。
-    // 只把视频渲染层 TTMetalViewVP 撑到 superview 高度，视觉全屏。
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    if (!DYYYIsHomePlayInteraction(self)) return;
+
+    static char kDYYYTTMetalViewVPOriginalTransformKey;
+
+    NSValue *saved = objc_getAssociatedObject(self, &kDYYYTTMetalViewVPOriginalTransformKey);
+    BOOL shouldFullscreen = DYYYGetBool(@"DYYYEnableFullScreen") && DYYYIsHomePlayInteraction(self);
+
+    if (!shouldFullscreen) {
+        if (saved) {
+            self.transform = [saved CGAffineTransformValue];
+            objc_setAssociatedObject(self, &kDYYYTTMetalViewVPOriginalTransformKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        return;
+    }
 
     UIView *sv = self.superview;
     if (!sv) return;
-    CGFloat targetH = sv.bounds.size.height;
-    if (targetH < 100) return;
 
-    // v281: 改用 transform scale，避免改 frame 触发 cell 重排 → contentOffset 被调 → 跳视频。
-    // transform 不改 bounds/center，UIKit 布局完全不知情。
-    if (!CGAffineTransformIsIdentity(self.transform)) {
-        self.transform = CGAffineTransformIdentity;
-    }
+    CGFloat targetH = sv.bounds.size.height;
     CGFloat curH = self.bounds.size.height;
-    if (curH < 1) return;
-    if (fabs(curH - targetH) < 1.0) return;
-    CGFloat scale = targetH / curH;
-    self.transform = CGAffineTransformMakeScale(scale, scale);
+    if (targetH < 100 || curH < 1) return;
+
+    if (!saved) {
+        saved = [NSValue valueWithCGAffineTransform:self.transform];
+        objc_setAssociatedObject(self, &kDYYYTTMetalViewVPOriginalTransformKey, saved, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+
+    CGFloat scaleY = targetH / curH;
+    CGAffineTransform original = [saved CGAffineTransformValue];
+    CGAffineTransform desired = CGAffineTransformScale(original, 1.0, scaleY);
+
+    if (!CGAffineTransformEqualToTransform(self.transform, desired)) {
+        self.transform = desired;
+    }
 }
 
 %end
