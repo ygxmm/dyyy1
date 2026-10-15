@@ -16713,54 +16713,6 @@ static void DYYYProbeCellLog(NSString *format, ...) {
     });
 }
 
-static void DYYYExpandPlayerInCell(UIView *root, CGFloat targetH) {
-    if (!root || targetH <= 0) return;
-    Class playCls = NSClassFromString(@"AWEPlayInteractionViewController");
-    if (!playCls) return;
-    NSMutableArray *q = [NSMutableArray arrayWithObject:root];
-    int safety = 0;
-    while (q.count > 0 && safety++ < 300) {
-        UIView *v = q.firstObject;
-        [q removeObjectAtIndex:0];
-        UIResponder *r = v.nextResponder;
-        int d = 0;
-        while (r && d++ < 10) {
-            if ([r isKindOfClass:playCls]) {
-                UIView *vv = ((UIViewController *)r).view;
-                UIView *sv = vv.superview;
-                if (sv && vv.frame.size.height < targetH - 1) {
-                    static int sN = 0;
-                    if (sN < 100) {
-                        DYYYProbeCellLog(@"[expand] vv=%@ oldH=%.1f newH=%.1f",
-                            NSStringFromClass(object_getClass(vv)), vv.frame.size.height, targetH);
-                        sN++;
-                    }
-                    CGRect f = vv.frame;
-                    f.size.height = targetH;
-                    vv.frame = f;
-                    // v251: 改 clips 前先打标记，方便 cell 复用时恢复
-                    static char kDYYYClipsChangedKey;
-                    if (vv.clipsToBounds) {
-                        objc_setAssociatedObject(vv, &kDYYYClipsChangedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                        vv.clipsToBounds = NO;
-                    }
-                    if (sv.clipsToBounds) {
-                        objc_setAssociatedObject(sv, &kDYYYClipsChangedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                        sv.clipsToBounds = NO;
-                    }
-                }
-                break;
-            }
-            if ([r isKindOfClass:[UIViewController class]]) break;
-            r = r.nextResponder;
-        }
-        for (UIView *sub in v.subviews) {
-            [q addObject:sub];
-        }
-    }
-}
-
-// v251: cell 复用时恢复 DYYY 改过的 clipsToBounds
 static void DYYYRestoreClipsInCell(UIView *root) {
     if (!root) return;
     static char kDYYYClipsChangedKey;
@@ -16789,12 +16741,20 @@ static void DYYYRestoreClipsInCell(UIView *root) {
 %hook AWEFeedTableView
 - (void)layoutSubviews {
     %orig;
-    // v322: 不裁剪，让 852 视频层溢出到 792 table 之外
-    if (DYYYGetBool(@"DYYYEnableFullScreen") && self.clipsToBounds) {
-        self.clipsToBounds = NO;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+
+    // v336: table 高 852，clipsToBounds=NO，cell 高由 table 高度决定
+    CGFloat screenH = self.superview.bounds.size.height;
+    if (screenH > 100) {
+        CGRect f = self.frame;
+        if (fabs(f.size.height - screenH) > 0.5) {
+            f.size.height = screenH;
+            self.frame = f;
+        }
     }
+    if (self.clipsToBounds) self.clipsToBounds = NO;
 }
-%end
+%end%end
 
 %hook AWEFeedTableViewCell
 - (void)prepareForReuse {
