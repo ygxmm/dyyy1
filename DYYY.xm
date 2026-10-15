@@ -16342,6 +16342,28 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)setFrame:(CGRect)frame {
+    // v379: 黑条 frame 一出现就归零 + 隐藏（点击评论入口才 setFrame 到 {0,0,屏宽,40~80}）
+    if ([self isMemberOfClass:[UIView class]]) {
+        CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
+        if (fabs(frame.origin.x) < 0.5 && fabs(frame.origin.y) < 0.5 &&
+            fabs(frame.size.width - screenW) < 1.0 &&
+            frame.size.height > 40.0 && frame.size.height < 80.0) {
+            CGColorRef cg = self.backgroundColor.CGColor;
+            if (cg) {
+                const CGFloat *comp = CGColorGetComponents(cg);
+                size_t n = CGColorGetNumberOfComponents(cg);
+                CGFloat r = 0, g = 0, b = 0, a = 1;
+                if (n >= 4) { r = comp[0]; g = comp[1]; b = comp[2]; a = comp[3]; }
+                else if (n == 2) { r = comp[0]; g = comp[0]; b = comp[0]; a = comp[1]; }
+                if (r < 0.05 && g < 0.05 && b < 0.05 && a > 0.95) {
+                    self.hidden = YES;
+                    %orig(CGRectZero);
+                    return;
+                }
+            }
+        }
+    }
+
     if (![NSThread isMainThread]) {
         dispatch_async(dispatch_get_main_queue(), ^{
           [self setFrame:frame];
