@@ -16415,6 +16415,35 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 }
 
 // 章节进度占位替换：按时间文本（如 "00:11"）识别，智能定位整个章节条容器
+// v368: 递归扫视图树，把边缘纯黑窄条透明（顶部/底部/左右）
+// 依据：D5/D6 探针证实黑条 {0,0,393,59} bg=纯黑挂在 HUD 根视图下（self.view 深 2 层），
+//       v367 只扫一层所以没命中；这里递归 5 层并覆盖四周。
+static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screenH, CGFloat safeTop, NSInteger depth) {
+    if (!view || depth > 5) return;
+    for (UIView *sub in view.subviews) {
+        CGRect f = sub.frame;
+        CGFloat x = f.origin.x, y = f.origin.y, w = f.size.width, h = f.size.height;
+        if (w > 1.0 && h > 1.0) {
+            BOOL edgeBar = NO;
+            if (fabs(x) < 1.0 && fabs(y) < 1.0 && w >= screenW * 0.5 && h <= safeTop + 4.0) edgeBar = YES;
+            else if (fabs(x) < 1.0 && fabs((y + h) - screenH) < 2.0 && w >= screenW * 0.5 && h <= 120.0) edgeBar = YES;
+            else if (fabs(x) < 1.0 && w <= 120.0 && h >= screenH * 0.2) edgeBar = YES;
+            else if (fabs((x + w) - screenW) < 2.0 && w <= 120.0 && h >= screenH * 0.2) edgeBar = YES;
+            if (edgeBar) {
+                UIColor *bg = sub.backgroundColor;
+                if (bg) {
+                    CGFloat r = 0, g = 0, b = 0, a = 0;
+                    if ([bg getRed:&r green:&g blue:&b alpha:&a] &&
+                        r < 0.05 && g < 0.05 && b < 0.05 && a > 0.95) {
+                        sub.backgroundColor = [UIColor clearColor];
+                    }
+                }
+            }
+        }
+        DYYYClearBlackEdgeBars(sub, screenW, screenH, safeTop, depth + 1);
+    }
+}
+
 %hook AWEPlayInteractionViewController
 
 - (void)onVideoPlayerViewDoubleClicked:(id)arg1 {
@@ -16561,31 +16590,17 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
     // v334: 删掉改 self.view.frame 的代码（和抖音 layout 打架 → 频闪）
 
-    // v367: 打开评论时，把顶部 59px 原生黑遮罩改成透明
-    // 证据：D5（无 DYYY）探针里也有这个 {0,0,393,59} bg=纯黑的 UIView 挂在 HUD 根视图下，
-    //       它是抖音原生的评论区安全区垫底条，DYYY 只负责把它透明。
-    if ([self respondsToSelector:@selector(isCommentVCShowing)] && self.isCommentVCShowing) {
+    // v368: 递归扫所有层级（深度≤5），把"顶部/底部/左右边缘的纯黑窄条"透明
+    // 修 v367 失败：黑条不是 self.view 的直接子视图，而是 HUD 根视图下的子视图（深 2 层）
+    if (DYYYGetBool(@"DYYYEnableFullScreen") || DYYYGetBool(@"DYYYEnableCommentBlur")) {
         CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
+        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
         CGFloat safeTop = 0;
         if (@available(iOS 11.0, *)) {
             safeTop = self.view.safeAreaInsets.top;
         }
         if (safeTop > 0.5) {
-            for (UIView *sub in self.view.subviews) {
-                CGRect f = sub.frame;
-                if (fabs(f.origin.x) < 0.5 && fabs(f.origin.y) < 0.5 &&
-                    fabs(f.size.width - screenW) < 1.0 &&
-                    fabs(f.size.height - safeTop) < 1.0) {
-                    UIColor *bg = sub.backgroundColor;
-                    if (bg) {
-                        CGFloat r = 0, g = 0, b = 0, a = 0;
-                        if ([bg getRed:&r green:&g blue:&b alpha:&a] &&
-                            r < 0.05 && g < 0.05 && b < 0.05 && a > 0.95) {
-                            sub.backgroundColor = [UIColor clearColor];
-                        }
-                    }
-                }
-            }
+            DYYYClearBlackEdgeBars(self.view, screenW, screenH, safeTop, 0);
         }
     }
 }
