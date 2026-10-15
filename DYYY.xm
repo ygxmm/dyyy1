@@ -16239,16 +16239,6 @@ static Class tabBarButtonClass = nil;
                      (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
                      (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
 
-    // v337: HUD 容器 852 → 792（上移 60pt 到原位置）
-    Class interactionVCClass = NSClassFromString(@"AWEPlayInteractionViewController");
-    if (enableFS && interactionVCClass && [vc isKindOfClass:interactionVCClass]) {
-        if (frame.size.width > 300 && frame.origin.x == 0 && frame.origin.y >= 0 && frame.origin.y < 100) {
-            frame.origin.y = 0;
-            frame.size.height = 792.0;
-        }
-        %orig(frame);
-        return;
-    }
 
 
 
@@ -16401,6 +16391,16 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 - (void)viewDidLayoutSubviews {
     %orig;
+    // v338: HUD 用 transform 上移 60pt（不改 frame，避免和抖音 layout 打架）
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        UIView *v338 = self.view;
+        if (v338) {
+            CGAffineTransform t = CGAffineTransformMakeTranslation(0, -60.0);
+            if (!CGAffineTransformEqualToTransform(v338.transform, t)) {
+                v338.transform = t;
+            }
+        }
+    }
     DYYYApplySearchShiftIfNeeded(self);
     
 
