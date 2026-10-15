@@ -18390,6 +18390,16 @@ static void v212_setBg(id self, SEL _cmd, id color) {
 }
 
 
+// v347: 进度条 slider 的 originY 上移 60
+%hook AWEFeedProgressSlider
+- (void)updateSliderFrame:(CGRect)a0 height:(double)a1 originY:(double)a2 minColor:(id)a3 maxColor:(id)a4 thumb:(id)a5 thumbSize:(CGRect)a6 {
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        a2 -= 60.0;
+    }
+    %orig(a0, a1, a2, a3, a4, a5, a6);
+}
+%end
+
 %ctor {
     @autoreleasepool {
         Class cls = objc_getClass("AWEBaseListSectionBackgroundView");
