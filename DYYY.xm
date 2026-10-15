@@ -15263,6 +15263,62 @@ static void DYYYLogHidePlusOverlayOnce(NSString *target) {
 
 %end
 
+
+// DYYY_FIX_TABBAR_INTERNAL_BACKGROUND
+static void DYYYRepairTabBarInternalBackground(UIView *tabBar) {
+    if (!tabBar || !DYYYGetBool(@"DYYYEnableFullScreen")) return;
+
+    UIColor *clear = [UIColor clearColor];
+    tabBar.opaque = NO;
+    tabBar.backgroundColor = clear;
+    tabBar.layer.backgroundColor = clear.CGColor;
+
+    NSArray *names = @[
+        @"darkBackgroundImageView",
+        @"lightBackgroundImageView",
+        @"backgroundView",
+        @"compactModeBackgroundView",
+        @"awe_blurView",
+        @"skinContainerView"
+    ];
+
+    for (NSString *name in names) {
+        SEL sel = NSSelectorFromString(name);
+        if (![tabBar respondsToSelector:sel]) continue;
+
+        id obj = ((id (*)(id, SEL))objc_msgSend)(tabBar, sel);
+        if (![obj isKindOfClass:[UIView class]]) continue;
+
+        UIView *view = (UIView *)obj;
+        view.opaque = NO;
+        view.backgroundColor = clear;
+        view.layer.backgroundColor = clear.CGColor;
+
+        // 图片背景和模糊背景在全屏时隐藏。
+        if ([name containsString:@"BackgroundImageView"] ||
+            [name isEqualToString:@"awe_blurView"]) {
+            view.hidden = YES;
+        }
+
+        if ([name isEqualToString:@"skinContainerView"]) {
+            view.hidden = YES;
+        }
+
+        for (UIView *child in view.subviews) {
+            if ([child isKindOfClass:[UIImageView class]]) {
+                child.hidden = YES;
+            }
+            if ([NSStringFromClass(child.class)
+                 localizedCaseInsensitiveContainsString:@"blur"]) {
+                child.hidden = YES;
+            }
+            child.opaque = NO;
+            child.backgroundColor = clear;
+            child.layer.backgroundColor = clear.CGColor;
+        }
+    }
+}
+
 %hook AWENormalModeTabBar
 
 static Class barBackgroundClass = nil;
@@ -15317,6 +15373,7 @@ static Class tabBarButtonClass = nil;
 
 - (void)layoutSubviews {
     %orig;
+    DYYYRepairTabBarInternalBackground(self);
     // DYYY_FIX_TABBAR_BG_TRANSPARENT
     // 全屏时让底栏背景透明，不改变按钮和视频布局。
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
@@ -15470,6 +15527,7 @@ static Class tabBarButtonClass = nil;
 
 - (void)setHidden:(BOOL)hidden {
     %orig(hidden);
+    DYYYRepairTabBarInternalBackground(self);
     // 全屏状态下，底栏显示状态变化后仍保持透明背景。
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         self.opaque = NO;
