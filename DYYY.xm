@@ -16792,6 +16792,10 @@ static void DYYYRestoreClipsInCell(UIView *root) {
 %hook AWEFeedTableView
 - (void)layoutSubviews {
     %orig;
+    // v322: 不裁剪，让 852 视频层溢出到 792 table 之外
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && self.clipsToBounds) {
+        self.clipsToBounds = NO;
+    }
 }
 %end
 
