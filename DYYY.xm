@@ -16389,7 +16389,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 - (double)leftContainerBottomOffset {
     double orig = %orig;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        return orig + 60.0;
+        return orig - 60.0;
     }
     return orig;
 }
@@ -16397,7 +16397,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 - (double)p_leftAndRightContainerBottomOffset {
     double orig = %orig;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        return orig + 60.0;
+        return orig - 60.0;
     }
     return orig;
 }
@@ -16405,7 +16405,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 - (double)p_stackContainerViewBottomOffset {
     double orig = %orig;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        return orig + 60.0;
+        return orig - 60.0;
     }
     return orig;
 }
