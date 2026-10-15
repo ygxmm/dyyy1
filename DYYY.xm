@@ -16391,13 +16391,19 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    // v338: HUD 用 transform 上移 60pt（不改 frame，避免和抖音 layout 打架）
+    // v340: HUD 容器不动，只把内部"元素栈"和"进度条容器"上移 60
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIView *v338 = self.view;
-        if (v338) {
-            CGAffineTransform t = CGAffineTransformMakeTranslation(0, -60.0);
-            if (!CGAffineTransformEqualToTransform(v338.transform, t)) {
-                v338.transform = t;
+        UIView *hudView = self.view;
+        if (hudView) {
+            CGAffineTransform up = CGAffineTransformMakeTranslation(0, -60.0);
+            for (UIView *sub in hudView.subviews) {
+                NSString *cn = NSStringFromClass(sub.class);
+                if ([cn containsString:@"ProgressContainer"] ||
+                    [cn containsString:@"ElementStack"]) {
+                    if (!CGAffineTransformEqualToTransform(sub.transform, up)) {
+                        sub.transform = up;
+                    }
+                }
             }
         }
     }
