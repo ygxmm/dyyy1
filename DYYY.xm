@@ -17513,19 +17513,12 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
         }
     }
 
-    if (shouldAdjust) {
-        CGFloat offset = gCurrentTabBarHeight > 0 ? gCurrentTabBarHeight : originalTabBarHeight;
-        if (offset > 0) {
-            center.y -= offset * 0.5;
-        }
-    }
-
+    // v323: 删除 center 上移 30pt（40.7.0 上 isShowLandscapeEntryView 恒 YES 导致误判）
     %orig(center);
 }
 
 - (void)layoutSubviews {
     %orig;
-    // 暂停 DYYY 自定义纵向 transform，交由抖音原生布局处理。
 }
 
 %end
