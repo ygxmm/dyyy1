@@ -16159,6 +16159,27 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
+    // v376: 黑条一被加到父视图就立即清（修首次打开评论"清晚了"）
+    // 判据：裸 UIView + frame={0,0,屏宽,40~80} + 背景纯黑不透明
+    if ([subview isMemberOfClass:[UIView class]]) {
+        CGRect f = subview.frame;
+        CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
+        if (fabs(f.origin.x) < 0.5 && fabs(f.origin.y) < 0.5 &&
+            fabs(f.size.width - screenW) < 1.0 &&
+            f.size.height > 40.0 && f.size.height < 80.0) {
+            UIColor *bg = subview.backgroundColor;
+            if (bg) {
+                CGFloat r = 0, g = 0, b = 0, a = 0;
+                if ([bg getRed:&r green:&g blue:&b alpha:&a] &&
+                    r < 0.05 && g < 0.05 && b < 0.05 && a > 0.95) {
+                    subview.backgroundColor = [UIColor clearColor];
+                    subview.layer.backgroundColor = [UIColor clearColor].CGColor;
+                    subview.hidden = YES;
+                }
+            }
+        }
+    }
+
     if (DYYYShouldForceHideFeedVideoCollectButtonView(self)) {
         DYYYMarkFeedVideoCollectButtonViewHidden(subview);
     }
