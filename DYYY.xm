@@ -16487,29 +16487,10 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
                 }
 
                 if (shouldClear) {
-                    // v371: 先诊断（打印 contents/sublayers/subviews），再同时清 backgroundColor/layer.backgroundColor/contents
-                    static NSInteger sDYYY371Count = 0;
-                    if (sDYYY371Count < 100) {
-                        sDYYY371Count++;
-                        NSString *line = [NSString stringWithFormat:
-                            @"hit cls=%@ frame=%@ depth=%ld bg=%@ lyrBg=%p contents=%p subviews=%lu sublayers=%lu hidden=%d alpha=%.2f\n",
-                            NSStringFromClass([sub class]),
-                            NSStringFromCGRect(f), (long)depth,
-                            sub.backgroundColor ?: @"nil",
-                            sub.layer.backgroundColor,
-                            sub.layer.contents,
-                            (unsigned long)sub.subviews.count,
-                            (unsigned long)sub.layer.sublayers.count,
-                            sub.hidden, sub.alpha];
-                        NSString *logPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy-v371.log"];
-                        FILE *fp = fopen([logPath UTF8String], "a");
-                        if (fp) { fputs([line UTF8String], fp); fclose(fp); }
-                    }
-
+                    // v374: 精简版——只清背景 + 隐藏，无日志
                     sub.backgroundColor = [UIColor clearColor];
                     sub.layer.backgroundColor = [UIColor clearColor].CGColor;
                     sub.layer.contents = nil;
-                    // v372: 隐藏占位空 UIView（清背景不够，抖音可能每帧重设，直接藏）
                     sub.hidden = YES;
                 }
             }
@@ -16760,6 +16741,39 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
             DYYYHideVideoAIParseBar(self.view);
         });
     }
+}
+
+// v375: 评论打开入口——立即 + 0.1/0.3/0.8s 各清一次黑条（抖音建黑条晚于 layout 时机）
+- (void)showCommentPanelWithInsertIDs:(id)a0 {
+    %orig(a0);
+    [self dyyy_scheduleClearTopBlackBar];
+}
+
+- (void)showCommentPanelWithParams:(id)a0 {
+    %orig(a0);
+    [self dyyy_scheduleClearTopBlackBar];
+}
+
+%new
+- (void)dyyy_scheduleClearTopBlackBar {
+    __weak typeof(self) weakSelf = self;
+    void (^clearBlock)(void) = ^{
+        __strong typeof(self) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
+        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+        CGFloat safeTop = 0;
+        if (@available(iOS 11.0, *)) {
+            safeTop = strongSelf.view.safeAreaInsets.top;
+        }
+        if (safeTop > 0.5) {
+            DYYYClearBlackEdgeBars(strongSelf.view, screenW, screenH, safeTop, 0);
+        }
+    };
+    clearBlock();
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), clearBlock);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), clearBlock);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), clearBlock);
 }
 
 %end
