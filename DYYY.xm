@@ -17461,13 +17461,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
         }
     }
 
-    if (shouldAdjust) {
-        CGFloat offset = gCurrentTabBarHeight > 0 ? gCurrentTabBarHeight : originalTabBarHeight;
-        if (offset > 0) {
-            center.y -= offset * 0.5;
-        }
-    }
-
+    // v329: 删除 center 上移（40.7.0 isShowLandscapeEntryView 恒 YES 导致误判）
     %orig(center);
 }
 
@@ -17493,13 +17487,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
         }
     }
 
-    if (shouldAdjust) {
-        CGFloat offset = gCurrentTabBarHeight > 0 ? gCurrentTabBarHeight : originalTabBarHeight;
-        if (offset > 0) {
-            center.y -= offset * 0.5;
-        }
-    }
-
+    // v329: 删除 center 上移（40.7.0 isShowLandscapeEntryView 恒 YES 导致误判）
     %orig(center);
 }
 
