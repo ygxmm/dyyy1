@@ -2436,3 +2436,8 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 
 // 注意：AWEStoryContainerCollectionView 在 662 行已经声明过了（类型是 UIView，先不动）
+
+// v375: AWEPlayInteractionViewController 的 %new 方法声明（避免 Logos "no visible @interface"）
+@interface AWEPlayInteractionViewController (DYYYV375)
+- (void)dyyy_scheduleClearTopBlackBar;
+@end
