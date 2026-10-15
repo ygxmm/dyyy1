@@ -16722,8 +16722,16 @@ static void DYYYRestoreClipsInCell(UIView *root) {
 
     // v246: 首页改成 VexCove 上游做法 —— 只改 table 自己高度，不递归
     // 遍历子 view（避免每帧触发所有 player VC 重排 → 底栏闪黑）。
+    UIView *container = self.superview;
+    if (!container) {
+        return;
+    }
+
     CGRect frame = self.frame;
-    CGFloat targetH = self.superview.frame.size.height;
+    CGFloat targetH = CGRectGetHeight(container.bounds) - CGRectGetMinY(frame);
+    if (!isfinite(targetH) || targetH <= 0) {
+        return;
+    }
     if (fabs(frame.size.height - targetH) > 0.5) {
         frame.size.height = targetH;
         self.frame = frame;
