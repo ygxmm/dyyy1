@@ -16743,37 +16743,36 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     }
 }
 
-// v375: 评论打开入口——立即 + 0.1/0.3/0.8s 各清一次黑条
-%new
-- (void)dyyy_scheduleClearTopBlackBar {
-    __weak AWEPlayInteractionViewController *weakSelf = self;
-    void (^clearBlock)(void) = ^{
-        __strong AWEPlayInteractionViewController *strongSelf = weakSelf;
-        if (!strongSelf) return;
-        CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
-        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-        CGFloat safeTop = 0;
-        if (@available(iOS 11.0, *)) {
-            safeTop = strongSelf.view.safeAreaInsets.top;
-        }
-        if (safeTop > 0.5) {
-            DYYYClearBlackEdgeBars(strongSelf.view, screenW, screenH, safeTop, 0);
-        }
-    };
-    clearBlock();
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), clearBlock);
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), clearBlock);
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), clearBlock);
+// v375: 评论打开入口——立即 + 0.1/0.3/0.8s 各清一次黑条（C 函数，绕开 Logos %new 检查）
+static void DYYYClearTopBarForVC(UIViewController *vc) {
+    if (!vc) return;
+    CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    CGFloat safeTop = 0;
+    if (@available(iOS 11.0, *)) {
+        safeTop = vc.view.safeAreaInsets.top;
+    }
+    if (safeTop > 0.5) {
+        DYYYClearBlackEdgeBars(vc.view, screenW, screenH, safeTop, 0);
+    }
+}
+
+static void DYYYClearTopBarForVCScheduled(UIViewController *vc) {
+    __weak UIViewController *weakVC = vc;
+    DYYYClearTopBarForVC(vc);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ DYYYClearTopBarForVC(weakVC); });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ DYYYClearTopBarForVC(weakVC); });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ DYYYClearTopBarForVC(weakVC); });
 }
 
 - (void)showCommentPanelWithInsertIDs:(id)a0 {
     %orig(a0);
-    [self dyyy_scheduleClearTopBlackBar];
+    DYYYClearTopBarForVCScheduled(self);
 }
 
 - (void)showCommentPanelWithParams:(id)a0 {
     %orig(a0);
-    [self dyyy_scheduleClearTopBlackBar];
+    DYYYClearTopBarForVCScheduled(self);
 }
 
 %end
