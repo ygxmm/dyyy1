@@ -5360,14 +5360,6 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
         v.backgroundColor = [UIColor clearColor];
     }
 
-    // v331fix: 进度条容器下移 60
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGAffineTransform t = CGAffineTransformMakeTranslation(0, 60.0);
-        if (!CGAffineTransformEqualToTransform(self.transform, t)) {
-            self.transform = t;
-        }
-    }
-
     // v232: 首页进度条容器贴底栏上方（用 transform，不触发 layout 递归）
     if (!CGAffineTransformIsIdentity(self.transform)) {
         self.transform = CGAffineTransformIdentity;
