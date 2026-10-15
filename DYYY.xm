@@ -6703,6 +6703,19 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 
 %hook AWEPlayInteractionProgressController
 
+// v356: 进度条位置 -60（让首页全屏时进度条上移）
+- (double)sliderYOffset {
+    double orig = %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) return orig - 60.0;
+    return orig;
+}
+
+- (double)posAdjustY {
+    double orig = %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) return orig - 60.0;
+    return orig;
+}
+
 %new
 - (void)dyyy_syncScheduleLabelsWithCurrentTime:(CGFloat)currentTime totalDuration:(CGFloat)totalDuration {
     if (!DYYYGetBool(@"DYYYShowScheduleDisplay")) {
@@ -6725,6 +6738,20 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 }
 
 %end
+// v356: 进度条位置 -60（让首页全屏时进度条上移）
+- (double)sliderYOffset {
+    double orig = %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) return orig - 60.0;
+    return orig;
+}
+
+- (double)posAdjustY {
+    double orig = %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) return orig - 60.0;
+    return orig;
+}
+
+
 
 %hook AWEDProgressCoreContainer
 
