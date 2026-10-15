@@ -16239,6 +16239,17 @@ static Class tabBarButtonClass = nil;
                      (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
                      (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
 
+    // v334: HUD 容器统一到 792（不干预子视图布局）
+    Class interactionVCClass = NSClassFromString(@"AWEPlayInteractionViewController");
+    if (enableFS && interactionVCClass && [vc isKindOfClass:interactionVCClass]) {
+        if (frame.size.width > 300 && frame.origin.x == 0) {
+            frame.origin.y = 0;
+            frame.size.height = 792.0;
+        }
+        %orig(frame);
+        return;
+    }
+
 
 
     if (isPlayVC && enableBlur) {
@@ -16481,16 +16492,10 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         }
     }
 
-    // DYYY修复：全屏开关打开时，强制走 if 分支，UI层撑满852
-    // 详情页原生走 else 是 732，比推荐页少120pt，这里统一到 852
-    // v92: UI 层保留底栏 60pt，进度条不再贴屏底
-    frame.size.height = superviewHeight - 60.0;
-
-    if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
-        self.view.frame = frame;
-    }
-
+    // v334: 删掉改 self.view.frame 的代码（和抖音 layout 打架 → 频闪）
 }
+
+
 
 - (void)viewDidDisappear:(BOOL)animated {
     %orig;
