@@ -16590,14 +16590,24 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
     // v334: 删掉改 self.view.frame 的代码（和抖音 layout 打架 → 频闪）
 
-    // v368: 递归扫所有层级（深度≤5），把"顶部/底部/左右边缘的纯黑窄条"透明
-    // 修 v367 失败：黑条不是 self.view 的直接子视图，而是 HUD 根视图下的子视图（深 2 层）
-    if (DYYYGetBool(@"DYYYEnableFullScreen") || DYYYGetBool(@"DYYYEnableCommentBlur")) {
+    // v369: 临时放宽触发条件 + 加日志，验证代码路径能否命中黑条
+    {
         CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
         CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
         CGFloat safeTop = 0;
         if (@available(iOS 11.0, *)) {
             safeTop = self.view.safeAreaInsets.top;
+        }
+        // 临时日志（写沙盒 Documents/dyyy-v369.log）
+        static NSInteger sDYYY369Count = 0;
+        if (sDYYY369Count < 500) {
+            sDYYY369Count++;
+            NSString *line = [NSString stringWithFormat:
+                @"vc=%@ view=%p safeTop=%.1f subCount=%lu\n",
+                NSStringFromClass([self class]), self.view, safeTop, (unsigned long)self.view.subviews.count];
+            NSString *logPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy-v369.log"];
+            FILE *fp = fopen([logPath UTF8String], "a");
+            if (fp) { fputs([line UTF8String], fp); fclose(fp); }
         }
         if (safeTop > 0.5) {
             DYYYClearBlackEdgeBars(self.view, screenW, screenH, safeTop, 0);
