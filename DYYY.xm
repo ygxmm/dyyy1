@@ -16149,6 +16149,31 @@ static Class tabBarButtonClass = nil;
     BOOL shouldForceHidden = DYYYShouldForceAvatarActionViewHidden(self) ||
                              DYYYShouldForceAvatarSurroundingViewHidden(self) ||
                              DYYYShouldForceHideFeedVideoCollectButtonView(self);
+
+    // v378: 黑条要显示时直接拒绝（frame={0,0,屏宽,40~80} + 颜色纯黑）
+    if (!hidden && !shouldForceHidden) {
+        if ([self isMemberOfClass:[UIView class]]) {
+            CGRect f = self.frame;
+            CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
+            if (fabs(f.origin.x) < 0.5 && fabs(f.origin.y) < 0.5 &&
+                fabs(f.size.width - screenW) < 1.0 &&
+                f.size.height > 40.0 && f.size.height < 80.0) {
+                CGColorRef cg = self.backgroundColor.CGColor;
+                if (cg) {
+                    const CGFloat *comp = CGColorGetComponents(cg);
+                    size_t n = CGColorGetNumberOfComponents(cg);
+                    CGFloat r = 0, g = 0, b = 0, a = 1;
+                    if (n >= 4) { r = comp[0]; g = comp[1]; b = comp[2]; a = comp[3]; }
+                    else if (n == 2) { r = comp[0]; g = comp[0]; b = comp[0]; a = comp[1]; }
+                    if (r < 0.05 && g < 0.05 && b < 0.05 && a > 0.95) {
+                        %orig(YES);
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
     %orig(shouldForceHidden ? YES : hidden);
 }
 
