@@ -13699,11 +13699,6 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 	return %orig;
 }
 
-%end
-
-// 屏蔽头像光圈
-%hook AWEUserModel
-
 - (id)storyRing {
 	return %orig;
 }
@@ -13713,6 +13708,8 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 }
 
 %end
+
+// 屏蔽头像光圈
 // 屏蔽挑战贴纸
 %hook AWEInteractionHashtagStickerModel
 
