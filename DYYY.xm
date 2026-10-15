@@ -16873,6 +16873,26 @@ static void DYYYProbeCellLog(NSString *format, ...) {
     DYYYHandleCommittedSpeedAwemeChanged([self currentAweme]);
 }
 
+// v354: 让抖音的"账本"也用 852 —— 修改 row 高
+- (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        UIWindow *win = [DYYYUtils getActiveWindow];
+        if (win) {
+            return win.bounds.size.height;
+        }
+    }
+    return %orig;
+}
+
+- (double)cellHeight {
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        UIWindow *win = [DYYYUtils getActiveWindow];
+        if (win) {
+            return win.bounds.size.height;
+        }
+    }
+    return %orig;
+}
 %end
 
 static id dyyyWindowKeyObserverToken = nil;
