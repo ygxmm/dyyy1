@@ -16239,13 +16239,13 @@ static Class tabBarButtonClass = nil;
                      (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
                      (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
 
-    // v327: HUD 容器 732 → 822（852 - 30pt 上移）
+    // v328: HUD 容器 732 → 792（852 - 60pt 上移）
     Class interactionVCClass = NSClassFromString(@"AWEPlayInteractionViewController");
     if (enableFS && interactionVCClass && [vc isKindOfClass:interactionVCClass]) {
         if (frame.size.height > 700 && frame.size.height < 800 &&
             frame.origin.x == 0 && frame.origin.y >= 0 && frame.origin.y < 100) {
             frame.origin.y = 0;
-            frame.size.height = 822.0;
+            frame.size.height = 792.0;
         }
         %orig(frame);
         return;
