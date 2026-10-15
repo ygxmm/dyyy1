@@ -17198,31 +17198,9 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 }
 
 
-// v362: 右栈（点赞栏 x≈329）上移 60
+// v364 结论：AWEElementStackView 走 autolayout，setFrame: 只收到 (0,0,0,0)，
+// x≈329 判定从未真正命中。此方法不再做位移，仅保留透传（如需可完全删除）。
 - (void)setFrame:(CGRect)frame {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        // v363: 临时日志 —— 写到 App 沙盒 Documents/dyyy-stackframe.log（路径动态取，不写死）
-        BOOL insidePlay = DYYYViewIsInsidePlayInteraction(self);
-        BOOL isRightGuess = (fabs(frame.origin.x - 329.0) < 8.0 &&
-                             frame.size.width > 50 && frame.size.width < 100);
-        static NSInteger sDYYYStackLogCount = 0;
-        if (sDYYYStackLogCount < 3000) {
-            sDYYYStackLogCount++;
-            NSString *line = [NSString stringWithFormat:
-                @"x=%.1f y=%.1f w=%.1f h=%.1f label=%@ insidePlay=%d hitRight=%d\n",
-                frame.origin.x, frame.origin.y, frame.size.width, frame.size.height,
-                self.accessibilityLabel ?: @"(nil)", insidePlay, isRightGuess];
-            NSString *logPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy-stackframe.log"];
-            FILE *fp = fopen([logPath UTF8String], "a");
-            if (fp) {
-                fputs([line UTF8String], fp);
-                fclose(fp);
-            }
-        }
-        if (isRightGuess) {
-            frame.origin.y -= 60.0;
-        }
-    }
     %orig(frame);
 }
 
@@ -17262,20 +17240,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
             }
         }
 
-        // v365: 屏幕位置兜底 —— 右栈在屏幕右半边，且不是全宽
-        // 依据：AWEElementStackView 布局走 autolayout（setFrame: 只收到 0,0,0,0），
-        // 上面三条字符串/类名判定在 40.7.0 探针里都没命中，改用几何位置判定。
-        if (!isRightStack) {
-            CGRect selfFrame = self.frame;
-            CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
-            CGFloat midX = selfFrame.origin.x + selfFrame.size.width * 0.5;
-            if (selfFrame.size.width > 20.0 &&
-                selfFrame.size.width < screenW * 0.5 &&
-                midX > screenW * 0.5) {
-                isRightStack = YES;
-            }
-        }
-
         BOOL hasScalableLeftElement = DYYYStackViewContainsScalableLeftElement(self);
 
         // 右侧元素的处理逻辑
@@ -17297,6 +17261,11 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
                 } else {
                     self.transform = CGAffineTransformIdentity;
                 }
+            }
+
+            // v364: 全屏开关开时右栈（点赞栏，label=right）上移 60
+            if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+                self.transform = CGAffineTransformTranslate(self.transform, 0, -60.0);
             }
         }
         // 左侧昵称/文案元素按子元素分别缩放
