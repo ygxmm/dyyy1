@@ -16126,13 +16126,6 @@ static Class tabBarButtonClass = nil;
         }
     }
 
-    if ([vc isKindOfClass:%c(AWEPlayInteractionViewController)]) {
-        for (UIView *subview in self.subviews) {
-            if ([subview isKindOfClass:[UIView class]] && subview.backgroundColor && CGColorEqualToColor(subview.backgroundColor.CGColor, [UIColor blackColor].CGColor)) {
-                subview.hidden = YES;
-            }
-        }
-    }
 }
 
 - (void)setFrame:(CGRect)frame {
