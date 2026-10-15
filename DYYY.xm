@@ -16228,8 +16228,8 @@ static Class tabBarButtonClass = nil;
 
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
         UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-        if ([vc isKindOfClass:%c(AWcEAwemeDetailTableViewController)] ||
-            [vc isKindOfClass:%(AWEAwemeDetailCellViewController)]) {
+        if ([vc isKindOfClass:%c(AWEAwemeDetailTableViewController)] ||
+            [vc isKindOfClass:%c(AWEAwemeDetailCellViewController)]) {
             %orig([UIColor clearColor]);
             return;
         }
@@ -16743,22 +16743,12 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     }
 }
 
-// v375: 评论打开入口——立即 + 0.1/0.3/0.8s 各清一次黑条（抖音建黑条晚于 layout 时机）
-- (void)showCommentPanelWithInsertIDs:(id)a0 {
-    %orig(a0);
-    [self dyyy_scheduleClearTopBlackBar];
-}
-
-- (void)showCommentPanelWithParams:(id)a0 {
-    %orig(a0);
-    [self dyyy_scheduleClearTopBlackBar];
-}
-
+// v375: 评论打开入口——立即 + 0.1/0.3/0.8s 各清一次黑条
 %new
 - (void)dyyy_scheduleClearTopBlackBar {
-    __weak typeof(self) weakSelf = self;
+    __weak AWEPlayInteractionViewController *weakSelf = self;
     void (^clearBlock)(void) = ^{
-        __strong typeof(self) strongSelf = weakSelf;
+        __strong AWEPlayInteractionViewController *strongSelf = weakSelf;
         if (!strongSelf) return;
         CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
         CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
@@ -16774,6 +16764,16 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), clearBlock);
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), clearBlock);
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), clearBlock);
+}
+
+- (void)showCommentPanelWithInsertIDs:(id)a0 {
+    %orig(a0);
+    [self dyyy_scheduleClearTopBlackBar];
+}
+
+- (void)showCommentPanelWithParams:(id)a0 {
+    %orig(a0);
+    [self dyyy_scheduleClearTopBlackBar];
 }
 
 %end
