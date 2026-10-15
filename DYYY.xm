@@ -5360,9 +5360,28 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
         v.backgroundColor = [UIColor clearColor];
     }
 
-    // v232: 首页进度条容器贴底栏上方（用 transform，不触发 layout 递归）
-    if (!CGAffineTransformIsIdentity(self.transform)) {
-        self.transform = CGAffineTransformIdentity;
+    // v342: 进度条上移 60pt（只视频模式，图文不动）
+    {
+        BOOL isVideo = YES;
+        UIViewController *pvc = [DYYYUtils firstAvailableViewControllerFromView:self];
+        if ([pvc isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")]) {
+            if ([pvc respondsToSelector:NSSelectorFromString(@"awemeBaseViewController")]) {
+                id base = [pvc valueForKey:@"awemeBaseViewController"];
+                if (base && [base respondsToSelector:NSSelectorFromString(@"awemeModel")]) {
+                    id model = [base valueForKey:@"awemeModel"];
+                    if (model && [model respondsToSelector:NSSelectorFromString(@"awemeType")]) {
+                        NSInteger t = [[model valueForKey:@"awemeType"] integerValue];
+                        if (t == 68) isVideo = NO;
+                    }
+                }
+            }
+        }
+        CGAffineTransform target = isVideo
+            ? CGAffineTransformMakeTranslation(0, -60.0)
+            : CGAffineTransformIdentity;
+        if (!CGAffineTransformEqualToTransform(self.transform, target)) {
+            self.transform = target;
+        }
     }
 
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) {
@@ -16391,22 +16410,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    // v340: HUD 容器不动，只把内部"元素栈"和"进度条容器"上移 60
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIView *hudView = self.view;
-        if (hudView) {
-            CGAffineTransform up = CGAffineTransformMakeTranslation(0, -60.0);
-            for (UIView *sub in hudView.subviews) {
-                NSString *cn = NSStringFromClass(sub.class);
-                if ([cn containsString:@"ProgressContainer"] ||
-                    [cn containsString:@"ElementStack"]) {
-                    if (!CGAffineTransformEqualToTransform(sub.transform, up)) {
-                        sub.transform = up;
-                    }
-                }
-            }
-        }
-    }
     DYYYApplySearchShiftIfNeeded(self);
     
 
