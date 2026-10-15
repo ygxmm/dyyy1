@@ -6737,19 +6737,6 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
     [self dyyy_syncScheduleLabelsWithCurrentTime:arg1 totalDuration:arg2];
 }
 
-// v356: 进度条位置 -60（让首页全屏时进度条上移）
-- (double)sliderYOffset {
-    double orig = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) return orig - 60.0;
-    return orig;
-}
-
-- (double)posAdjustY {
-    double orig = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) return orig - 60.0;
-    return orig;
-}
-
 %end
 
 
