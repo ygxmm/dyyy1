@@ -791,6 +791,7 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property(nonatomic, strong) UIView *rightLabelUI;
 @property(nonatomic) AWEPlayInteractionProgressController *progressSliderDelegate;
 - (void)applyWidthPercentToSubviews:(CGFloat)widthPercent;
+- (void)updateSliderFrame:(CGRect)a0 height:(double)a1 originY:(double)a2 minColor:(id)a3 maxColor:(id)a4 thumb:(id)a5 thumbSize:(CGRect)a6;
 @end
 
 @interface AWEFeedChannelObject : NSObject
