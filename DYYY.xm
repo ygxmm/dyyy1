@@ -16239,17 +16239,7 @@ static Class tabBarButtonClass = nil;
                      (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
                      (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
 
-    // v328: HUD 容器 732 → 792（852 - 60pt 上移）
-    Class interactionVCClass = NSClassFromString(@"AWEPlayInteractionViewController");
-    if (enableFS && interactionVCClass && [vc isKindOfClass:interactionVCClass]) {
-        if (frame.size.height > 700 && frame.size.height < 800 &&
-            frame.origin.x == 0 && frame.origin.y >= 0 && frame.origin.y < 100) {
-            frame.origin.y = 0;
-            frame.size.height = 792.0;
-        }
-        %orig(frame);
-        return;
-    }
+
 
     if (isPlayVC && enableBlur) {
         if (frame.origin.x != 0) {
@@ -18444,6 +18434,32 @@ static void v212_setBg(id self, SEL _cmd, id color) {
     }
     if (v212_orig_setBg) v212_orig_setBg(self, _cmd, color);
 }
+
+// v331: HUD 子视图（进度条 + 元素栈）用 transform 下移 60
+%hook AWEPlayInteractionProgressContainerView
+- (void)layoutSubviews {
+    %orig;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (!DYYYIsHomePlayInteraction(self)) return;
+    CGAffineTransform t = CGAffineTransformMakeTranslation(0, 60.0);
+    if (!CGAffineTransformEqualToTransform(self.transform, t)) {
+        self.transform = t;
+    }
+}
+%end
+
+%hook AWEElementStackView
+- (void)layoutSubviews {
+    %orig;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (!DYYYIsHomePlayInteraction(self)) return;
+    if (self.frame.size.height < 50 || self.frame.size.height > 400) return;
+    CGAffineTransform t = CGAffineTransformMakeTranslation(0, 60.0);
+    if (!CGAffineTransformEqualToTransform(self.transform, t)) {
+        self.transform = t;
+    }
+}
+%end
 
 %ctor {
     @autoreleasepool {
