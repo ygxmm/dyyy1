@@ -16715,30 +16715,6 @@ static void DYYYRestoreClipsInCell(UIView *root) {
 %hook AWEFeedTableView
 - (void)layoutSubviews {
     %orig;
-
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) {
-        return;
-    }
-
-    // v246: 首页改成 VexCove 上游做法 —— 只改 table 自己高度，不递归
-    // 遍历子 view（避免每帧触发所有 player VC 重排 → 底栏闪黑）。
-    UIView *container = self.superview;
-    if (!container) {
-        return;
-    }
-
-    CGRect frame = self.frame;
-    CGFloat targetH = CGRectGetHeight(container.bounds) - CGRectGetMinY(frame);
-    if (!isfinite(targetH) || targetH <= 0) {
-        return;
-    }
-    if (fabs(frame.size.height - targetH) > 0.5) {
-        frame.size.height = targetH;
-        self.frame = frame;
-    }
-
-    // 首页全屏：暂不逐个拉高可见播放器控制器。
-    // 避免滑动或返回前台时重复触发布局。
 }
 %end
 
