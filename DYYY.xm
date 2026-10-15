@@ -15317,6 +15317,20 @@ static Class tabBarButtonClass = nil;
 
 - (void)layoutSubviews {
     %orig;
+    // DYYY_FIX_TABBAR_BG_TRANSPARENT
+    // 全屏时让底栏背景透明，不改变按钮和视频布局。
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        self.opaque = NO;
+        self.backgroundColor = [UIColor clearColor];
+        self.layer.backgroundColor = [UIColor clearColor].CGColor;
+
+        if (self.skinContainerView) {
+            self.skinContainerView.opaque = NO;
+            self.skinContainerView.backgroundColor = [UIColor clearColor];
+            self.skinContainerView.layer.backgroundColor = [UIColor clearColor].CGColor;
+        }
+    }
+
 
     if (originalTabBarHeight == kInvalidHeight) {
         [self initializeOriginalTabBarHeight];
@@ -15456,6 +15470,18 @@ static Class tabBarButtonClass = nil;
 
 - (void)setHidden:(BOOL)hidden {
     %orig(hidden);
+    // 全屏状态下，底栏显示状态变化后仍保持透明背景。
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        self.opaque = NO;
+        self.backgroundColor = [UIColor clearColor];
+        self.layer.backgroundColor = [UIColor clearColor].CGColor;
+        if (self.skinContainerView) {
+            self.skinContainerView.opaque = NO;
+            self.skinContainerView.backgroundColor = [UIColor clearColor];
+            self.skinContainerView.layer.backgroundColor = [UIColor clearColor].CGColor;
+        }
+    }
+
 
     BOOL disableHomeRefresh = DYYYGetBool(@"DYYYDisableHomeRefresh");
     BOOL enableFullScreen = DYYYGetBool(@"DYYYEnableFullScreen");
