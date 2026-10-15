@@ -16228,10 +16228,40 @@ static Class tabBarButtonClass = nil;
 
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
         UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-        if ([vc isKindOfClass:%c(AWEAwemeDetailTableViewController)] ||
-            [vc isKindOfClass:%c(AWEAwemeDetailCellViewController)]) {
+        if ([vc isKindOfClass:%c(AWcEAwemeDetailTableViewController)] ||
+            [vc isKindOfClass:%(AWEAwemeDetailCellViewController)]) {
             %orig([UIColor clearColor]);
             return;
+        }
+    }
+
+    // v373: 拦截顶部 59px 黑占位 UIView 的背景色设置（抖音每帧重设黑，事后清无效）
+    // 判据：裸 UIView + 纯黑不透明 + frame={0,0,屏宽,40~80} + 响应链能追到 AWEPlayInteractionViewController
+    if (backgroundColor && [self isMemberOfClass:[UIView class]]) {
+        CGColorRef cg = backgroundColor.CGColor;
+        if (cg) {
+            const CGFloat *comp = CGColorGetComponents(cg);
+            size_t n = CGColorGetNumberOfComponents(cg);
+            CGFloat r = 0, g = 0, b = 0, a = 1;
+            if (n >= 4) { r = comp[0]; g = comp[1]; b = comp[2]; a = comp[3]; }
+            else if (n == 2) { r = comp[0]; g = comp[0]; b = comp[0]; a = comp[1]; }
+            if (r < 0.05 && g < 0.05 && b < 0.05 && a > 0.95) {
+                CGRect f = self.frame;
+                CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
+                if (fabs(f.origin.x) < 0.5 && fabs(f.origin.y) < 0.5 &&
+                    fabs(f.size.width - screenW) < 1.0 &&
+                    f.size.height > 40.0 && f.size.height < 80.0) {
+                    UIResponder *rr = self.nextResponder;
+                    int guard = 0;
+                    while (rr && guard++ < 12) {
+                        if ([rr isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")]) {
+                            %orig([UIColor clearColor]);
+                            return;
+                        }
+                        rr = rr.nextResponder;
+                    }
+                }
+            }
         }
     }
 
