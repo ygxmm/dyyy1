@@ -6737,6 +6737,39 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
     [self dyyy_syncScheduleLabelsWithCurrentTime:arg1 totalDuration:arg2];
 }
 
+// v361: 直接改进度条 frame 返回值
+- (struct CGRect)progressSliderNormalFrame {
+    struct CGRect f = %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        f.origin.y -= 60.0;
+    }
+    return f;
+}
+
+- (struct CGRect)progressSliderWakeUpFrame {
+    struct CGRect f = %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        f.origin.y -= 60.0;
+    }
+    return f;
+}
+
+- (struct CGRect)progressSliderUnderViewFrame {
+    struct CGRect f = %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        f.origin.y -= 60.0;
+    }
+    return f;
+}
+
+- (double)timeLabelOriginY {
+    double orig = %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        return orig - 60.0;
+    }
+    return orig;
+}
+
 %end
 
 
