@@ -17514,6 +17514,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 %end
 
 %hook AWEStoryContainerCollectionView
+
 - (void)layoutSubviews {
     %orig;
     if ([self.subviews count] == 2)
@@ -17597,6 +17598,16 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
         }
     }
 }
+
+- (void)setFrame:(CGRect)frame {
+    if (DYYYGetBool(@"DYYYEnableCommentBlur")) {
+        if (frame.origin.y != 0) {
+            return;
+        }
+    }
+    %orig(frame);
+}
+
 %end
 
 %hook AFDFastSpeedView
@@ -18220,18 +18231,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 %end
 %end
 
-%hook AWEStoryContainerCollectionView
-
-- (void)setFrame:(CGRect)frame {
-    if (DYYYGetBool(@"DYYYEnableCommentBlur")) {
-        if (frame.origin.y != 0) {
-            return;
-        }
-    }
-    %orig(frame);
-}
-
-%end
 
 %hook AWEDPlayerProgressContainerView
 
