@@ -5360,29 +5360,6 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
         v.backgroundColor = [UIColor clearColor];
     }
 
-    // v342: 进度条上移 60pt（只视频模式，图文不动）
-    {
-        BOOL isVideo = YES;
-        UIViewController *pvc = [DYYYUtils firstAvailableViewControllerFromView:self];
-        if ([pvc isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")]) {
-            if ([pvc respondsToSelector:NSSelectorFromString(@"awemeBaseViewController")]) {
-                id base = [pvc valueForKey:@"awemeBaseViewController"];
-                if (base && [base respondsToSelector:NSSelectorFromString(@"awemeModel")]) {
-                    id model = [base valueForKey:@"awemeModel"];
-                    if (model && [model respondsToSelector:NSSelectorFromString(@"awemeType")]) {
-                        NSInteger t = [[model valueForKey:@"awemeType"] integerValue];
-                        if (t == 68) isVideo = NO;
-                    }
-                }
-            }
-        }
-        CGAffineTransform target = isVideo
-            ? CGAffineTransformMakeTranslation(0, -60.0)
-            : CGAffineTransformIdentity;
-        if (!CGAffineTransformEqualToTransform(self.transform, target)) {
-            self.transform = target;
-        }
-    }
 
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) {
         return;
@@ -16410,6 +16387,22 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 - (void)viewDidLayoutSubviews {
     %orig;
+    // v343: 首页全屏时 HUD 子元素（进度条+点赞+文案）用 layer.transform 上移 60
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        UIView *hud = self.view;
+        if (hud) {
+            CATransform3D up = CATransform3DMakeTranslation(0, -60.0, 0);
+            for (UIView *sub in hud.subviews) {
+                NSString *cn = NSStringFromClass(sub.class);
+                if ([cn containsString:@"ProgressContainer"] ||
+                    [cn containsString:@"ElementStack"]) {
+                    if (!CATransform3DEqualToTransform(sub.layer.transform, up)) {
+                        sub.layer.transform = up;
+                    }
+                }
+            }
+        }
+    }
     DYYYApplySearchShiftIfNeeded(self);
     
 
