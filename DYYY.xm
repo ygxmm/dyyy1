@@ -16560,6 +16560,34 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
     }
 
     // v334: 删掉改 self.view.frame 的代码（和抖音 layout 打架 → 频闪）
+
+    // v367: 打开评论时，把顶部 59px 原生黑遮罩改成透明
+    // 证据：D5（无 DYYY）探针里也有这个 {0,0,393,59} bg=纯黑的 UIView 挂在 HUD 根视图下，
+    //       它是抖音原生的评论区安全区垫底条，DYYY 只负责把它透明。
+    if ([self respondsToSelector:@selector(isCommentVCShowing)] && self.isCommentVCShowing) {
+        CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
+        CGFloat safeTop = 0;
+        if (@available(iOS 11.0, *)) {
+            safeTop = self.view.safeAreaInsets.top;
+        }
+        if (safeTop > 0.5) {
+            for (UIView *sub in self.view.subviews) {
+                CGRect f = sub.frame;
+                if (fabs(f.origin.x) < 0.5 && fabs(f.origin.y) < 0.5 &&
+                    fabs(f.size.width - screenW) < 1.0 &&
+                    fabs(f.size.height - safeTop) < 1.0) {
+                    UIColor *bg = sub.backgroundColor;
+                    if (bg) {
+                        CGFloat r = 0, g = 0, b = 0, a = 0;
+                        if ([bg getRed:&r green:&g blue:&b alpha:&a] &&
+                            r < 0.05 && g < 0.05 && b < 0.05 && a > 0.95) {
+                            sub.backgroundColor = [UIColor clearColor];
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 
