@@ -16402,14 +16402,13 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         }
     }
 
-    // 首页播放交互层保留原生高度，避免覆盖首页 cell 的分页布局。
-    // 非首页页面继续保留原有全屏高度逻辑。
-    if (!DYYYIsHomePlayInteraction(self.view)) {
-        frame.size.height = superviewHeight - 60.0;
+    // DYYY修复：全屏开关打开时，强制走 if 分支，UI层撑满852
+    // 详情页原生走 else 是 732，比推荐页少120pt，这里统一到 852
+    // v92: UI 层保留底栏 60pt，进度条不再贴屏底
+    frame.size.height = superviewHeight - 60.0;
 
-        if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
-            self.view.frame = frame;
-        }
+    if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
+        self.view.frame = frame;
     }
 
 }
