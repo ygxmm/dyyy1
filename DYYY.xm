@@ -16239,6 +16239,18 @@ static Class tabBarButtonClass = nil;
                      (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
                      (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
 
+    // v326: HUD 容器 AWEPlayInteractionViewController.view 732 → 852
+    Class interactionVCClass = NSClassFromString(@"AWEPlayInteractionViewController");
+    if (enableFS && interactionVCClass && [vc isKindOfClass:interactionVCClass]) {
+        if (frame.size.height > 700 && frame.size.height < 800 &&
+            frame.origin.x == 0 && frame.origin.y >= 0 && frame.origin.y < 100) {
+            frame.origin.y = 0;
+            frame.size.height = 852.0;
+        }
+        %orig(frame);
+        return;
+    }
+
     if (isPlayVC && enableBlur) {
         if (frame.origin.x != 0) {
             return;
@@ -16387,22 +16399,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    // v325: HUD 容器 732 → 852（0.5s 节流，避免死循环）
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIView *v325 = self.view;
-        if (v325 && fabs(v325.frame.size.height - 852.0) > 0.5) {
-            static NSTimeInterval lastT325 = 0;
-            NSTimeInterval now325 = CFAbsoluteTimeGetCurrent();
-            if (now325 - lastT325 > 0.5) {
-                lastT325 = now325;
-                CGRect f325 = v325.frame;
-                f325.origin.y = 0;
-                f325.size.height = 852.0;
-                v325.frame = f325;
-                if (v325.clipsToBounds) v325.clipsToBounds = NO;
-            }
-        }
-    }
     DYYYApplySearchShiftIfNeeded(self);
     
 
