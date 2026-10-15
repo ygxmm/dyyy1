@@ -17201,9 +17201,25 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 // v362: 右栈（点赞栏 x≈329）上移 60
 - (void)setFrame:(CGRect)frame {
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        // 只对右栈（点赞栏 x≈329）上移 60
-        if (fabs(frame.origin.x - 329.0) < 8.0 &&
-            frame.size.width > 50 && frame.size.width < 100) {
+        // v363: 临时日志 —— 写到 App 沙盒 Documents/dyyy-stackframe.log（路径动态取，不写死）
+        BOOL insidePlay = DYYYViewIsInsidePlayInteraction(self);
+        BOOL isRightGuess = (fabs(frame.origin.x - 329.0) < 8.0 &&
+                             frame.size.width > 50 && frame.size.width < 100);
+        static NSInteger sDYYYStackLogCount = 0;
+        if (sDYYYStackLogCount < 3000) {
+            sDYYYStackLogCount++;
+            NSString *line = [NSString stringWithFormat:
+                @"x=%.1f y=%.1f w=%.1f h=%.1f label=%@ insidePlay=%d hitRight=%d\n",
+                frame.origin.x, frame.origin.y, frame.size.width, frame.size.height,
+                self.accessibilityLabel ?: @"(nil)", insidePlay, isRightGuess];
+            NSString *logPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy-stackframe.log"];
+            FILE *fp = fopen([logPath UTF8String], "a");
+            if (fp) {
+                fputs([line UTF8String], fp);
+                fclose(fp);
+            }
+        }
+        if (isRightGuess) {
             frame.origin.y -= 60.0;
         }
     }
