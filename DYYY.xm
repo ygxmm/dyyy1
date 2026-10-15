@@ -18311,12 +18311,15 @@ static void v179_dcvLayout(id self, SEL _cmd) {
         @try { ic = [vc valueForKey:@"interactionController"]; } @catch (NSException *e) {}
         if (ic) {
             @try {
+                // v339: performSelector 返回 BOOL 原始值（0x1），不能再调 boolValue（会 SIGSEGV）
                 if ([ic respondsToSelector:NSSelectorFromString(@"isCommentVCShowing")]) {
-                    BOOL showing = [[ic performSelector:NSSelectorFromString(@"isCommentVCShowing")] boolValue];
+                    BOOL (*fnVC)(id, SEL) = (BOOL (*)(id, SEL))[ic methodForSelector:NSSelectorFromString(@"isCommentVCShowing")];
+                    BOOL showing = fnVC(ic, NSSelectorFromString(@"isCommentVCShowing"));
                     if (showing) return;
                 }
                 if ([ic respondsToSelector:NSSelectorFromString(@"isCommentListShowing")]) {
-                    BOOL showing = [[ic performSelector:NSSelectorFromString(@"isCommentListShowing")] boolValue];
+                    BOOL (*fnList)(id, SEL) = (BOOL (*)(id, SEL))[ic methodForSelector:NSSelectorFromString(@"isCommentListShowing")];
+                    BOOL showing = fnList(ic, NSSelectorFromString(@"isCommentListShowing"));
                     if (showing) return;
                 }
             } @catch (NSException *e) {}
