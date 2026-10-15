@@ -16430,12 +16430,45 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
             else if (fabs(x) < 1.0 && w <= 120.0 && h >= screenH * 0.2) edgeBar = YES;
             else if (fabs((x + w) - screenW) < 2.0 && w <= 120.0 && h >= screenH * 0.2) edgeBar = YES;
             if (edgeBar) {
+                // v370: 同时检查 view.backgroundColor 和 layer.backgroundColor
+                BOOL shouldClear = NO;
+
                 UIColor *bg = sub.backgroundColor;
                 if (bg) {
                     CGFloat r = 0, g = 0, b = 0, a = 0;
                     if ([bg getRed:&r green:&g blue:&b alpha:&a] &&
                         r < 0.05 && g < 0.05 && b < 0.05 && a > 0.95) {
-                        sub.backgroundColor = [UIColor clearColor];
+                        shouldClear = YES;
+                    }
+                }
+
+                if (!shouldClear) {
+                    CGColorRef layerBg = sub.layer.backgroundColor;
+                    if (layerBg) {
+                        const CGFloat *comp = CGColorGetComponents(layerBg);
+                        size_t n = CGColorGetNumberOfComponents(layerBg);
+                        CGFloat r = 0, g = 0, b = 0, a = 1;
+                        if (n >= 4) { r = comp[0]; g = comp[1]; b = comp[2]; a = comp[3]; }
+                        else if (n == 2) { r = comp[0]; g = comp[0]; b = comp[0]; a = comp[1]; }
+                        if (r < 0.05 && g < 0.05 && b < 0.05 && a > 0.95) {
+                            shouldClear = YES;
+                        }
+                    }
+                }
+
+                if (shouldClear) {
+                    sub.backgroundColor = [UIColor clearColor];
+                    sub.layer.backgroundColor = [UIColor clearColor].CGColor;
+                    // 临时日志
+                    static NSInteger sDYYY370Count = 0;
+                    if (sDYYY370Count < 200) {
+                        sDYYY370Count++;
+                        NSString *line = [NSString stringWithFormat:
+                            @"cleared %@ frame=%@ depth=%ld\n",
+                            NSStringFromClass([sub class]), NSStringFromCGRect(f), (long)depth];
+                        NSString *logPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy-v370.log"];
+                        FILE *fp = fopen([logPath UTF8String], "a");
+                        if (fp) { fputs([line UTF8String], fp); fclose(fp); }
                     }
                 }
             }
