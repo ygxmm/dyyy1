@@ -7079,129 +7079,6 @@ static NSString *const kDYYYLongPressCopyEnabledKey = @"DYYYLongPressCopyTextEna
 
 %end
 
-%hook AWEAwemeModel
-
-- (id)anchorInfo {
-	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
-		return nil;
-	}
-	return %orig;
-}
-
-- (void)setAnchorInfo:(id)info {
-	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
-		%orig(nil);
-		return;
-	}
-	%orig;
-}
-
-- (id)anchorList {
-	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
-		return nil;
-	}
-	return %orig;
-}
-
-- (void)setAnchorList:(id)list {
-	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
-		%orig(nil);
-		return;
-	}
-	%orig;
-}
-
-- (id)anchorNormalInfo {
-	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
-		return nil;
-	}
-	return %orig;
-}
-
-- (void)setAnchorNormalInfo:(id)info {
-	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
-		%orig(nil);
-		return;
-	}
-	%orig;
-}
-
-- (id)doubleColumnAnchorNormalInfo {
-	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
-		return nil;
-	}
-	return %orig;
-}
-
-- (void)setDoubleColumnAnchorNormalInfo:(id)info {
-	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
-		%orig(nil);
-		return;
-	}
-	%orig;
-}
-
-- (id)localLifeAnchorInfo {
-	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
-		return nil;
-	}
-	return %orig;
-}
-
-- (void)setLocalLifeAnchorInfo:(id)info {
-	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
-		%orig(nil);
-		return;
-	}
-	%orig;
-}
-
-- (id)nearbyFeedDualAnchorInfo {
-	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
-		return nil;
-	}
-	return %orig;
-}
-
-- (void)setNearbyFeedDualAnchorInfo:(id)info {
-	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
-		%orig(nil);
-		return;
-	}
-	%orig;
-}
-
-- (id)minorAnchorInfo {
-	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
-		return nil;
-	}
-	return %orig;
-}
-
-- (void)setMinorAnchorInfo:(id)info {
-	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
-		%orig(nil);
-		return;
-	}
-	%orig;
-}
-
-- (id)commonAnchor {
-	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
-		return nil;
-	}
-	return %orig;
-}
-
-- (void)setCommonAnchor:(id)anchor {
-	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
-		%orig(nil);
-		return;
-	}
-	%orig;
-}
-
-%end
 
 %end
 
@@ -11477,21 +11354,6 @@ static void DYYYLiveDurationInstallFromInnerFeedCell(id cell) {
 %end
 
 // 纯净模式状态栏
-%hook AFDPureModePageContainerViewController
-- (BOOL)prefersStatusBarHidden {
-    if (DYYYGetBool(@"DYYYHideStatusbar")) {
-        return YES;
-    }
-    if (DYYYGetBool(@"DYYYHideStatusBarOnClear") && hideButton && hideButton.isElementsHidden) {
-        return YES;
-    }
-    if (class_getInstanceMethod([self class], @selector(prefersStatusBarHidden)) !=
-        class_getInstanceMethod([%c(AFDPureModePageContainerViewController) class], @selector(prefersStatusBarHidden))) {
-        return %orig;
-    }
-    return NO;
-}
-%end
 
 // 隐藏暂停关键词
 %hook AWEFeedPauseRelatedWordComponent
@@ -13275,6 +13137,127 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 }
 
 %hook AWEAwemeModel
+
+- (id)anchorInfo {
+	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
+		return nil;
+	}
+	return %orig;
+}
+
+- (void)setAnchorInfo:(id)info {
+	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
+		%orig(nil);
+		return;
+	}
+	%orig;
+}
+
+- (id)anchorList {
+	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
+		return nil;
+	}
+	return %orig;
+}
+
+- (void)setAnchorList:(id)list {
+	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
+		%orig(nil);
+		return;
+	}
+	%orig;
+}
+
+- (id)anchorNormalInfo {
+	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
+		return nil;
+	}
+	return %orig;
+}
+
+- (void)setAnchorNormalInfo:(id)info {
+	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
+		%orig(nil);
+		return;
+	}
+	%orig;
+}
+
+- (id)doubleColumnAnchorNormalInfo {
+	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
+		return nil;
+	}
+	return %orig;
+}
+
+- (void)setDoubleColumnAnchorNormalInfo:(id)info {
+	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
+		%orig(nil);
+		return;
+	}
+	%orig;
+}
+
+- (id)localLifeAnchorInfo {
+	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
+		return nil;
+	}
+	return %orig;
+}
+
+- (void)setLocalLifeAnchorInfo:(id)info {
+	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
+		%orig(nil);
+		return;
+	}
+	%orig;
+}
+
+- (id)nearbyFeedDualAnchorInfo {
+	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
+		return nil;
+	}
+	return %orig;
+}
+
+- (void)setNearbyFeedDualAnchorInfo:(id)info {
+	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
+		%orig(nil);
+		return;
+	}
+	%orig;
+}
+
+- (id)minorAnchorInfo {
+	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
+		return nil;
+	}
+	return %orig;
+}
+
+- (void)setMinorAnchorInfo:(id)info {
+	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
+		%orig(nil);
+		return;
+	}
+	%orig;
+}
+
+- (id)commonAnchor {
+	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
+		return nil;
+	}
+	return %orig;
+}
+
+- (void)setCommonAnchor:(id)anchor {
+	if (DYYYGetBool(@"DYYYHideFeedAnchorContainer")) {
+		%orig(nil);
+		return;
+	}
+	%orig;
+}
+
 
 - (id)initWithDictionary:(id)arg1 error:(id *)arg2 {
     id orig = %orig;
@@ -17033,6 +17016,19 @@ static void DYYYProbeCellLog(NSString *format, ...) {
 %end
 
 %hook AFDPureModePageContainerViewController
+- (BOOL)prefersStatusBarHidden {
+    if (DYYYGetBool(@"DYYYHideStatusbar")) {
+        return YES;
+    }
+    if (DYYYGetBool(@"DYYYHideStatusBarOnClear") && hideButton && hideButton.isElementsHidden) {
+        return YES;
+    }
+    if (class_getInstanceMethod([self class], @selector(prefersStatusBarHidden)) !=
+        class_getInstanceMethod([%c(AFDPureModePageContainerViewController) class], @selector(prefersStatusBarHidden))) {
+        return %orig;
+    }
+    return NO;
+}
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
     isPureViewVisible = YES;
