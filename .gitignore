@@ -9,3 +9,8 @@ packages
 *.backup.*
 DYYY-current.xm
 DYYY.xm.before_*
+
+# 一次性脚本
+disable_transform_test.py
+fix_home_fullscreen.py
+fix_home_fullscreen.sh
