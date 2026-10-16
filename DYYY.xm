@@ -110,21 +110,6 @@ static NSString *DYYYLogPath(void) {
             stringByAppendingPathComponent:@"dyyy_fs.log"];
 }
 
-static void DLog(NSString *fmt, ...) {
-    @autoreleasepool {
-        va_list ap;
-        va_start(ap, fmt);
-        NSString *s = [[NSString alloc] initWithFormat:fmt arguments:ap];
-        va_end(ap);
-        NSString *path = DYYYLogPath();
-        if (!s || !path) return;
-        FILE *fp = fopen(path.UTF8String, "a");
-        if (!fp) return;
-        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
-        fclose(fp);
-    }
-}
-
 static id DYYYBestDownloadAddr(id videoModel);
 
 %hook NSBundle
@@ -5750,10 +5735,6 @@ static CGFloat DYYYScaleValueForKey(NSString *key) {
     return scale > 0.0 ? scale : 1.0;
 }
 
-static BOOL DYYYIsLeftStackArrangedElementView(UIView *view) {
-    return view.superview != nil && [view.superview isKindOfClass:%c(AWEElementStackView)];
-}
-
 static UIView *DYYYRawElementViewFromElement(id element) {
     if (!element) {
         return nil;
@@ -5824,10 +5805,6 @@ static void DYYYApplyLeftAlignedScaleAndOffsetXY(UIView *view, CGFloat scale, CG
 
     CGFloat leftTx = -width * (1.0 - scale) / 2.0 + extraTx;
     DYYYSetViewTransformWithoutAnimation(view, CGAffineTransformMake(scale, 0.0, 0.0, scale, leftTx, verticalOffset));
-}
-
-static void DYYYApplyLeftAlignedScaleAndOffset(UIView *view, CGFloat scale, CGFloat verticalOffset) {
-    DYYYApplyLeftAlignedScaleAndOffsetXY(view, scale, 0.0, verticalOffset);
 }
 
 static BOOL DYYYIsNicknameElementClassName(NSString *elementClassName) {
@@ -9073,11 +9050,6 @@ static void DYYYRemoveAvatarView(UIView *view) {
     objc_setAssociatedObject(view, &kDYYYAvatarActionRemovedViewKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     view.hidden = YES;
     view.userInteractionEnabled = NO;
-}
-
-static void DYYYRemoveAvatarViewForSelector(id object, SEL selector) {
-    UIView *view = DYYYAvatarViewForSelector(object, selector);
-    DYYYRemoveAvatarView(view);
 }
 
 static void DYYYHideAvatarFollowLayerContents(UIView *view) {
@@ -14604,17 +14576,6 @@ static void DYYYApplySearchShiftIfNeeded(id vc) {
     } @catch (NSException *e) {}
 }
 
-static BOOL DYYYIsSearchVC(id self) {
-    @try {
-        NSString *refer = [self valueForKey:@"referString"];
-        NSString *enter = [self valueForKey:@"enterFrom"];
-        BOOL hit = [refer isKindOfClass:[NSString class]] && [refer containsString:@"search"];
-        return hit;
-    } @catch (NSException *e) {
-        return NO;
-    }
-}
-
 
 static void DYYYUpdateManagedPrivacyHalfScreenAppearance(AFDPrivacyHalfScreenViewController *viewController) {
     BOOL isDarkMode = [DYYYUtils isDarkMode];
@@ -16915,34 +16876,6 @@ static void DYYYExpandPlayInteraction(UIView *root);
 
 // v250: 只对单个 cell 里的 player VC 拉高。
 // v252probe: 写沙盒日志，定位错位时 cell/player VC 的状态
-static void DYYYProbeCellLog(NSString *format, ...) {
-    static dispatch_queue_t sDQ;
-    static dispatch_once_t sOnce;
-    dispatch_once(&sOnce, ^{
-        sDQ = dispatch_queue_create("dyyy.probe.cell", DISPATCH_QUEUE_SERIAL);
-    });
-    va_list args;
-    va_start(args, format);
-    NSString *msg = [[NSString alloc] initWithFormat:format arguments:args];
-    va_end(args);
-    dispatch_async(sDQ, ^{
-        NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-        if (dir.length == 0) return;
-        NSString *path = [dir stringByAppendingPathComponent:@"DYYY_probe_cell.log"];
-        NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
-        fmt.dateFormat = @"HH:mm:ss.SSS";
-        NSString *line = [NSString stringWithFormat:@"[%@] %@\n", [fmt stringFromDate:[NSDate date]], msg];
-        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
-        if (!fh) {
-            [line writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
-        } else {
-            [fh seekToEndOfFile];
-            [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
-            [fh closeFile];
-        }
-    });
-}
-
 
 %hook AWEFeedTableView
 - (void)layoutSubviews {
@@ -18563,23 +18496,6 @@ static void _m_v29(id self, SEL _cmd) {
 }
 
 // 写沙盒日志（动态路径，不写死）
-static void DYYYV54Log(NSString *fmt, ...) {
-    @autoreleasepool {
-        va_list ap; va_start(ap, fmt);
-        NSString *s = [[NSString alloc] initWithFormat:fmt arguments:ap];
-        va_end(ap);
-        if (!s) return;
-        NSString *home = NSHomeDirectory();
-        if (home.length == 0) return;
-        NSString *path = [[home stringByAppendingPathComponent:@"Documents"]
-                          stringByAppendingPathComponent:@"dyyy_v54.log"];
-        FILE *fp = fopen(path.UTF8String, "a");
-        if (!fp) return;
-        fputs(([s stringByAppendingString:@"\n"]).UTF8String, fp);
-        fclose(fp);
-    }
-}
-
 // ============================================================
 // v179: DCV 布局完成后把 RC.view 拉回 852（父改子，不循环）
 // ============================================================
