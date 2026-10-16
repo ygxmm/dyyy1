@@ -7890,6 +7890,12 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
     return YES;
 }
 
+
+- (BOOL)getFeedIphoneAutoPlayState {
+    BOOL r = %orig;
+    return YES;
+}
+
 %end
 
 %hook AWEFeedModuleService
@@ -7899,13 +7905,6 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
 }
 %end
 
-%hook AWEFeedIPhoneAutoPlayManager
-
-- (BOOL)getFeedIphoneAutoPlayState {
-    BOOL r = %orig;
-    return YES;
-}
-%end
 
 %end
 
