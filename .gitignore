@@ -2,6 +2,10 @@
 packages
 .DS_Store
 
-# 忽略备份文件
+# 忽略备份/临时文件
 *.bak
 *.bak.*
+*.backup
+*.backup.*
+DYYY-current.xm
+DYYY.xm.before_*
