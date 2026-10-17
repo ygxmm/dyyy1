@@ -17689,27 +17689,29 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     BOOL forceHide = DYYYGetBool(@"DYYYHideDotsIndicator");
     %orig(forceHide ? YES : hidden);
 }
-// v357: 首页全屏时图集翻页器上移 60
+// v357/v387: 首页全屏时图集翻页器上移 60
 - (void)layoutSubviews {
     %orig;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    // 只处理图集模式的翻页器
+    if (DYYYGetBool(@"DYYYEnableFullScreen") == NO) return;
     UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-    if (!vc) return;
-    // 父 VC 是 AWEPlayInteractionViewController 且里面是 RichContent 才算图集
+    if (vc == nil) return;
     BOOL isRichContent = NO;
+    BOOL hasPlayInteraction = NO;
+    Class playInteractionClass = NSClassFromString(@"AWEPlayInteractionViewController");
     UIResponder *r = vc;
     int depth = 0;
-    while (r && depth++ < 10) {
+    while (r && depth++ < 15) {
         NSString *cn = NSStringFromClass([r class]);
         if ([cn containsString:@"RichContent"] || [cn containsString:@"MultiContent"]) {
             isRichContent = YES;
-            break;
         }
+        if (playInteractionClass && [r isKindOfClass:playInteractionClass]) {
+            hasPlayInteraction = YES;
+        }
+        if (isRichContent && hasPlayInteraction) break;
         r = r.nextResponder;
     }
-    if (!isRichContent) return;
-
+    if (isRichContent == NO || hasPlayInteraction == NO) return;
     CGRect f = self.frame;
     f.origin.y -= 60.0;
     self.frame = f;
