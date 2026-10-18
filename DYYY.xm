@@ -18154,7 +18154,19 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 - (void)setTransform:(CGAffineTransform)transform {
     if (DYYYGetBool(@"DYYYEnableCommentBlur")) {
-        return;
+        UIResponder *rr = self.nextResponder;
+        int d = 0;
+        BOOL inComment = NO;
+        while (rr && d++ < 15) {
+            if ([NSStringFromClass([rr class]) containsString:@"Comment"]) {
+                inComment = YES;
+                break;
+            }
+            rr = rr.nextResponder;
+        }
+        if (inComment) {
+            return;
+        }
     }
     %orig(transform);
 }
