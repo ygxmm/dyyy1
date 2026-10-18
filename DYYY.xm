@@ -15883,6 +15883,7 @@ static Class tabBarButtonClass = nil;
     }
 
     // 同一次布局里最多只回溯一次响应链，下面两段判定共用结果。
+    if (fabs(self.frame.size.height - originalTabBarHeight) > 0.5) return;
     UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
 
     if (enableFS) {
