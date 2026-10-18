@@ -18546,7 +18546,10 @@ static void v179_dcvLayout(id self, SEL _cmd) {
                 if (!cv) continue;
                 CGRect f = cv.frame;
                 if (fabs(f.size.height - h) > 1.0 || fabs(f.origin.y) > 1.0) {
-                    cv.frame = CGRectMake(0, 0, w, h);
+                    CGFloat dy = -f.origin.y;
+                    CGFloat sy = (h > 0 && f.size.height > 0) ? (h / f.size.height) : 1.0;
+                    cv.transform = CGAffineTransformMakeScale(1.0, sy);
+                    cv.transform = CGAffineTransformTranslate(cv.transform, 0, dy / sy);
                 }
                 cv.clipsToBounds = NO;
             }
