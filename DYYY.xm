@@ -15854,7 +15854,7 @@ static Class tabBarButtonClass = nil;
                 if (fabs(f.origin.x) < 0.5 && fabs(f.origin.y) < 0.5 &&
                     fabs(f.size.width - screenW) < 1.0 &&
                     f.size.height > 40.0 && f.size.height < 80.0) {
-                    UIResponder *rr = self.nextResponder;
+                    UIResponder *rr = [(UIView *)self nextResponder];
                     int guard = 0;
                     while (rr && guard++ < 12) {
                         if ([rr isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")]) {
