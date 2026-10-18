@@ -7733,7 +7733,7 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
 %hook AWEAwemeDetailContainerPlayControlConfig
 
 - (BOOL)enableUserProfilePostAutoPlay {
-    return YES;
+    return %orig;
 }
 
 %end
@@ -7741,13 +7741,12 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
 %hook AWEFeedIPhoneAutoPlayManager
 
 - (BOOL)isAutoPlayOpen {
-    return YES;
+    return %orig;
 }
 
 
 - (BOOL)getFeedIphoneAutoPlayState {
-    BOOL r = %orig;
-    return YES;
+    return %orig;
 }
 
 %end
@@ -7755,7 +7754,7 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
 %hook AWEFeedModuleService
 
 - (BOOL)getFeedIphoneAutoPlayState {
-    return YES;
+    return %orig;
 }
 %end
 
