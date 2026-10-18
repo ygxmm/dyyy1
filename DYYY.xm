@@ -7725,7 +7725,7 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
 %hook AWEAwemeDetailTableViewController
 
 - (BOOL)hasIphoneAutoPlaySwitch {
-    return YES;
+    return %orig;
 }
 
 %end
