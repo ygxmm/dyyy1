@@ -16819,16 +16819,22 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 - (void)viewDidLayoutSubviews {
     %orig;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        // DYYY修复：直接改主视图高度到屏幕高度，并解除裁剪
-        // 里面的 TTMetalViewVP 是 clips=0，会自动溢出到 852
+        CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
         CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
         UIView *vw = self.view;
         if (vw) {
             vw.clipsToBounds = NO;
-            if (fabs(CGRectGetHeight(vw.frame) - screenH) > 0.5) {
-                CGRect f = vw.frame;
-                f.size.height = screenH;
-                vw.frame = f;
+            CGRect f = vw.frame;
+            if (fabs(f.size.height - screenH) > 0.5 ||
+                fabs(f.size.width - screenW) > 0.5 ||
+                fabs(f.origin.x) > 0.5 ||
+                fabs(f.origin.y) > 0.5) {
+                [CATransaction begin];
+                [CATransaction setDisableActions:YES];
+                vw.frame = CGRectMake(0, 0, screenW, screenH);
+                vw.bounds = CGRectMake(0, 0, screenW, screenH);
+                vw.center = CGPointMake(screenW / 2.0, screenH / 2.0);
+                [CATransaction commit];
             }
         }
     }
@@ -16864,21 +16870,7 @@ static void DYYYExpandPlayInteraction(UIView *root);
 // v252probe: 写沙盒日志，定位错位时 cell/player VC 的状态
 
 %hook AWEFeedTableView
-- (void)layoutSubviews {
-    %orig;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-
-    // v336: table 高 852，clipsToBounds=NO，cell 高由 table 高度决定
-    CGFloat screenH = self.superview.bounds.size.height;
-    if (screenH > 100) {
-        CGRect f = self.frame;
-        if (fabs(f.size.height - screenH) > 0.5) {
-            f.size.height = screenH;
-            self.frame = f;
-        }
-    }
-    if (self.clipsToBounds) self.clipsToBounds = NO;
-}
+// v404: 移除撑高逻辑，交给 Merge 处理
 %end
 
 %hook AWEFeedTableViewCell
