@@ -25,18 +25,31 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view);
 
 #import "AwemeHeaders.h"
 
-// ===== 探针日志 (v387-debug) =====
+// ===== 探针日志 (v413-debug) =====
 static void DYYYHangProbeLog(NSString *method, UIView *view) {
+    // 过滤：只记录特定类，防止全量刷屏
+    NSString *cls = NSStringFromClass([view class]);
+    if (![cls containsString:@"Shop"] && ![cls containsString:@"Mall"] && 
+        ![cls containsString:@"Detail"] && ![cls containsString:@"Comment"]) {
+        return;
+    }
+    // 限流：每 20 毫秒最多写一次
+    static NSTimeInterval lastTime = 0;
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+    if (now - lastTime < 0.02) return;
+    lastTime = now;
+
     static NSInteger count = 0;
     if (count >= 5000) return;
     count++;
-    NSString *cls = NSStringFromClass([view class]);
     NSString *log = [NSString stringWithFormat:@"[%@] %@ frame=%@\n", method, cls, NSStringFromCGRect(view.frame)];
     NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy-hang.log"];
     FILE *fp = fopen([path UTF8String], "a");
     if (fp) { fputs([log UTF8String], fp); fclose(fp); }
 }
 // ==================================
+
+
 
 #import "CityManager.h"
 #import "DYYYBottomAlertView.h"
@@ -4204,6 +4217,7 @@ static inline BOOL DYYYLayerHookNeeded(void) {
 }
 
 - (void)setFrame:(CGRect)frame {
+    DYYYHangProbeLog(@"setFrame", self);
     if (!DYYYGetBool(@"DYYYCommentExactTime") || ![self respondsToSelector:@selector(text)]) {
         %orig(frame);
         return;
@@ -15715,7 +15729,6 @@ static Class tabBarButtonClass = nil;
 %hook UIView
 
 - (void)setHidden:(BOOL)hidden {
-    DYYYHangProbeLog(@"setHidden", self);
     BOOL shouldForceHidden = DYYYShouldForceAvatarActionViewHidden(self) ||
                              DYYYShouldForceAvatarSurroundingViewHidden(self) ||
                              DYYYShouldForceHideFeedVideoCollectButtonView(self);
@@ -15846,9 +15859,11 @@ static Class tabBarButtonClass = nil;
     }
 
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-        if ([vc isKindOfClass:%c(AWEAwemeDetailTableViewController)] ||
-            [vc isKindOfClass:%c(AWEAwemeDetailCellViewController)]) {
+        // v412: 原位置修复，放弃昂贵的响应链回溯，直接判断当前类的 nextResponder
+        UIResponder *next = self.nextResponder;
+        if ([next isKindOfClass:%c(AWEAwemeDetailTableViewController)] ||
+            [next isKindOfClass:%c(AWEAwemeDetailCellViewController)] ||
+            [next isKindOfClass:%c(AWEPlayInteractionViewController)]) {
             %orig([UIColor clearColor]);
             return;
         }
@@ -15914,7 +15929,6 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)setFrame:(CGRect)frame {
-    DYYYHangProbeLog(@"setFrame", self);
     // v382: 卡帧优化 —— 最便宜的 isMemberOfClass 放最前面
     // 99% 的 setFrame 调用来自 UILabel/UIButton/UIImageView 等子类，
     // 一行判定立即跳过，完全不碰关联对象（objc_getAssociatedObject 有全局锁，最贵）。
@@ -18526,7 +18540,6 @@ static void (*v179_orig_dcvLayout)(id, SEL) = NULL;
 
 static void v179_dcvLayout(id self, SEL _cmd) {
     if (v179_orig_dcvLayout) v179_orig_dcvLayout(self, _cmd);
-    DYYYHangProbeLog(@"v179_dcvLayout", ((UIViewController *)self).view);
     @try {
         if (![self isKindOfClass:[UIViewController class]]) return;
         UIViewController *vc = (UIViewController *)self;
