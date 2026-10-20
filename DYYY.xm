@@ -2380,6 +2380,24 @@ static void DYYYProbeVideoModel(id video, NSString *tag) {
     });
 }
 
+
+static NSInteger DYYYResFromGearName(NSString *name) {
+    if (!name.length) return 0;
+    NSUInteger i = 0;
+    while (i < name.length && isdigit([name characterAtIndex:i])) i++;
+    if (i > 0) {
+        NSInteger v = [[name substringToIndex:i] integerValue];
+        if (v >= 240 && v <= 4320) return v;
+    }
+    for (NSString *p in [name componentsSeparatedByString:@"_"]) {
+        if (p.length < 3 || p.length > 4) continue;
+        BOOL d = YES;
+        for (NSUInteger j = 0; j < p.length; j++) if (!isdigit([p characterAtIndex:j])) { d = NO; break; }
+        if (d) { NSInteger v = [p integerValue]; if (v >= 240 && v <= 4320) return v; }
+    }
+    return 0;
+}
+
 %hook AWEVideoBSModel
 - (NSString *)hdrType {
     if (DYYYShouldDisableAllHDR()) return @"0";
@@ -2406,13 +2424,15 @@ static void DYYYProbeVideoModel(id video, NSString *tag) {
 
     // 查找比特率最高的模型
     id highestBitrateModel = nil;
-    NSInteger highestBitrate = 0;
+    NSInteger bestRes = 0, bestBr = 0;
 
     for (id model in bitrateModels) {
-        NSInteger bitrate = DYYYBitrateForBitrateModel(model);
-        if (bitrate >= 0 && bitrate > highestBitrate) {
-            highestBitrate = bitrate;
-            highestBitrateModel = model;
+        NSString *gn = [model valueForKey:@"gearName"];
+        NSInteger res = DYYYResFromGearName(gn);
+        NSNumber *brn = [model valueForKey:@"bitrate"];
+        NSInteger br = brn ? [brn integerValue] : 0;
+        if (res > bestRes || (res == bestRes && br > bestBr)) {
+            bestRes = res; bestBr = br; highestBitrateModel = model;
         }
     }
 
@@ -2436,10 +2456,15 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
         @try {
             NSArray *ms = [self bitrateModels];
             id top = nil;
-            NSInteger highest = 0;
+            NSInteger bestRes = 0, bestBr = 0;
             for (id m in ms) {
-                NSInteger b = DYYYBitrateForBitrateModel(m);
-                if (b > highest) { highest = b; top = m; }
+                NSString *gn = [m valueForKey:@"gearName"];
+                NSInteger res = DYYYResFromGearName(gn);
+                NSNumber *brn = [m valueForKey:@"bitrate"];
+                NSInteger br = brn ? [brn integerValue] : 0;
+                if (res > bestRes || (res == bestRes && br > bestBr)) {
+                    bestRes = res; bestBr = br; top = m;
+                }
             }
             if (top) {
                 NSString *key = [top valueForKey:@"gearName"];
