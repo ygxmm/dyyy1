@@ -15961,42 +15961,8 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
-    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-    Class PlayVCClass1 = %c(AWEAwemePlayVideoViewController);
-    Class PlayVCClass2 = %c(AWEDPlayerFeedPlayerViewController);
-    Class PlayVCClass3 = %c(AWEDPlayerViewController_Merge);
-
-    BOOL isPlayVC = ((PlayVCClass1 && [vc isKindOfClass:PlayVCClass1]) ||
-                     (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
-                     (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
-
-
-
-
-
-    if (isPlayVC && enableBlur) {
-        if (frame.origin.x != 0) {
-            %orig(frame);
-            return;
-        }
-    }
-
-    if (isPlayVC && enableFS) {
-        if (frame.origin.x != 0 && frame.origin.y != 0) {
-            %orig(frame);
-            return;
-        }
-        CGRect superF = self.superview.frame;
-        if (CGRectGetHeight(superF) > 0 && CGRectGetHeight(frame) > 0 && CGRectGetHeight(frame) < CGRectGetHeight(superF)) {
-            CGFloat diff = CGRectGetHeight(superF) - CGRectGetHeight(frame);
-            if (fabs(diff - gCurrentTabBarHeight) < 1.0) {
-                frame.size.height = CGRectGetHeight(superF);
-            }
-        }
-
-        %orig(frame);
-        return;
-    }
+    // v401: 全屏逻辑全部交给 AWEDPlayerViewController_Merge.viewDidLayoutSubviews
+    // setFrame 只管黑条拦截 + 前置过滤，其他原样透传
     %orig(frame);
 }
 
@@ -16798,15 +16764,18 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 - (void)viewDidLayoutSubviews {
     %orig;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        // DYYY修复：直接改主视图高度到屏幕高度，并解除裁剪
-        // 里面的 TTMetalViewVP 是 clips=0，会自动溢出到 852
+        // v401: 40.7.0 会把宽压到 160、x/y 偏移，宽高 x/y 全部强制
+        CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
         CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
         UIView *vw = self.view;
         if (vw) {
             vw.clipsToBounds = NO;
-            if (fabs(CGRectGetHeight(vw.frame) - screenH) > 0.5) {
-                CGRect f = vw.frame;
-                f.size.height = screenH;
+            CGRect f = vw.frame;
+            if (fabs(f.size.height - screenH) > 0.5 ||
+                fabs(f.size.width - screenW) > 0.5 ||
+                fabs(f.origin.x) > 0.5 ||
+                fabs(f.origin.y) > 0.5) {
+                f = CGRectMake(0, 0, screenW, screenH);
                 vw.frame = f;
             }
         }
