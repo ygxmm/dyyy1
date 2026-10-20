@@ -2412,6 +2412,7 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 }
 
 - (NSArray *)bitrateModels {
+    return %orig; // v434: pure passthrough, HDR handled by getter hooks
     NSArray *originalModels = %orig;
 
     if (DYYYShouldDisableAllHDR()) {
@@ -2464,6 +2465,7 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 }
 
 - (NSArray *)manualBitrateModels {
+    return %orig; // v434: pure passthrough, HDR handled by getter hooks
     NSArray *models = %orig;
     if (DYYYShouldDisableAllHDR()) {
         models = DYYYFilteredSDRBitrateModels(models);
@@ -2477,6 +2479,7 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 }
 
 - (NSArray *)bitrateRawData {
+    return %orig; // v434: pure passthrough, HDR handled by getter hooks
     NSArray *rawData = %orig;
     if (DYYYShouldDisableAllHDR()) {
         rawData = DYYYFilteredSDRRawBitrateData(rawData);
