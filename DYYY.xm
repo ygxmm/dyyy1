@@ -25,34 +25,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view);
 
 #import "AwemeHeaders.h"
 
-// ===== 探针日志 (v416-WatchdogProbe) =====
-static void DYYYWatchdogProbe(NSString *method, UIView *view) {
-    // 过滤：只抓取疑似导致卡死的组件类，防止刷屏
-    NSString *cls = NSStringFromClass([view class]);
-    NSString *superCls = NSStringFromClass([view superclass]);
-    if (![cls containsString:@"Detail"] && 
-        ![cls containsString:@"Mall"] && 
-        ![cls containsString:@"Shop"] && 
-        ![cls containsString:@"Lynx"] &&
-        ![cls containsString:@"FeedCell"]) {
-        return;
-    }
-
-    // 极限限流：每 50 毫秒最多写一次，防止文件 I/O 卡死主线程
-    static NSTimeInterval lastTime = 0;
-    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-    if (now - lastTime < 0.05) return;
-    lastTime = now;
-
-    // 记录 nextResponder，帮我们找爹
-    NSString *nextResp = NSStringFromClass([[view nextResponder] class]);
-    
-    NSString *log = [NSString stringWithFormat:@"[HangProbe] %@ | Self: %@ | Super: %@ | NextResp: %@\n", method, cls, superCls, nextResp];
-    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_watchdog.log"];
-    FILE *fp = fopen([path UTF8String], "a");
-    if (fp) { fputs([log UTF8String], fp); fclose(fp); }
-}
-// ==================================
 
 
 
@@ -1736,7 +1708,6 @@ static void DYYYScheduleCurrentAwemeTracking(id source, id fallbackAweme) {
 %hook AWEProfileMentionLabel
 
 - (void)layoutSubviews {
-    DYYYWatchdogProbe(@"layoutSubviews", self);
     %orig;
 
     if (!DYYYGetBool(@"DYYYBioCopyText")) {
@@ -4225,7 +4196,6 @@ static inline BOOL DYYYLayerHookNeeded(void) {
 }
 
 - (void)setFrame:(CGRect)frame {
-    DYYYWatchdogProbe(@"setFrame", self);
     if (!DYYYGetBool(@"DYYYCommentExactTime") || ![self respondsToSelector:@selector(text)]) {
         %orig(frame);
         return;
@@ -15848,7 +15818,6 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)setBackgroundColor:(UIColor *)backgroundColor {
-    DYYYWatchdogProbe(@"setBackgroundColor", self);
     if (![NSThread isMainThread]) {
         dispatch_async(dispatch_get_main_queue(), ^{
           [self setBackgroundColor:backgroundColor];
@@ -15866,16 +15835,8 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        // v412: 原位置修复，放弃昂贵的响应链回溯，直接判断当前类的 nextResponder
-        UIResponder *next = self.nextResponder;
-        if ([next isKindOfClass:%c(AWEAwemeDetailTableViewController)] ||
-            [next isKindOfClass:%c(AWEAwemeDetailCellViewController)] ||
-            [next isKindOfClass:%c(AWEPlayInteractionViewController)]) {
-            %orig([UIColor clearColor]);
-            return;
-        }
-    }
+    // v417: 移除此处全局拦截，商品详情页不再冻屏
+
 
     // v373: 拦截顶部 59px 黑占位 UIView 的背景色设置（抖音每帧重设黑，事后清无效）
     // 判据：裸 UIView + 纯黑不透明 + frame={0,0,屏宽,40~80} + 响应链能追到 AWEPlayInteractionViewController
@@ -18665,3 +18626,16 @@ static id DYYYBestDownloadAddr(id videoModel) {
     return best;
 }
 
+
+// v418: 换爹方案，精准接管详情页 Cell 的背景色，解决商品页冻屏并保持全屏透明
+%hook AWEAwemeDetailTableViewCell
+
+- (void)layoutSubviews {
+    %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        self.backgroundColor = [UIColor clearColor];
+        self.contentView.backgroundColor = [UIColor clearColor];
+    }
+}
+
+%end
