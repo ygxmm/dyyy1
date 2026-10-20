@@ -11412,27 +11412,11 @@ static void DYYYLiveDurationInstallFromInnerFeedCell(id cell) {
 
 - (void)layoutSubviews {
     %orig;
-
-    BOOL shouldHide = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYHideStoryProgressSlide"];
-    if (!shouldHide)
-        return;
-
-    static char kDYStoryProgressCacheKey;
-    UIView *targetView = objc_getAssociatedObject(self, &kDYStoryProgressCacheKey);
-    if (!targetView) {
-        for (UIView *obj in self.subviews) {
-            if ([obj isKindOfClass:NSClassFromString(@"UISlider")] || obj.frame.size.height < 5) {
-                targetView = obj.superview;
-                break;
-            }
-        }
-        if (targetView) {
-            objc_setAssociatedObject(self, &kDYStoryProgressCacheKey, targetView, OBJC_ASSOCIATION_ASSIGN);
-        }
-    }
-
-    if (targetView) {
-        targetView.hidden = YES;
+    // v426: 安全重写，直接隐藏自己，不再遍历子视图存野指针
+    if (DYYYGetBool(@"DYYYHideStoryProgressSlide")) {
+        self.hidden = YES;
+    } else {
+        self.hidden = NO;
     }
 }
 
@@ -17445,72 +17429,56 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 - (void)layoutSubviews {
     %orig;
-    if ([self.subviews count] == 2)
-        return;
-
-    // 获取 enableEnterProfile 属性来判断是否是主页
-    // v236: KVC 返回可能是原始 BOOL（0x1），直接 [obj boolValue] 会 SIGSEGV。
-    // 先判指针是否落在合法对象内存区，再判类型。
-    id enableEnterProfile = nil;
-    @try {
-        enableEnterProfile = [self valueForKey:@"enableEnterProfile"];
-    } @catch (NSException *e) {
-        enableEnterProfile = nil;
+    
+    // v426: 严格隔离小日常，防止 UIKit 死锁和爆栈
+    UIResponder *responder = self;
+    while (responder) {
+        NSString *cls = NSStringFromClass([responder class]);
+        if ([cls containsString:@"Story"] || [cls containsString:@"Moment"]) {
+            return; // 如果是小日常，直接放弃修改，保持原生布局
+        }
+        responder = responder.nextResponder;
     }
+    
+    if ([self.subviews count] == 2) return;
+    
+    id enableEnterProfile = nil;
+    @try { enableEnterProfile = [self valueForKey:@"enableEnterProfile"]; } @catch (NSException *e) {}
     BOOL isHome = NO;
     uintptr_t raw = (uintptr_t)enableEnterProfile;
     if (raw >= 0x100000000ULL && raw <= 0x0000FFFFFFFFFFFFULL) {
         if ([enableEnterProfile isKindOfClass:[NSNumber class]]) {
             isHome = [enableEnterProfile boolValue];
-        } else if ([enableEnterProfile respondsToSelector:@selector(boolValue)]) {
-            isHome = [enableEnterProfile boolValue];
         }
     }
-
-    // 检查是否在作者主页
+    
     BOOL isAuthorProfile = NO;
-    UIResponder *responder = self;
+    responder = self;
     while ((responder = [responder nextResponder])) {
-        if ([NSStringFromClass([responder class]) containsString:@"UserHomeViewController"] || [NSStringFromClass([responder class]) containsString:@"ProfileViewController"]) {
+        NSString *cls = NSStringFromClass([responder class]);
+        if ([cls containsString:@"UserHomeViewController"] || [cls containsString:@"ProfileViewController"]) {
             isAuthorProfile = YES;
             break;
         }
     }
-
-    // 如果不是主页也不是作者主页，直接返回
-    if (!isHome && !isAuthorProfile)
-        return;
-
+    
+    if (!isHome && !isAuthorProfile) return;
+    
     for (UIView *subview in self.subviews) {
         if ([subview isKindOfClass:[UIView class]]) {
             UIView *nextResponder = (UIView *)subview.nextResponder;
-
-            // 处理主页的情况
             if (isHome && [nextResponder isKindOfClass:%c(AWEPlayInteractionViewController)]) {
-                UIViewController *awemeBaseViewController = [nextResponder valueForKey:@"awemeBaseViewController"];
-                if (![awemeBaseViewController isKindOfClass:%c(AWEFeedCellViewController)]) {
-                    continue;
-                }
-
-                // 首页全屏：不重复修改播放交互视图高度。
-                // 避免与原生分页布局发生冲突。
+                // 首页逻辑保持原样
             }
-            // 处理作者主页的情况
             else if (isAuthorProfile) {
-                // 检查是否是作品图片
                 BOOL isWorkImage = NO;
-
-                // 可以通过检查子视图、标签或其他特性来确定是否是作品图片
                 for (UIView *childView in subview.subviews) {
                     if ([NSStringFromClass([childView class]) containsString:@"ImageView"] || [NSStringFromClass([childView class]) containsString:@"ThumbnailView"]) {
                         isWorkImage = YES;
                         break;
                     }
                 }
-
                 if (isWorkImage) {
-                    // 修复作者主页作品图片上移问题
-                    // v230b: 记上次应用后的 y，避免 layout 反复触发导致 origin.y += 累积
                     static char kDYYYWorkImageAppliedYKey;
                     NSNumber *appliedYNum = objc_getAssociatedObject(subview, &kDYYYWorkImageAppliedYKey);
                     CGFloat currentY = subview.frame.origin.y;
@@ -17525,15 +17493,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
             }
         }
     }
-}
-
-- (void)setFrame:(CGRect)frame {
-    if (DYYYGetBool(@"DYYYEnableCommentBlur")) {
-        if (frame.origin.y != 0) {
-            return;
-        }
-    }
-    %orig(frame);
 }
 
 %end
@@ -17666,55 +17625,18 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 // 隐藏图片滑条
 %hook AWEStoryProgressContainerView
-- (void)setCenter:(CGPoint)center {
-    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-    BOOL isPureModeImageBrowser = [vc isKindOfClass:NSClassFromString(@"AWEFeedPlayControlImpl.PureModePageCellViewController")];
-    if (isPureModeImageBrowser && DYYYGetBool(@"DYYYEnableFullScreen")) {
-        NSString *appVersion = [NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"];
-        BOOL needsLegacyOffset = appVersion.length == 0 || [DYYYUtils compareVersion:appVersion toVersion:@"37.2.0"] == NSOrderedAscending;
-        if (needsLegacyOffset && gCurrentTabBarHeight > 0) {
-            center.y -= gCurrentTabBarHeight;
-        }
-    }
-    %orig(center);
-}
 
 - (BOOL)isHidden {
     BOOL originalValue = %orig;
-    BOOL customHide = DYYYGetBool(@"DYYYHideDotsIndicator");
-    return originalValue || customHide;
+    if (DYYYGetBool(@"DYYYHideDotsIndicator")) {
+        return YES;
+    }
+    return originalValue;
 }
 
 - (void)setHidden:(BOOL)hidden {
     BOOL forceHide = DYYYGetBool(@"DYYYHideDotsIndicator");
     %orig(forceHide ? YES : hidden);
-}
-// v357/v387: 首页全屏时图集翻页器上移 60
-- (void)layoutSubviews {
-    %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen") == NO) return;
-    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-    if (vc == nil) return;
-    BOOL isRichContent = NO;
-    BOOL hasPlayInteraction = NO;
-    Class playInteractionClass = NSClassFromString(@"AWEPlayInteractionViewController");
-    UIResponder *r = vc;
-    int depth = 0;
-    while (r && depth++ < 15) {
-        NSString *cn = NSStringFromClass([r class]);
-        if ([cn containsString:@"RichContent"] || [cn containsString:@"MultiContent"]) {
-            isRichContent = YES;
-        }
-        if (playInteractionClass && [r isKindOfClass:playInteractionClass]) {
-            hasPlayInteraction = YES;
-        }
-        if (isRichContent && hasPlayInteraction) break;
-        r = r.nextResponder;
-    }
-    if (isRichContent == NO || hasPlayInteraction == NO) return;
-    CGRect f = self.frame;
-    f.origin.y -= 60.0;
-    self.frame = f;
 }
 
 %end
