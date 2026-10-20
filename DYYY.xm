@@ -16775,8 +16775,13 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
                 fabs(f.size.width - screenW) > 0.5 ||
                 fabs(f.origin.x) > 0.5 ||
                 fabs(f.origin.y) > 0.5) {
-                f = CGRectMake(0, 0, screenW, screenH);
-                vw.frame = f;
+                // v403: 禁用隐式动画，同时强拉 frame/bounds/center，防止被原生动画覆盖
+                [CATransaction begin];
+                [CATransaction setDisableActions:YES];
+                vw.frame = CGRectMake(0, 0, screenW, screenH);
+                vw.bounds = CGRectMake(0, 0, screenW, screenH);
+                vw.center = CGPointMake(screenW / 2.0, screenH / 2.0);
+                [CATransaction commit];
             }
         }
     }
