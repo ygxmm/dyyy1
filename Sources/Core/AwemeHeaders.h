@@ -1862,6 +1862,8 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 
 @interface AWEVideoBSModel : NSObject
+@property(copy, nonatomic) NSString *hdrType;
+@property(copy, nonatomic) NSString *hdrBit;
 @property(nonatomic) NSNumber *bitrate;
 @property(nonatomic) AWEURLModel *playAddr;
 @end

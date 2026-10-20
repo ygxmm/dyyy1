@@ -2345,6 +2345,17 @@ static NSInteger DYYYBitrateForBitrateModel(id model) {
 }
 
 // 默认视频流最高画质
+%hook AWEVideoBSModel
+- (NSString *)hdrType {
+    if (DYYYShouldDisableAllHDR()) return @"0";
+    return %orig;
+}
+- (NSString *)hdrBit {
+    if (DYYYShouldDisableAllHDR()) return @"8";
+    return %orig;
+}
+%end
+
 %hook AWEVideoModel
 
 - (AWEURLModel *)playURL {
@@ -2717,10 +2728,11 @@ static BOOL DYYYBitrateModelLooksHDR(id bitrateModel) {
         return DYYYRawBitrateDictionaryLooksHDR((NSDictionary *)bitrateModel);
     }
 
-    id hdrTypeValue = DYYYKVCValueIfPossible(bitrateModel, @"hdrType");
-    id hdrBitValue = DYYYKVCValueIfPossible(bitrateModel, @"hdrBit");
-    NSInteger hdrType = DYYYIntegerValueForKeyIfPossible(bitrateModel, @"hdrType", 0);
-    NSInteger hdrBit = DYYYIntegerValueForKeyIfPossible(bitrateModel, @"hdrBit", 0);
+    // v432: read raw ivar to bypass hdrType/hdrBit getter hook
+    id hdrTypeValue = DYYYIvarValueIfPossible(bitrateModel, "_hdrType");
+    id hdrBitValue = DYYYIvarValueIfPossible(bitrateModel, "_hdrBit");
+    NSInteger hdrType = [hdrTypeValue respondsToSelector:@selector(integerValue)] ? [hdrTypeValue integerValue] : 0;
+    NSInteger hdrBit = [hdrBitValue respondsToSelector:@selector(integerValue)] ? [hdrBitValue integerValue] : 0;
     BOOL hasHdrType = DYYYIntegerValueForKeyIfPossible(bitrateModel, @"hasHdrType", 0) > 0;
     BOOL hasHdrBit = DYYYIntegerValueForKeyIfPossible(bitrateModel, @"hasHdrBit", 0) > 0;
 
