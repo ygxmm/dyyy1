@@ -2399,8 +2399,13 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
     if (DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality")) {
         @try {
             NSArray *ms = [self bitrateModels];
-            if (ms.count > 0) {
-                id top = ms.firstObject;
+            id top = nil;
+            NSInteger highest = 0;
+            for (id m in ms) {
+                NSInteger b = DYYYBitrateForBitrateModel(m);
+                if (b > highest) { highest = b; top = m; }
+            }
+            if (top) {
                 NSString *key = [top valueForKey:@"gearName"];
                 if ([key isKindOfClass:[NSString class]] && key.length > 0) {
                     return key;
