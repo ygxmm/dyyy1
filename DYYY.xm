@@ -25,6 +25,36 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view);
 
 #import "AwemeHeaders.h"
 
+// ===== 探针日志 (v416-WatchdogProbe) =====
+static void DYYYWatchdogProbe(NSString *method, UIView *view) {
+    // 过滤：只抓取疑似导致卡死的组件类，防止刷屏
+    NSString *cls = NSStringFromClass([view class]);
+    NSString *superCls = NSStringFromClass([view superclass]);
+    if (![cls containsString:@"Detail"] && 
+        ![cls containsString:@"Mall"] && 
+        ![cls containsString:@"Shop"] && 
+        ![cls containsString:@"Lynx"] &&
+        ![cls containsString:@"FeedCell"]) {
+        return;
+    }
+
+    // 极限限流：每 50 毫秒最多写一次，防止文件 I/O 卡死主线程
+    static NSTimeInterval lastTime = 0;
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+    if (now - lastTime < 0.05) return;
+    lastTime = now;
+
+    // 记录 nextResponder，帮我们找爹
+    NSString *nextResp = NSStringFromClass([[view nextResponder] class]);
+    
+    NSString *log = [NSString stringWithFormat:@"[HangProbe] %@ | Self: %@ | Super: %@ | NextResp: %@\n", method, cls, superCls, nextResp];
+    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_watchdog.log"];
+    FILE *fp = fopen([path UTF8String], "a");
+    if (fp) { fputs([log UTF8String], fp); fclose(fp); }
+}
+// ==================================
+
+
 
 
 
@@ -1706,6 +1736,7 @@ static void DYYYScheduleCurrentAwemeTracking(id source, id fallbackAweme) {
 %hook AWEProfileMentionLabel
 
 - (void)layoutSubviews {
+    DYYYWatchdogProbe(@"layoutSubviews", self);
     %orig;
 
     if (!DYYYGetBool(@"DYYYBioCopyText")) {
@@ -4194,6 +4225,7 @@ static inline BOOL DYYYLayerHookNeeded(void) {
 }
 
 - (void)setFrame:(CGRect)frame {
+    DYYYWatchdogProbe(@"setFrame", self);
     if (!DYYYGetBool(@"DYYYCommentExactTime") || ![self respondsToSelector:@selector(text)]) {
         %orig(frame);
         return;
@@ -15816,6 +15848,7 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)setBackgroundColor:(UIColor *)backgroundColor {
+    DYYYWatchdogProbe(@"setBackgroundColor", self);
     if (![NSThread isMainThread]) {
         dispatch_async(dispatch_get_main_queue(), ^{
           [self setBackgroundColor:backgroundColor];
