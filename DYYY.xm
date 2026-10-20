@@ -24,6 +24,20 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view);
 #import <syslog.h>
 
 #import "AwemeHeaders.h"
+
+// ===== 探针日志 (v387-debug) =====
+static void DYYYHangProbeLog(NSString *method, UIView *view) {
+    static NSInteger count = 0;
+    if (count >= 5000) return;
+    count++;
+    NSString *cls = NSStringFromClass([view class]);
+    NSString *log = [NSString stringWithFormat:@"[%@] %@ frame=%@\n", method, cls, NSStringFromCGRect(view.frame)];
+    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy-hang.log"];
+    FILE *fp = fopen([path UTF8String], "a");
+    if (fp) { fputs([log UTF8String], fp); fclose(fp); }
+}
+// ==================================
+
 #import "CityManager.h"
 #import "DYYYBottomAlertView.h"
 #import "DYYYGlassConfirmView.h"
@@ -15701,6 +15715,7 @@ static Class tabBarButtonClass = nil;
 %hook UIView
 
 - (void)setHidden:(BOOL)hidden {
+    DYYYHangProbeLog(@"setHidden", self);
     BOOL shouldForceHidden = DYYYShouldForceAvatarActionViewHidden(self) ||
                              DYYYShouldForceAvatarSurroundingViewHidden(self) ||
                              DYYYShouldForceHideFeedVideoCollectButtonView(self);
@@ -15812,6 +15827,7 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)setBackgroundColor:(UIColor *)backgroundColor {
+    DYYYHangProbeLog(@"setBackgroundColor", self);
     if (![NSThread isMainThread]) {
         dispatch_async(dispatch_get_main_queue(), ^{
           [self setBackgroundColor:backgroundColor];
@@ -15872,6 +15888,7 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)layoutSubviews {
+    DYYYHangProbeLog(@"layoutSubviews", self);
     %orig;
 
     BOOL enableFS = DYYYGetBoolCached(@"DYYYEnableFullScreen");
@@ -15897,6 +15914,7 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)setFrame:(CGRect)frame {
+    DYYYHangProbeLog(@"setFrame", self);
     // v382: 卡帧优化 —— 最便宜的 isMemberOfClass 放最前面
     // 99% 的 setFrame 调用来自 UILabel/UIButton/UIImageView 等子类，
     // 一行判定立即跳过，完全不碰关联对象（objc_getAssociatedObject 有全局锁，最贵）。
@@ -18508,6 +18526,7 @@ static void (*v179_orig_dcvLayout)(id, SEL) = NULL;
 
 static void v179_dcvLayout(id self, SEL _cmd) {
     if (v179_orig_dcvLayout) v179_orig_dcvLayout(self, _cmd);
+    DYYYHangProbeLog(@"v179_dcvLayout", ((UIViewController *)self).view);
     @try {
         if (![self isKindOfClass:[UIViewController class]]) return;
         UIViewController *vc = (UIViewController *)self;
