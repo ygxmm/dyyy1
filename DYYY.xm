@@ -15953,6 +15953,14 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
+    // v393: 只对播放器容器做响应链回溯，其他 view 直接放行
+    Class MergeCls = %c(AWEDPlayerViewController_Merge);
+    Class PlayVideoCls = %c(AWEPlayVideoViewController);
+    if (![self isKindOfClass:MergeCls] && ![self isKindOfClass:PlayVideoCls]) {
+        %orig(frame);
+        return;
+    }
+
     UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
     Class PlayVCClass1 = %c(AWEAwemePlayVideoViewController);
     Class PlayVCClass2 = %c(AWEDPlayerFeedPlayerViewController);
@@ -15968,6 +15976,7 @@ static Class tabBarButtonClass = nil;
 
     if (isPlayVC && enableBlur) {
         if (frame.origin.x != 0) {
+            %orig(frame);
             return;
         }
     }
