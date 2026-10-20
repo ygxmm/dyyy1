@@ -2345,6 +2345,41 @@ static NSInteger DYYYBitrateForBitrateModel(id model) {
 }
 
 // 默认视频流最高画质
+
+static void DYYYProbeVideoModel(id video, NSString *tag) {
+    if (!video || !tag.length) return;
+    static NSMutableSet *p=nil; static dispatch_once_t t=0;
+    dispatch_once(&t, ^{ p=[NSMutableSet set]; });
+    @synchronized(p){ NSString *k=[NSString stringWithFormat:@"%p_%@",video,tag]; if([p containsObject:k]) return; [p addObject:k]; if(p.count>200) return; }
+    NSString *lp=[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject stringByAppendingPathComponent:@"DYYYQualityProbe.log"];
+    NSMutableString *o=[NSMutableString string];
+    [o appendFormat:@"\n=== %@ v=%p c=%s\n",tag,video,object_getClassName(video)];
+    NSArray *ms=nil; @try { ms=[video valueForKey:@"bitrateModels"]; } @catch (NSException *e) {}
+    if ([ms isKindOfClass:[NSArray class]]) {
+        [o appendFormat:@"count=%lu\n",(unsigned long)ms.count];
+        NSUInteger i=0; for (id m in ms) {
+            if (i>10) { [o appendString:@"...\n"]; break; }
+            NSString *g=nil,*vi=nil,*vt=nil,*ht=nil,*hb=nil,*uk=nil; NSNumber *br=nil,*qt=nil;
+            @try { id v=[m valueForKey:@"gearName"]; if([v isKindOfClass:[NSString class]]) g=v; } @catch (NSException *e) {}
+            @try { id v=[m valueForKey:@"vGearId"]; if([v isKindOfClass:[NSString class]]) vi=v; } @catch (NSException *e) {}
+            @try { id v=[m valueForKey:@"vGearTag"]; if([v isKindOfClass:[NSString class]]) vt=v; } @catch (NSException *e) {}
+            @try { id v=[m valueForKey:@"hdrType"]; if([v isKindOfClass:[NSString class]]) ht=v; } @catch (NSException *e) {}
+            @try { id v=[m valueForKey:@"hdrBit"]; if([v isKindOfClass:[NSString class]]) hb=v; } @catch (NSException *e) {}
+            @try { br=[m valueForKey:@"bitrate"]; } @catch (NSException *e) {}
+            @try { qt=[m valueForKey:@"qualityType"]; } @catch (NSException *e) {}
+            @try { id pa=[m valueForKey:@"playAddr"]; if(pa){ id v=[pa valueForKey:@"URLKey"]; if([v isKindOfClass:[NSString class]]) uk=v; } } @catch (NSException *e) {}
+            [o appendFormat:@"[%lu] cls=%s br=%ld qt=%ld g=%s vi=%s vt=%s ht=%s hb=%s uk=%s\n",(unsigned long)i,object_getClassName(m),br?(long)[br integerValue]:-1L,qt?(long)[qt integerValue]:-1L,g?g.UTF8String:"-",vi?vi.UTF8String:"-",vt?vt.UTF8String:"-",ht?ht.UTF8String:"-",hb?hb.UTF8String:"-",uk?uk.UTF8String:"-"];
+            i++;
+        }
+    } else { [o appendString:@"absent\n"]; }
+    NSString *text=[o copy];
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW,0), ^{
+        NSData *d=[text dataUsingEncoding:NSUTF8StringEncoding];
+        if (![[NSFileManager defaultManager] fileExistsAtPath:lp]) { [d writeToFile:lp atomically:YES]; return; }
+        NSFileHandle *fh=[NSFileHandle fileHandleForWritingAtPath:lp]; [fh seekToEndOfFile]; [fh writeData:d]; [fh closeFile];
+    });
+}
+
 %hook AWEVideoBSModel
 - (NSString *)hdrType {
     if (DYYYShouldDisableAllHDR()) return @"0";
@@ -2385,6 +2420,7 @@ static NSInteger DYYYBitrateForBitrateModel(id model) {
     if (highestBitrateModel) {
         id playAddr = [highestBitrateModel valueForKey:@"playAddr"];
         if (playAddr && [playAddr isKindOfClass:%c(AWEURLModel)]) {
+            DYYYProbeVideoModel(self, @"playURL");
             return playAddr;
         }
     }
@@ -2408,6 +2444,7 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
             if (top) {
                 NSString *key = [top valueForKey:@"gearName"];
                 if ([key isKindOfClass:[NSString class]] && key.length > 0) {
+                    DYYYProbeVideoModel(self, [NSString stringWithFormat:@"curKey=%@", key]);
                     return key;
                 }
             }
