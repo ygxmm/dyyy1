@@ -2433,20 +2433,14 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 
 - (void)setBitrateModels:(NSArray *)bitrateModels {
     if (DYYYShouldDisableAllHDR()) {
-        NSArray *filteredModels = DYYYFilteredSDRBitrateModels(bitrateModels);
-        DYYYStripHDRHintsFromBitrateModels(filteredModels);
-        %orig(filteredModels);
-        return;
+        DYYYStripHDRHintsFromBitrateModels(bitrateModels);
     }
     %orig;
 }
 
 - (void)setManualBitrateModels:(NSArray *)manualBitrateModels {
     if (DYYYShouldDisableAllHDR()) {
-        NSArray *filteredModels = DYYYFilteredSDRBitrateModels(manualBitrateModels);
-        DYYYStripHDRHintsFromBitrateModels(filteredModels);
-        %orig(filteredModels);
-        return;
+        DYYYStripHDRHintsFromBitrateModels(manualBitrateModels);
     }
     %orig;
 }
@@ -2476,10 +2470,6 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 }
 
 - (void)setBitrateRawData:(NSArray *)bitrateRawData {
-    if (DYYYShouldDisableAllHDR()) {
-        %orig(DYYYFilteredSDRRawBitrateData(bitrateRawData));
-        return;
-    }
     %orig;
 }
 
@@ -2988,10 +2978,12 @@ static void DYYYStripHDRHintsFromBitrateModels(NSArray *models) {
     }
 
     for (id model in models) {
-        DYYYSetKVCValueIfPossible(model, @"hdrType", @0);
-        DYYYSetKVCValueIfPossible(model, @"hdrBit", @8);
-        DYYYSetKVCValueIfPossible(model, @"hasHdrType", @NO);
-        DYYYSetKVCValueIfPossible(model, @"hasHdrBit", @NO);
+        if ([model respondsToSelector:@selector(setHdrType:)]) {
+            DYYYSetKVCValueIfPossible(model, @"hdrType", @"0");
+        }
+        if ([model respondsToSelector:@selector(setHdrBit:)]) {
+            DYYYSetKVCValueIfPossible(model, @"hdrBit", @"8");
+        }
     }
 }
 
@@ -3014,25 +3006,17 @@ static void DYYYStripHDRHintsFromVideoModel(id video) {
 
     NSArray *bitrateModels = DYYYKVCValueIfPossible(video, @"bitrateModels");
     NSArray *filteredBitrateModels = DYYYFilteredSDRBitrateModels(bitrateModels);
-    if (filteredBitrateModels && filteredBitrateModels != bitrateModels) {
-        DYYYSetKVCValueIfPossible(video, @"bitrateModels", filteredBitrateModels);
-        bitrateModels = filteredBitrateModels;
-    }
+    (void)filteredBitrateModels;
     DYYYStripHDRHintsFromBitrateModels(bitrateModels);
 
     NSArray *manualBitrateModels = DYYYKVCValueIfPossible(video, @"manualBitrateModels");
     NSArray *filteredManualBitrateModels = DYYYFilteredSDRBitrateModels(manualBitrateModels);
-    if (filteredManualBitrateModels && filteredManualBitrateModels != manualBitrateModels) {
-        DYYYSetKVCValueIfPossible(video, @"manualBitrateModels", filteredManualBitrateModels);
-        manualBitrateModels = filteredManualBitrateModels;
-    }
+    (void)filteredManualBitrateModels;
     DYYYStripHDRHintsFromBitrateModels(manualBitrateModels);
 
     NSArray *bitrateRawData = DYYYValuePreferringIvar(video, "_bitrateRawData", @"bitrateRawData");
     NSArray *filteredBitrateRawData = DYYYFilteredSDRRawBitrateData(bitrateRawData);
-    if (filteredBitrateRawData && filteredBitrateRawData != bitrateRawData) {
-        DYYYSetKVCValueIfPossible(video, @"bitrateRawData", filteredBitrateRawData);
-    }
+    (void)filteredBitrateRawData;
 }
 
 static void DYYYStripHDRHintsFromAwemeModel(id aweme) {
