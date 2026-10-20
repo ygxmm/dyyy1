@@ -25,29 +25,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view);
 
 #import "AwemeHeaders.h"
 
-// ===== 探针日志 (v413-debug) =====
-static void DYYYHangProbeLog(NSString *method, UIView *view) {
-    // 过滤：只记录特定类，防止全量刷屏
-    NSString *cls = NSStringFromClass([view class]);
-    if (![cls containsString:@"Shop"] && ![cls containsString:@"Mall"] && 
-        ![cls containsString:@"Detail"] && ![cls containsString:@"Comment"]) {
-        return;
-    }
-    // 限流：每 20 毫秒最多写一次
-    static NSTimeInterval lastTime = 0;
-    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-    if (now - lastTime < 0.02) return;
-    lastTime = now;
-
-    static NSInteger count = 0;
-    if (count >= 5000) return;
-    count++;
-    NSString *log = [NSString stringWithFormat:@"[%@] %@ frame=%@\n", method, cls, NSStringFromCGRect(view.frame)];
-    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy-hang.log"];
-    FILE *fp = fopen([path UTF8String], "a");
-    if (fp) { fputs([log UTF8String], fp); fclose(fp); }
-}
-// ==================================
 
 
 
@@ -4217,7 +4194,6 @@ static inline BOOL DYYYLayerHookNeeded(void) {
 }
 
 - (void)setFrame:(CGRect)frame {
-    DYYYHangProbeLog(@"setFrame", self);
     if (!DYYYGetBool(@"DYYYCommentExactTime") || ![self respondsToSelector:@selector(text)]) {
         %orig(frame);
         return;
@@ -15840,7 +15816,6 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)setBackgroundColor:(UIColor *)backgroundColor {
-    DYYYHangProbeLog(@"setBackgroundColor", self);
     if (![NSThread isMainThread]) {
         dispatch_async(dispatch_get_main_queue(), ^{
           [self setBackgroundColor:backgroundColor];
@@ -15903,7 +15878,6 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)layoutSubviews {
-    DYYYHangProbeLog(@"layoutSubviews", self);
     %orig;
 
     BOOL enableFS = DYYYGetBoolCached(@"DYYYEnableFullScreen");
@@ -18544,9 +18518,10 @@ static void v179_dcvLayout(id self, SEL _cmd) {
         if (![self isKindOfClass:[UIViewController class]]) return;
         UIViewController *vc = (UIViewController *)self;
 
-        NSString *refer = nil;
-        @try { refer = [vc valueForKey:@"referString"]; } @catch (NSException *e) {}
-        if (![refer isKindOfClass:[NSString class]] || ![refer containsString:@"search"]) return;
+        // v414: 原地修复，只要不是主播放页的图文，直接放行。避免卡顿并恢复搜索页全屏。
+        NSString *clsName = NSStringFromClass([vc class]);
+        if (![clsName containsString:@"AwemeDetailCell"] && 
+            ![clsName containsString:@"AwemeDetailTable"]) return;
 
         // v179fix: 评论面板打开时不动 RC.view（避免评论背景变透明）
         id ic = nil;
