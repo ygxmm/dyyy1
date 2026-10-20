@@ -2992,6 +2992,7 @@ static void DYYYStripHDRHintsFromBitrateModels(NSArray *models) {
 }
 
 static void DYYYStripHDRHintsFromVideoModel(id video) {
+    return; // v433: no-op, getter hooks cover all reads
     if (!DYYYShouldDisableAllHDR() || !video) {
         return;
     }
@@ -3024,6 +3025,7 @@ static void DYYYStripHDRHintsFromVideoModel(id video) {
 }
 
 static void DYYYStripHDRHintsFromAwemeModel(id aweme) {
+    return; // v433: no-op, getter hooks cover all reads
     if (!DYYYShouldDisableAllHDR() || !aweme) {
         return;
     }
