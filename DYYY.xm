@@ -2404,9 +2404,7 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
     NSArray *originalModels = %orig;
 
     if (DYYYShouldDisableAllHDR()) {
-        NSArray *filteredModels = DYYYFilteredSDRBitrateModels(originalModels);
-        DYYYStripHDRHintsFromBitrateModels(filteredModels);
-        originalModels = filteredModels;
+        originalModels = DYYYFilteredSDRBitrateModels(originalModels);
     }
 
     if (!DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality")) {
@@ -2432,16 +2430,10 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 }
 
 - (void)setBitrateModels:(NSArray *)bitrateModels {
-    if (DYYYShouldDisableAllHDR()) {
-        DYYYStripHDRHintsFromBitrateModels(bitrateModels);
-    }
     %orig;
 }
 
 - (void)setManualBitrateModels:(NSArray *)manualBitrateModels {
-    if (DYYYShouldDisableAllHDR()) {
-        DYYYStripHDRHintsFromBitrateModels(manualBitrateModels);
-    }
     %orig;
 }
 
