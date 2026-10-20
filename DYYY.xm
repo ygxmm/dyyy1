@@ -15897,6 +15897,24 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)setFrame:(CGRect)frame {
+    // v405: 提前拦截原生动画（解决翻页错位）
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        static Class MergeCls = nil;
+        static Class PlayVideoCls = nil;
+        static dispatch_once_t onceToken;
+        dispatch_once(&onceToken, ^{
+            MergeCls = %c(AWEDPlayerViewController_Merge);
+            PlayVideoCls = %c(AWEPlayVideoViewController);
+        });
+        if ((MergeCls && [self.nextResponder isKindOfClass:MergeCls]) ||
+            (PlayVideoCls && [self.nextResponder isKindOfClass:PlayVideoCls])) {
+            CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
+            CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+            %orig(CGRectMake(0, 0, screenW, screenH));
+            return;
+        }
+    }
+
     // v382: 卡帧优化 —— 最便宜的 isMemberOfClass 放最前面
     // 99% 的 setFrame 调用来自 UILabel/UIButton/UIImageView 等子类，
     // 一行判定立即跳过，完全不碰关联对象（objc_getAssociatedObject 有全局锁，最贵）。
@@ -16870,7 +16888,21 @@ static void DYYYExpandPlayInteraction(UIView *root);
 // v252probe: 写沙盒日志，定位错位时 cell/player VC 的状态
 
 %hook AWEFeedTableView
-// v404: 移除撑高逻辑，交给 Merge 处理
+- (void)layoutSubviews {
+    %orig;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+
+    // v405: 恢复撑高逻辑，保证 Cell 和底栏有正确的布局基准
+    CGFloat screenH = self.superview.bounds.size.height;
+    if (screenH > 100) {
+        CGRect f = self.frame;
+        if (fabs(f.size.height - screenH) > 0.5) {
+            f.size.height = screenH;
+            self.frame = f;
+        }
+    }
+    if (self.clipsToBounds) self.clipsToBounds = NO;
+}
 %end
 
 %hook AWEFeedTableViewCell
