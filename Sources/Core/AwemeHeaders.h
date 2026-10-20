@@ -2436,3 +2436,7 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 
 // 注意：AWEStoryContainerCollectionView 在 662 行已经声明过了（类型是 UIView，先不动）
+
+
+@interface AWEAwemeDetailTableViewCell : UITableViewCell
+@end
