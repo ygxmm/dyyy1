@@ -9387,12 +9387,16 @@ static void DYYYApplyAvatarFollowPromptSettingsWithRetry(id owner) {
     }
 
     objc_setAssociatedObject(owner, &kDYYYAvatarFollowDeferredApplyKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    id target = owner;
+    __weak id weakTarget = owner;
     dispatch_async(dispatch_get_main_queue(), ^{
+        id target = weakTarget;
+        if (!target) return;
         DYYYApplyAvatarFollowPromptSettingsSafely(target);
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            DYYYApplyAvatarFollowPromptSettingsSafely(target);
-            objc_setAssociatedObject(target, &kDYYYAvatarFollowDeferredApplyKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            id target2 = weakTarget;
+            if (!target2) return;
+            DYYYApplyAvatarFollowPromptSettingsSafely(target2);
+            objc_setAssociatedObject(target2, &kDYYYAvatarFollowDeferredApplyKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         });
     });
 }
