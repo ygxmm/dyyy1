@@ -17822,6 +17822,21 @@ static void DYYYExpandPlayInteraction(UIView *root) {
 
 - (void)layoutSubviews {
     %orig;
+
+    // v419: 换爹方案，在原位置遍历子视图，实现背景透明
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        for (UIView *subview in self.subviews) {
+            NSString *cls = NSStringFromClass([subview class]);
+            if ([cls containsString:@"AWEAwemeDetailTableViewCell"]) {
+                subview.backgroundColor = [UIColor clearColor];
+                for (UIView *content in subview.subviews) {
+                    if ([content isKindOfClass:NSClassFromString(@"UITableViewCellContentView")]) {
+                        content.backgroundColor = [UIColor clearColor];
+                    }
+                }
+            }
+        }
+    }
     // 关键：解除 TableView 的裁剪，让 cell 内撑到 852 的视频溢出显示
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         self.clipsToBounds = NO;
@@ -18626,16 +18641,3 @@ static id DYYYBestDownloadAddr(id videoModel) {
     return best;
 }
 
-
-// v418: 换爹方案，精准接管详情页 Cell 的背景色，解决商品页冻屏并保持全屏透明
-%hook AWEAwemeDetailTableViewCell
-
-- (void)layoutSubviews {
-    %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        self.backgroundColor = [UIColor clearColor];
-        self.contentView.backgroundColor = [UIColor clearColor];
-    }
-}
-
-%end
