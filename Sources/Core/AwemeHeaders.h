@@ -2452,10 +2452,15 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
                   layout:(UICollectionViewLayout *)collectionViewLayout
   sizeForItemAtIndexPath:(NSIndexPath *)indexPath;
 - (void)previewDismissByClickBackBtn;
+- (void)viewWillAppear:(BOOL)animated;
+- (void)viewDidLayoutSubviews;
+- (void)viewDidDisappear:(BOOL)animated;
 @end
 
 @interface AWECommentMediaFeedImageCell : UICollectionViewCell
 - (UIView *)mediaContainerView;
+- (void)layoutSubviews;
+- (void)didMoveToWindow;
 @end
 
 @interface AWECommentABTestSettings : NSObject

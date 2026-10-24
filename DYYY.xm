@@ -18935,6 +18935,8 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 }
 // ==================== 工具函数结束 ====================
 
+%group DYYYMediaMainHook
+
 %hook AWECommentMediaFeedViewController
 
 - (CGSize)collectionView:(UICollectionView *)collectionView
@@ -18985,6 +18987,8 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 %end
 
+%end
+
 %group DYYYMediaAdaptiveLayoutHook
 
 %hook AWECommentABTestSettings
@@ -19001,6 +19005,7 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 %ctor {
     gDYYYMediaManagedViews = [NSHashTable weakObjectsHashTable];
     gDYYYMediaControllers = [NSHashTable weakObjectsHashTable];
+    %init(DYYYMediaMainHook);
     Class dyyyAbTest = NSClassFromString(@"AWECommentABTestSettings");
     if ([dyyyAbTest respondsToSelector:@selector(enableCommentAdaptiveWindowResponsiveLayout)]) {
         %init(DYYYMediaAdaptiveLayoutHook);
