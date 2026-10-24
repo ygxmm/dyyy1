@@ -3335,6 +3335,12 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
             @"subTitle" : @"主页视频左上角的返回按钮",
             @"detail" : @"",
             @"cellType" : @37,
+            @"imageName" : @"ic_eyeslash_outlined_16"},
+          @{@"identifier" : @"DYYYCommentMediaCleanBottomBar",
+            @"title" : @"评论区图片清理底栏",
+            @"subTitle" : @"隐藏图片页底栏、返回键与底部交互，图片完整居中显示",
+            @"detail" : @"",
+            @"cellType" : @37,
             @"imageName" : @"ic_eyeslash_outlined_16"}
       ];
 
