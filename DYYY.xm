@@ -19001,7 +19001,6 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 %ctor {
     gDYYYMediaManagedViews = [NSHashTable weakObjectsHashTable];
     gDYYYMediaControllers = [NSHashTable weakObjectsHashTable];
-    %init;
     Class dyyyAbTest = NSClassFromString(@"AWECommentABTestSettings");
     if ([dyyyAbTest respondsToSelector:@selector(enableCommentAdaptiveWindowResponsiveLayout)]) {
         %init(DYYYMediaAdaptiveLayoutHook);
