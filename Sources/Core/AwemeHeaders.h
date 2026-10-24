@@ -2442,3 +2442,23 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 
 @interface AWEAwemeDetailTableViewCell : UITableViewCell
 @end
+
+
+// MARK: - 评论区图片大图页（DYKiller 提取）
+@interface AWECommentMediaFeedViewController : UIViewController
+@property (nonatomic, assign) long long currentIndex;
+@property (nonatomic, strong) UIButton *backButton;
+- (CGSize)collectionView:(UICollectionView *)collectionView
+                  layout:(UICollectionViewLayout *)collectionViewLayout
+  sizeForItemAtIndexPath:(NSIndexPath *)indexPath;
+- (void)previewDismissByClickBackBtn;
+@end
+
+@interface AWECommentMediaFeedImageCell : UICollectionViewCell
+- (UIView *)mediaContainerView;
+@end
+
+@interface AWECommentABTestSettings : NSObject
++ (BOOL)enableCommentRenderingOptimize:(id)context;
++ (BOOL)enableCommentAdaptiveWindowResponsiveLayout;
+@end

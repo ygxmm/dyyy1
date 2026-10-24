@@ -18593,3 +18593,418 @@ static id DYYYBestDownloadAddr(id videoModel) {
     return best;
 }
 
+// ==================== 评论区图片清理底栏（DYKiller 提取） ====================
+// 开关 key: DYYYCommentMediaCleanBottomBar（设置项在 DYYYSettings.xm 视频播放界面）
+
+static NSString *const kDYYYMediaInputClass = @"AWECommentInputViewSwiftImpl.CommentInputContainerView";
+static NSString *const kDYYYMediaCommonControllerClass = @"AWECommentMediaFeedSwfitImpl.CommentMediaFeedCommonImageCellViewController";
+static NSString *const kDYYYMediaInteractionControllerClass = @"AWECommentMediaFeedSwfitImpl.CommentMediaFeedPlayInteractionViewController";
+static NSString *const kDYYYMediaInteractionViewClass = @"AWECommentMediaFeedSwfitImpl.CommentMediaFeedPlayInteractionView";
+static NSString *const kDYYYMediaUserNameViewClass = @"AWECommentMediaFeedSwfitImpl.CommentMediaFeedUserNameContainerView";
+static NSString *const kDYYYMediaInteractionTagClass = @"AWECommentMediaFeedSwfitImpl.CommentMediaFeedPlayInteractionTag";
+static NSString *const kDYYYMediaPreviewClass = @"AWECommentMediaFeedSwfitImpl.CommentMediaFeedImagePreviewView";
+static NSString *const kDYYYMediaBackButtonIdentifier = @"CommentMediaFeedBackButton";
+
+static char kDYYYMediaVisibilityManagedKey;
+static char kDYYYMediaOriginalAlphaKey;
+static char kDYYYMediaOriginalHiddenKey;
+static char kDYYYMediaOriginalInteractionKey;
+static char kDYYYMediaOriginalAccessibilityKey;
+static char kDYYYMediaOriginalContentModeKey;
+static char kDYYYMediaCollectionExpandedKey;
+static char kDYYYMediaCollectionSizeKey;
+static char kDYYYMediaNativeReanchorKey;
+static char kDYYYMediaPendingReanchorKey;
+
+static NSHashTable<UIView *> *gDYYYMediaManagedViews;
+static NSHashTable<UIViewController *> *gDYYYMediaControllers;
+static BOOL gDYYYMediaSuppressAdaptiveLayout;
+
+static BOOL DYYYCommentMediaCleanerEnabled(void) {
+    return [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYCommentMediaCleanBottomBar"];
+}
+
+static void DYYYMediaRememberVisibility(UIView *view) {
+    if (!view || [objc_getAssociatedObject(view, &kDYYYMediaVisibilityManagedKey) boolValue]) return;
+    objc_setAssociatedObject(view, &kDYYYMediaOriginalAlphaKey, @(view.alpha), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(view, &kDYYYMediaOriginalHiddenKey, @(view.hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(view, &kDYYYMediaOriginalInteractionKey, @(view.userInteractionEnabled), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(view, &kDYYYMediaOriginalAccessibilityKey, @(view.accessibilityElementsHidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(view, &kDYYYMediaVisibilityManagedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [gDYYYMediaManagedViews addObject:view];
+}
+
+static void DYYYMediaSuppressView(UIView *view) {
+    if (!view) return;
+    DYYYMediaRememberVisibility(view);
+    if (view.alpha != 0.0) view.alpha = 0.0;
+    if (!view.hidden) view.hidden = YES;
+    if (view.userInteractionEnabled) view.userInteractionEnabled = NO;
+    if (!view.accessibilityElementsHidden) view.accessibilityElementsHidden = YES;
+}
+
+static void DYYYMediaApplyAspectFit(UIView *view) {
+    if (!view) return;
+    if (!objc_getAssociatedObject(view, &kDYYYMediaOriginalContentModeKey)) {
+        objc_setAssociatedObject(view, &kDYYYMediaOriginalContentModeKey, @(view.contentMode), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [gDYYYMediaManagedViews addObject:view];
+    }
+    if (view.contentMode != UIViewContentModeScaleAspectFit) view.contentMode = UIViewContentModeScaleAspectFit;
+}
+
+static void DYYYMediaRestoreView(UIView *view) {
+    if (!view) return;
+    if ([objc_getAssociatedObject(view, &kDYYYMediaVisibilityManagedKey) boolValue]) {
+        NSNumber *alpha = objc_getAssociatedObject(view, &kDYYYMediaOriginalAlphaKey);
+        NSNumber *hidden = objc_getAssociatedObject(view, &kDYYYMediaOriginalHiddenKey);
+        NSNumber *interaction = objc_getAssociatedObject(view, &kDYYYMediaOriginalInteractionKey);
+        NSNumber *accessibility = objc_getAssociatedObject(view, &kDYYYMediaOriginalAccessibilityKey);
+        if (alpha) view.alpha = alpha.doubleValue;
+        if (hidden) view.hidden = hidden.boolValue;
+        if (interaction) view.userInteractionEnabled = interaction.boolValue;
+        if (accessibility) view.accessibilityElementsHidden = accessibility.boolValue;
+        objc_setAssociatedObject(view, &kDYYYMediaVisibilityManagedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(view, &kDYYYMediaOriginalAlphaKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(view, &kDYYYMediaOriginalHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(view, &kDYYYMediaOriginalInteractionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(view, &kDYYYMediaOriginalAccessibilityKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    NSNumber *cm = objc_getAssociatedObject(view, &kDYYYMediaOriginalContentModeKey);
+    if (cm) {
+        view.contentMode = (UIViewContentMode)cm.integerValue;
+        objc_setAssociatedObject(view, &kDYYYMediaOriginalContentModeKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    [gDYYYMediaManagedViews removeObject:view];
+}
+
+static void DYYYMediaRestoreViewsUnderRoot(UIView *root) {
+    if (!root) return;
+    for (UIView *view in gDYYYMediaManagedViews.allObjects) {
+        if (view == root || [view isDescendantOfView:root]) DYYYMediaRestoreView(view);
+    }
+}
+
+static void DYYYMediaRestoreAllViews(void) {
+    for (UIView *view in gDYYYMediaManagedViews.allObjects) DYYYMediaRestoreView(view);
+}
+
+static Class DYYYMediaInputClass(void) {
+    static Class cls;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ cls = NSClassFromString(kDYYYMediaInputClass); });
+    return cls;
+}
+
+static BOOL DYYYMediaViewContainsClass(UIView *view, NSString *className, NSUInteger depth) {
+    if (!view || depth > 12) return NO;
+    if ([NSStringFromClass(view.class) isEqualToString:className]) return YES;
+    for (UIView *sub in view.subviews) {
+        if (DYYYMediaViewContainsClass(sub, className, depth + 1)) return YES;
+    }
+    return NO;
+}
+
+static UIView *DYYYMediaDescendantNamed(UIView *view, NSString *className, NSUInteger depth) {
+    if (!view || depth > 12) return nil;
+    if ([NSStringFromClass(view.class) isEqualToString:className]) return view;
+    for (UIView *sub in view.subviews) {
+        UIView *m = DYYYMediaDescendantNamed(sub, className, depth + 1);
+        if (m) return m;
+    }
+    return nil;
+}
+
+static void DYYYMediaCollectControllersNamed(UIViewController *c, NSString *className, NSMutableArray *out, NSUInteger depth) {
+    if (!c || depth > 12) return;
+    for (UIViewController *child in c.childViewControllers) {
+        if ([NSStringFromClass(child.class) isEqualToString:className]) [out addObject:child];
+        DYYYMediaCollectControllersNamed(child, className, out, depth + 1);
+    }
+}
+
+static NSArray<UIViewController *> *DYYYMediaControllersNamed(UIViewController *c, NSString *className) {
+    NSMutableArray *r = [NSMutableArray array];
+    DYYYMediaCollectControllersNamed(c, className, r, 0);
+    return r;
+}
+
+static UICollectionView *DYYYMediaPageCollection(AWECommentMediaFeedViewController *c) {
+    if (!c.isViewLoaded) return nil;
+    UICollectionView *fb = nil;
+    for (UIView *sub in c.view.subviews) {
+        if (![sub isKindOfClass:UICollectionView.class]) continue;
+        UICollectionView *col = (UICollectionView *)sub;
+        if (!fb) fb = col;
+        if (col.delegate == (id<UICollectionViewDelegate>)c || col.dataSource == (id<UICollectionViewDataSource>)c) return col;
+    }
+    return fb;
+}
+
+static UIView *DYYYMediaInputView(AWECommentMediaFeedViewController *c) {
+    Class ic = DYYYMediaInputClass();
+    if (!ic || !c.isViewLoaded) return nil;
+    for (UIView *sub in c.view.subviews) {
+        if ([sub isKindOfClass:ic]) return sub;
+    }
+    return nil;
+}
+
+static BOOL DYYYMediaButtonHasAction(UIButton *b, SEL a) {
+    if (!b || !a) return NO;
+    for (id t in b.allTargets) {
+        NSArray<NSString *> *acts = [b actionsForTarget:t forControlEvent:UIControlEventTouchUpInside];
+        if ([acts containsObject:NSStringFromSelector(a)]) return YES;
+    }
+    return NO;
+}
+
+static UIView *DYYYMediaBackButton(AWECommentMediaFeedViewController *c) {
+    if (!c.isViewLoaded) return nil;
+    if ([c respondsToSelector:@selector(backButton)]) {
+        UIView *b = c.backButton;
+        if (b) return b;
+    }
+    SEL action = @selector(previewDismissByClickBackBtn);
+    for (UIView *sub in c.view.subviews) {
+        if (![sub isKindOfClass:UIButton.class]) continue;
+        UIButton *b = (UIButton *)sub;
+        if ([b.accessibilityIdentifier isEqualToString:kDYYYMediaBackButtonIdentifier] || DYYYMediaButtonHasAction(b, action)) return b;
+    }
+    return nil;
+}
+
+static void DYYYMediaApplyInteractionControls(AWECommentMediaFeedViewController *c) {
+    for (UIViewController *it in DYYYMediaControllersNamed(c, kDYYYMediaInteractionControllerClass)) {
+        UIView *root = it.viewIfLoaded;
+        for (UIView *container in root.subviews) {
+            BOOL like = DYYYMediaViewContainsClass(container, kDYYYMediaInteractionViewClass, 0);
+            BOOL info = DYYYMediaViewContainsClass(container, kDYYYMediaUserNameViewClass, 0) || DYYYMediaViewContainsClass(container, kDYYYMediaInteractionTagClass, 0);
+            if (like || info) DYYYMediaSuppressView(container);
+            else DYYYMediaRestoreView(container);
+        }
+    }
+}
+
+static BOOL DYYYMediaGradientMatchesEdge(UIView *view, BOOL top) {
+    if (![NSStringFromClass(view.class) isEqualToString:@"AWEGradientView"]) return NO;
+    UIView *p = view.superview;
+    if (!p) return NO;
+    CGRect f = [view convertRect:view.bounds toView:p];
+    CGRect b = p.bounds;
+    CGFloat tol = MAX(1.0 / UIScreen.mainScreen.scale, 0.5);
+    BOOL fullW = fabs(CGRectGetMinX(f) - CGRectGetMinX(b)) <= tol && fabs(CGRectGetWidth(f) - CGRectGetWidth(b)) <= tol;
+    if (!fullW) return NO;
+    if (top) return fabs(CGRectGetMinY(f) - CGRectGetMinY(b)) <= tol && CGRectGetMaxY(f) < CGRectGetMaxY(b) - tol;
+    return fabs(CGRectGetMaxY(f) - CGRectGetMaxY(b)) <= tol && CGRectGetMinY(f) > CGRectGetMinY(b) + tol;
+}
+
+static void DYYYMediaApplyChromeGradients(UIView *view) {
+    if (!view) return;
+    for (UIView *sub in view.subviews) {
+        if ([NSStringFromClass(sub.class) isEqualToString:@"AWEGradientView"]) {
+            if (DYYYMediaGradientMatchesEdge(sub, YES) || DYYYMediaGradientMatchesEdge(sub, NO)) DYYYMediaSuppressView(sub);
+            else DYYYMediaRestoreView(sub);
+            continue;
+        }
+        DYYYMediaApplyChromeGradients(sub);
+    }
+}
+
+static void DYYYMediaApplyCommonCellChrome(AWECommentMediaFeedViewController *c) {
+    for (UIViewController *common in DYYYMediaControllersNamed(c, kDYYYMediaCommonControllerClass)) {
+        DYYYMediaApplyChromeGradients(common.viewIfLoaded);
+    }
+}
+
+static BOOL DYYYMediaIsHairlineSeparator(UIView *v, UIView *root) {
+    if (!v || !root || v.class != UIView.class || v.subviews.count > 0) return NO;
+    CGFloat h = CGRectGetHeight(v.frame);
+    if (h <= 0.0 || h > 1.0) return NO;
+    CGFloat tol = MAX(1.0 / UIScreen.mainScreen.scale, 0.5);
+    return fabs(CGRectGetMinX(v.frame) - CGRectGetMinX(root.bounds)) <= tol && fabs(CGRectGetWidth(v.frame) - CGRectGetWidth(root.bounds)) <= tol;
+}
+
+static void DYYYMediaApplyHairlineSeparators(AWECommentMediaFeedViewController *c) {
+    UIView *root = c.viewIfLoaded;
+    if (!root) return;
+    for (UIView *sub in root.subviews) {
+        if (DYYYMediaIsHairlineSeparator(sub, root)) DYYYMediaSuppressView(sub);
+    }
+}
+
+static BOOL DYYYMediaSizesClose(CGSize a, CGSize b) {
+    return fabs(a.width - b.width) <= 0.5 && fabs(a.height - b.height) <= 0.5;
+}
+
+static BOOL DYYYMediaRectsClose(CGRect a, CGRect b) {
+    return fabs(CGRectGetMinX(a) - CGRectGetMinX(b)) <= 0.5 && fabs(CGRectGetMinY(a) - CGRectGetMinY(b)) <= 0.5 && DYYYMediaSizesClose(a.size, b.size);
+}
+
+static BOOL DYYYMediaReanchorCurrentItem(AWECommentMediaFeedViewController *c, UICollectionView *col) {
+    NSInteger idx = (NSInteger)c.currentIndex;
+    if (idx < 0 || col.numberOfSections == 0 || idx >= [col numberOfItemsInSection:0]) return NO;
+    NSIndexPath *p = [NSIndexPath indexPathForItem:idx inSection:0];
+    [col scrollToItemAtIndexPath:p atScrollPosition:UICollectionViewScrollPositionCenteredVertically animated:NO];
+    return YES;
+}
+
+static void DYYYMediaResetCollectionState(AWECommentMediaFeedViewController *c) {
+    UICollectionView *col = DYYYMediaPageCollection(c);
+    if (!col || ![objc_getAssociatedObject(col, &kDYYYMediaCollectionExpandedKey) boolValue]) return;
+    objc_setAssociatedObject(col, &kDYYYMediaCollectionExpandedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(col, &kDYYYMediaCollectionSizeKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(c, &kDYYYMediaPendingReanchorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(c, &kDYYYMediaNativeReanchorKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [col.collectionViewLayout invalidateLayout];
+    [c.view setNeedsLayout];
+}
+
+static void DYYYMediaApplyCollectionState(AWECommentMediaFeedViewController *c, BOOL enabled) {
+    UICollectionView *col = DYYYMediaPageCollection(c);
+    if (!col) return;
+    if (!enabled) {
+        DYYYMediaResetCollectionState(c);
+        if ([objc_getAssociatedObject(c, &kDYYYMediaNativeReanchorKey) boolValue]) {
+            [UIView performWithoutAnimation:^{
+                [col.collectionViewLayout invalidateLayout];
+                [col layoutIfNeeded];
+                DYYYMediaReanchorCurrentItem(c, col);
+            }];
+            objc_setAssociatedObject(c, &kDYYYMediaNativeReanchorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        return;
+    }
+    CGFloat w = CGRectGetWidth(c.view.bounds);
+    CGFloat h = CGRectGetHeight(c.view.bounds);
+    if (w <= 0.0 || h <= 0.0) return;
+    CGSize target = CGSizeMake(w, h);
+    CGRect targetFrame = CGRectMake(0.0, 0.0, w, h);
+    BOOL wasExpanded = [objc_getAssociatedObject(col, &kDYYYMediaCollectionExpandedKey) boolValue];
+    NSValue *lastSize = objc_getAssociatedObject(col, &kDYYYMediaCollectionSizeKey);
+    BOOL sizeChanged = !wasExpanded || !lastSize || !DYYYMediaSizesClose(lastSize.CGSizeValue, target);
+    objc_setAssociatedObject(col, &kDYYYMediaCollectionExpandedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(col, &kDYYYMediaCollectionSizeKey, [NSValue valueWithCGSize:target], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(c, &kDYYYMediaNativeReanchorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (sizeChanged) objc_setAssociatedObject(c, &kDYYYMediaPendingReanchorKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    BOOL pending = [objc_getAssociatedObject(c, &kDYYYMediaPendingReanchorKey) boolValue];
+    [UIView performWithoutAnimation:^{
+        if (!DYYYMediaRectsClose(col.frame, targetFrame)) col.frame = targetFrame;
+        if (sizeChanged) {
+            [col.collectionViewLayout invalidateLayout];
+            [col layoutIfNeeded];
+        }
+        if (pending && DYYYMediaReanchorCurrentItem(c, col)) {
+            objc_setAssociatedObject(c, &kDYYYMediaPendingReanchorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }];
+}
+
+static void DYYYMediaApplyControllerState(AWECommentMediaFeedViewController *c) {
+    if (!c || !c.isViewLoaded) return;
+    BOOL enabled = DYYYCommentMediaCleanerEnabled();
+    if (!enabled) {
+        DYYYMediaRestoreViewsUnderRoot(c.view);
+        DYYYMediaApplyCollectionState(c, NO);
+        return;
+    }
+    DYYYMediaApplyCollectionState(c, YES);
+    DYYYMediaSuppressView(DYYYMediaInputView(c));
+    DYYYMediaSuppressView(DYYYMediaBackButton(c));
+    DYYYMediaApplyHairlineSeparators(c);
+    DYYYMediaApplyInteractionControls(c);
+    DYYYMediaApplyCommonCellChrome(c);
+}
+
+static BOOL DYYYMediaIsPreviewCarrier(UIView *view) {
+    if ([view isKindOfClass:UIImageView.class]) return YES;
+    return [NSStringFromClass(view.class) isEqualToString:@"PHLivePhotoView"];
+}
+
+static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
+    UIView *mediaRoot = nil;
+    if ([cell respondsToSelector:@selector(mediaContainerView)]) mediaRoot = [cell mediaContainerView];
+    UIView *preview = DYYYMediaDescendantNamed(mediaRoot ?: cell, kDYYYMediaPreviewClass, 0);
+    if (!preview && mediaRoot != cell) preview = DYYYMediaDescendantNamed(cell, kDYYYMediaPreviewClass, 0);
+    if (!preview) return;
+    BOOL enabled = DYYYCommentMediaCleanerEnabled() && cell.window;
+    for (UIView *carrier in preview.subviews) {
+        if (!DYYYMediaIsPreviewCarrier(carrier)) continue;
+        if (enabled) DYYYMediaApplyAspectFit(carrier);
+        else DYYYMediaRestoreView(carrier);
+    }
+}
+// ==================== 工具函数结束 ====================
+
+%hook AWECommentMediaFeedViewController
+
+- (CGSize)collectionView:(UICollectionView *)collectionView
+                  layout:(UICollectionViewLayout *)collectionViewLayout
+  sizeForItemAtIndexPath:(NSIndexPath *)indexPath {
+    CGSize size = %orig;
+    if (!DYYYCommentMediaCleanerEnabled() || collectionView != DYYYMediaPageCollection(self)) return size;
+    CGSize target = self.view.bounds.size;
+    return target.width > 0.0 && target.height > 0.0 ? target : size;
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    %orig;
+    [gDYYYMediaControllers addObject:self];
+    [self.view setNeedsLayout];
+}
+
+- (void)viewDidLayoutSubviews {
+    BOOL outerSuppress = gDYYYMediaSuppressAdaptiveLayout;
+    gDYYYMediaSuppressAdaptiveLayout = DYYYCommentMediaCleanerEnabled();
+    %orig;
+    gDYYYMediaSuppressAdaptiveLayout = outerSuppress;
+    [gDYYYMediaControllers addObject:self];
+    DYYYMediaApplyControllerState(self);
+}
+
+- (void)viewDidDisappear:(BOOL)animated {
+    %orig;
+    if (self.viewIfLoaded.window) return;
+    DYYYMediaRestoreViewsUnderRoot(self.viewIfLoaded);
+    DYYYMediaResetCollectionState(self);
+    [gDYYYMediaControllers removeObject:self];
+}
+
+%end
+
+%hook AWECommentMediaFeedImageCell
+
+- (void)layoutSubviews {
+    %orig;
+    DYYYMediaApplyImageCellState(self);
+}
+
+- (void)didMoveToWindow {
+    %orig;
+    DYYYMediaApplyImageCellState(self);
+}
+
+%end
+
+%group DYYYMediaAdaptiveLayoutHook
+
+%hook AWECommentABTestSettings
+
++ (BOOL)enableCommentAdaptiveWindowResponsiveLayout {
+    if (gDYYYMediaSuppressAdaptiveLayout) return NO;
+    return %orig;
+}
+
+%end
+
+%end
+
+%ctor {
+    gDYYYMediaManagedViews = [NSHashTable weakObjectsHashTable];
+    gDYYYMediaControllers = [NSHashTable weakObjectsHashTable];
+    %init;
+    Class dyyyAbTest = NSClassFromString(@"AWECommentABTestSettings");
+    if ([dyyyAbTest respondsToSelector:@selector(enableCommentAdaptiveWindowResponsiveLayout)]) {
+        %init(DYYYMediaAdaptiveLayoutHook);
+    }
+}
+
