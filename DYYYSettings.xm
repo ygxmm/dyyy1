@@ -3344,8 +3344,7 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
             @"imageName" : @"ic_eyeslash_outlined_16"},
           @{@"identifier" : @"DYYYNearbyFilterTimeLimit",
             @"title" : @"同城视频时限",
-            @"subTitle" : @"只显示最近 N 天内发布的同城视频
-填 0 关闭，建议≥10",
+            @"subTitle" : @"只显示最近 N 天内发布的同城视频，填 0 关闭，建议≥10",
             @"detail" : @"",
             @"cellType" : @20,
             @"imageName" : @"ic_playertime_outlined_20"}
