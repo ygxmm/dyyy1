@@ -679,7 +679,7 @@ static NSSet<NSString *> *DYYYInlineTextInputIdentifiers(void) {
     dispatch_once(&onceToken, ^{
       identifiers = [NSSet setWithArray:@[
           @"DYYYAvatarViewTransparency", @"DYYYCommentBlurTransparent", @"DYYYCommentContent", @"DYYYDescriptionScale",
-          @"DYYYDescriptionVerticalOffset", @"DYYYElementScale", @"DYYYFilterLowLikes", @"DYYYFilterTimeLimit", @"DYYYFriendsTitle",
+          @"DYYYDescriptionVerticalOffset", @"DYYYElementScale", @"DYYYFilterLowLikes", @"DYYYFilterTimeLimit", @"DYYYNearbyFilterTimeLimit", @"DYYYFriendsTitle",
           @"DYYYGeonamesUsername", @"DYYYGlobalTransparency", @"DYYYIPLabelScale", @"DYYYIPLabelVerticalOffset", @"DYYYIndexTitle", @"DYYYInterfaceDownload",
           @"DYYYMsgTitle", @"DYYYNicknameScale", @"DYYYNicknameVerticalOffset", @"DYYYNotificationCornerRadius", @"DYYYRemoteConfigURL",
           @"DYYYSelfTitle",
@@ -693,7 +693,7 @@ static NSSet<NSString *> *DYYYInlineTextInputIdentifiers(void) {
 
 static NSString *DYYYInlineTextInputPlaceholder(NSString *identifier) {
     NSDictionary<NSString *, NSString *> *placeholders = @{
-        @"DYYYFilterLowLikes" : @"填0关闭", @"DYYYFilterTimeLimit" : @"单位：天",
+        @"DYYYFilterLowLikes" : @"填0关闭", @"DYYYFilterTimeLimit" : @"单位：天", @"DYYYNearbyFilterTimeLimit" : @"N 天，建议≥10",
         @"DYYYInterfaceDownload" : @"解析接口以url=结尾", @"DYYYRemoteConfigURL" : @"JSON URL",
         @"DYYYEnableFloatClearButtonSize" : @"20-60",
         @"DYYYSpeedButtonSize" : @"20-60",
@@ -727,7 +727,7 @@ static UIKeyboardType DYYYInlineTextInputKeyboardType(NSString *identifier) {
         @"DYYYSheetBlurTransparent", @"DYYYTimelineVerticalPosition", @"DYYYTopBarTransparent", @"DYYYEnableFloatClearButtonSize",
         @"DYYYSpeedButtonSize", @"DYYYAutoHideSpeedButtonTime"
     ]];
-    if ([identifier isEqualToString:@"DYYYFilterLowLikes"] || [identifier isEqualToString:@"DYYYFilterTimeLimit"]) {
+    if ([identifier isEqualToString:@"DYYYFilterLowLikes"] || [identifier isEqualToString:@"DYYYFilterTimeLimit"] || [identifier isEqualToString:@"DYYYNearbyFilterTimeLimit"]) {
         return UIKeyboardTypeNumberPad;
     }
     return [decimalIdentifiers containsObject:identifier] ? UIKeyboardTypeDecimalPad : UIKeyboardTypeDefault;
@@ -767,7 +767,7 @@ static CGFloat DYYYInlineTextInputPreferredWidth(NSString *identifier, CGFloat c
     NSSet<NSString *> *compactIdentifiers = [NSSet setWithArray:@[
         @"DYYYAvatarViewTransparency", @"DYYYCommentBlurTransparent", @"DYYYDescriptionScale", @"DYYYDescriptionVerticalOffset",
         @"DYYYElementScale", @"DYYYEnableFloatClearButtonSize", @"DYYYSpeedButtonSize", @"DYYYAutoHideSpeedButtonTime",
-        @"DYYYFilterLowLikes", @"DYYYFilterTimeLimit", @"DYYYGlobalTransparency",
+        @"DYYYFilterLowLikes", @"DYYYFilterTimeLimit", @"DYYYNearbyFilterTimeLimit", @"DYYYGlobalTransparency",
         @"DYYYIPLabelScale", @"DYYYIPLabelVerticalOffset", @"DYYYNicknameScale", @"DYYYNicknameVerticalOffset", @"DYYYNotificationCornerRadius",
         @"DYYYSheetBlurTransparent", @"DYYYTabBarHeight", @"DYYYTimelineVerticalPosition", @"DYYYTopBarTransparent"
     ]];
@@ -3341,7 +3341,14 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
             @"subTitle" : @"隐藏图片页底栏、返回键与底部交互，图片完整居中显示",
             @"detail" : @"",
             @"cellType" : @37,
-            @"imageName" : @"ic_eyeslash_outlined_16"}
+            @"imageName" : @"ic_eyeslash_outlined_16"},
+          @{@"identifier" : @"DYYYNearbyFilterTimeLimit",
+            @"title" : @"同城视频时限",
+            @"subTitle" : @"只显示最近 N 天内发布的同城视频
+填 0 关闭，建议≥10",
+            @"detail" : @"",
+            @"cellType" : @20,
+            @"imageName" : @"ic_playertime_outlined_20"}
       ];
 
       for (NSDictionary *dict in videoUiSettings) {
