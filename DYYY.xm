@@ -12571,6 +12571,28 @@ static void DYYYHideProfilePostGuideView(UIView *view) {
 
 // 数据源 getter 会在详情/合集滚动枚举期间被频繁读取；过滤只能发生在写入边界，
 // 不能在 getter 内原地修改宿主持有的 NSMutableArray，否则会触发快速枚举突变异常。
+static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
+    NSInteger nearbyDays = [[NSUserDefaults standardUserDefaults] integerForKey:@"DYYYNearbyFilterTimeLimit"];
+    if (nearbyDays <= 0 || arr.count == 0) return arr;
+    NSString *hostName = host ? NSStringFromClass([host class]) : @"";
+    if (![hostName isEqualToString:@"AWENewNearbyListDataController"]) return arr;
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+    NSTimeInterval threshold = nearbyDays * 86400.0;
+    NSMutableArray *kept = [NSMutableArray arrayWithCapacity:arr.count];
+    for (id m in arr) {
+        double ts = 0;
+        @try {
+            id ct = [m valueForKey:@"createTime"];
+            if ([ct respondsToSelector:@selector(doubleValue)]) ts = [ct doubleValue];
+        } @catch (__unused NSException *e) {}
+        if (ts > 1e12) ts /= 1000.0;
+        if (ts <= 0 || (now - ts) <= threshold) {
+            [kept addObject:m];
+        }
+    }
+    return kept;
+}
+
 %hook AWEListDataController
 
 - (void)setDataSource:(NSMutableArray *)dataSource {
@@ -12580,6 +12602,7 @@ static void DYYYHideProfilePostGuideView(UIView *view) {
         return;
     }
     NSArray *filtered = [DYYYUtils arrayByRemovingAdvertisements:dataSource];
+    filtered = DYYYNearbyFilterByTime(filtered, self);
     %orig(filtered);
 }
 
@@ -12590,6 +12613,7 @@ static void DYYYHideProfilePostGuideView(UIView *view) {
         return;
     }
     NSArray *filtered = [DYYYUtils arrayByRemovingAdvertisements:filteredDataSource];
+    filtered = DYYYNearbyFilterByTime(filtered, self);
     %orig(filtered);
 }
 
