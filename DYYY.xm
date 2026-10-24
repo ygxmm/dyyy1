@@ -12576,8 +12576,12 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
     if (nearbyDays <= 0 || arr.count == 0) return arr;
     NSString *hostName = host ? NSStringFromClass([host class]) : @"";
     if (![hostName isEqualToString:@"AWENewNearbyListDataController"]) return arr;
-    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-    NSTimeInterval threshold = nearbyDays * 86400.0;
+    // 自然日口径：从今天 00:00 往前推 (nearbyDays-1) 天的 00:00 起算
+    // nearbyDays=1 → 今天 00:00 后；=2 → 昨天 00:00 后（今天+昨天）
+    NSCalendar *cal = [NSCalendar currentCalendar];
+    NSDate *startOfToday = [cal startOfDayForDate:[NSDate date]];
+    NSDate *cutoffDate = [cal dateByAddingUnit:NSCalendarUnitDay value:-(nearbyDays - 1) toDate:startOfToday options:0];
+    NSTimeInterval cutoff = [cutoffDate timeIntervalSince1970];
     NSMutableArray *kept = [NSMutableArray arrayWithCapacity:arr.count];
     for (id m in arr) {
         double ts = 0;
@@ -12586,7 +12590,7 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
             if ([ct respondsToSelector:@selector(doubleValue)]) ts = [ct doubleValue];
         } @catch (__unused NSException *e) {}
         if (ts > 1e12) ts /= 1000.0;
-        if (ts <= 0 || (now - ts) <= threshold) {
+        if (ts <= 0 || ts >= cutoff) {
             [kept addObject:m];
         }
     }
