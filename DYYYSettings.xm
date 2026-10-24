@@ -2728,6 +2728,14 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
               @"detail" : @"",
               @"cellType" : @20,
               @"imageName" : @"ic_playertime_outlined_20"
+          },
+          @{
+              @"identifier" : @"DYYYNearbyFilterTimeLimit",
+              @"subTitle" : @"只显示最近 N 天内发布的同城视频\n填 0 关闭，建议≥10",
+              @"title" : @"同城视频时限",
+              @"detail" : @"",
+              @"cellType" : @20,
+              @"imageName" : @"ic_playertime_outlined_20"
           }
       ];
 
@@ -2773,6 +2781,10 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
               };
           } else if ([item.identifier isEqualToString:@"DYYYFilterTimeLimit"]) {
               NSString *savedValue = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYFilterTimeLimit"];
+              item.detail = savedValue ?: @"";
+              item.cellTappedBlock = nil;
+          } else if ([item.identifier isEqualToString:@"DYYYNearbyFilterTimeLimit"]) {
+              NSString *savedValue = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYNearbyFilterTimeLimit"];
               item.detail = savedValue ?: @"";
               item.cellTappedBlock = nil;
           } else if ([item.identifier isEqualToString:@"DYYYFilterProp"]) {
@@ -3341,13 +3353,7 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
             @"subTitle" : @"隐藏图片页底栏、返回键与底部交互，图片完整居中显示",
             @"detail" : @"",
             @"cellType" : @37,
-            @"imageName" : @"ic_eyeslash_outlined_16"},
-          @{@"identifier" : @"DYYYNearbyFilterTimeLimit",
-            @"title" : @"同城视频时限",
-            @"subTitle" : @"只显示最近 N 天内发布的同城视频，填 0 关闭，建议≥10",
-            @"detail" : @"",
-            @"cellType" : @20,
-            @"imageName" : @"ic_playertime_outlined_20"}
+            @"imageName" : @"ic_eyeslash_outlined_16"}
       ];
 
       for (NSDictionary *dict in videoUiSettings) {
