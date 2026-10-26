@@ -12571,6 +12571,34 @@ static void DYYYHideProfilePostGuideView(UIView *view) {
 
 // 数据源 getter 会在详情/合集滚动枚举期间被频繁读取；过滤只能发生在写入边界，
 // 不能在 getter 内原地修改宿主持有的 NSMutableArray，否则会触发快速枚举突变异常。
+
+// ===== DYYY-NB 诊断日志（临时，定位后删除）=====
+static NSString *DYYYNBLogPath(void) {
+    static NSString *p = nil;
+    if (!p) {
+        NSString *dir = [NSTemporaryDirectory() stringByAppendingPathComponent:@"DYYYNB"];
+        [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+        p = [dir stringByAppendingPathComponent:@"nearby.log"];
+    }
+    return p;
+}
+static void DYYYNBLog(NSString *fmt, ...) {
+    va_list ap; va_start(ap, fmt);
+    NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
+    va_end(ap);
+    NSString *line = [NSString stringWithFormat:@"[%@] %@\n", [NSDate date], msg];
+    NSString *path = DYYYNBLogPath();
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+    if (fh) {
+        [fh seekToEndOfFile];
+        [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+        [fh closeFile];
+    } else {
+        [line writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    }
+}
+// ===== 诊断日志结束 =====
+
 static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
     NSInteger nearbyDays = [[NSUserDefaults standardUserDefaults] integerForKey:@"DYYYNearbyFilterTimeLimit"];
     if (nearbyDays <= 0 || arr.count == 0) return arr;
@@ -12606,7 +12634,9 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
         return;
     }
     NSArray *filtered = [DYYYUtils arrayByRemovingAdvertisements:dataSource];
+    NSUInteger _nbIn = dataSource.count;
     filtered = DYYYNearbyFilterByTime(filtered, self);
+    DYYYNBLog(@"setDataSource host=%@ in=%lu out=%lu", NSStringFromClass([self class]), (unsigned long)_nbIn, (unsigned long)filtered.count);
     %orig(filtered);
 }
 
@@ -12617,7 +12647,9 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
         return;
     }
     NSArray *filtered = [DYYYUtils arrayByRemovingAdvertisements:filteredDataSource];
+    NSUInteger _nbIn = filteredDataSource.count;
     filtered = DYYYNearbyFilterByTime(filtered, self);
+    DYYYNBLog(@"setFilteredDataSource host=%@ in=%lu out=%lu", NSStringFromClass([self class]), (unsigned long)_nbIn, (unsigned long)filtered.count);
     %orig(filtered);
 }
 
