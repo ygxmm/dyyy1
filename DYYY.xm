@@ -12633,6 +12633,12 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
         %orig(dataSource);
         return;
     }
+    // 同城：保持原长，避免宿主 currentIndex 越界回退第一个；过滤交给 setFilteredDataSource:
+    if ([NSStringFromClass([self class]) isEqualToString:@"AWENewNearbyListDataController"]) {
+        DYYYNBLog(@"setDataSource host=%@ in=%lu out=%lu (passthrough)", NSStringFromClass([self class]), (unsigned long)dataSource.count, (unsigned long)dataSource.count);
+        %orig(dataSource);
+        return;
+    }
     NSArray *filtered = [DYYYUtils arrayByRemovingAdvertisements:dataSource];
     NSUInteger _nbIn = dataSource.count;
     filtered = DYYYNearbyFilterByTime(filtered, self);
