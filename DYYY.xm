@@ -12591,9 +12591,12 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
             if ([ct respondsToSelector:@selector(doubleValue)]) ts = [ct doubleValue];
         } @catch (__unused NSException *e) {}
         if (ts > 1e12) ts /= 1000.0;
-        if (ts <= 0 || ts >= cutoff) {
+        if (ts > 0 && ts >= cutoff) {
             [kept addObject:m];
         }
+    }
+    if (kept.count == 0 && arr.count > 0) {
+        return arr;
     }
     return kept;
 }
