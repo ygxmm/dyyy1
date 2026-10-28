@@ -9046,7 +9046,7 @@ static void DYYYMarkAvatarSurroundingViewHidden(UIView *view) {
 }
 
 static BOOL DYYYShouldForceAvatarSurroundingViewHidden(UIView *view) {
-    return view && DYYYGetBoolCached(@"DYYYHideAvatarButton") && objc_getAssociatedObject(view, &kDYYYAvatarSurroundingHiddenViewKey);
+    return view && DYYYGetBoolCached(@"DYYYHideAvatarSurrounding") && objc_getAssociatedObject(view, &kDYYYAvatarSurroundingHiddenViewKey);
 }
 
 static void DYYYHideAvatarSurroundingVisualForSelector(id object, SEL selector) {
@@ -9055,7 +9055,7 @@ static void DYYYHideAvatarSurroundingVisualForSelector(id object, SEL selector) 
 }
 
 static void DYYYApplyAvatarSurroundingSettingsForOwner(id owner) {
-    if (!owner || !DYYYGetBool(@"DYYYHideAvatarButton")) {
+    if (!owner || !DYYYGetBool(@"DYYYHideAvatarSurrounding")) {
         return;
     }
 
@@ -14087,8 +14087,8 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 
     if (DYYYGetBool(@"DYYYHideAvatarButton")) {
         DYYYHideAvatarVisualForSelector(self, NSSelectorFromString(@"userAvatarView"));
-        DYYYApplyAvatarSurroundingSettingsForOwner(self);
     }
+    DYYYApplyAvatarSurroundingSettingsForOwner(self);
 
     DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
@@ -14273,8 +14273,8 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
         DYYYHideAvatarVisualForSelector(self, NSSelectorFromString(@"avatarPicView"));
         id context = DYYYAvatarObjectForSelector(self, NSSelectorFromString(@"userAvatarContext"));
         DYYYHideAvatarVisualForSelector(context, NSSelectorFromString(@"avatarPicView"));
-        DYYYApplyAvatarSurroundingSettingsForOwner(self);
     }
+    DYYYApplyAvatarSurroundingSettingsForOwner(self);
     DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 %end
@@ -14285,8 +14285,8 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
     if (DYYYGetBool(@"DYYYHideAvatarButton")) {
         id context = DYYYAvatarObjectForSelector(self, NSSelectorFromString(@"userAvatarContext"));
         DYYYHideAvatarVisualForSelector(context, NSSelectorFromString(@"avatarPicView"));
-        DYYYApplyAvatarSurroundingSettingsForOwner(self);
     }
+    DYYYApplyAvatarSurroundingSettingsForOwner(self);
     DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
@@ -14312,7 +14312,7 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 // 让抖音原生逻辑判断"不该显示彩环"，走原生路径（不触发异常日志）
 // 之前 hook showStory25RingView 直接 return 会导致抖音打印循环引用对象崩溃
 - (BOOL)shouldShowColorRing:(id)arg {
-    if (DYYYGetBool(@"DYYYHideAvatarButton")) {
+    if (DYYYGetBool(@"DYYYHideAvatarSurrounding")) {
         return NO;
     }
     return %orig(arg);
