@@ -56,37 +56,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view);
 static CGFloat gStartY = 0.0;
 
 
-// v456 DBG: 写沙盒日志
-static void DYYYDbgWrite(NSString *msg) {
-    @autoreleasepool {
-        NSString *path = [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject]
-                          stringByAppendingPathComponent:@"DYYY-debug.log"];
-        NSData *data = [[msg stringByAppendingString:@"\n"] dataUsingEncoding:NSUTF8StringEncoding];
-        static NSLock *sDYYYDbgLock = nil;
-        static dispatch_once_t sDYYYDbgOnce;
-        dispatch_once(&sDYYYDbgOnce, ^{ sDYYYDbgLock = [[NSLock alloc] init]; });
-        [sDYYYDbgLock lock];
-        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
-        if (!fh) { [data writeToFile:path atomically:YES]; }
-        else { [fh seekToEndOfFile]; [fh writeData:data]; [fh closeFile]; }
-        [sDYYYDbgLock unlock];
-    }
-}
-
-// v456 DBG: 限流
-static BOOL DYYYDbgShouldLog(NSString *key, int limit) {
-    static NSMutableDictionary *sCounts = nil;
-    static dispatch_once_t sOnce;
-    dispatch_once(&sOnce, ^{ sCounts = [NSMutableDictionary dictionary]; });
-    @synchronized (sCounts) {
-        NSNumber *n = sCounts[key];
-        int cur = n ? [n intValue] : 0;
-        if (cur >= limit) return NO;
-        sCounts[key] = @(cur + 1);
-        return YES;
-    }
-}
-
 static CGFloat gStartVal = 0.0;
 static DYEdgeMode gMode = DYEdgeModeNone;
 static __weak UICollectionView *gFeedCV = nil;
@@ -7810,35 +7779,6 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
         return [UIScreen mainScreen].bounds.size.height;
     }
     return %orig;
-}
-
-// v456 DBG
-- (void)viewDidAppear:(BOOL)animated {
-    %orig;
-    @try {
-        long long cur = [self currentPlayIndex];
-        long long idx = [self currentIndex];
-        CGFloat tableH = 0, offY = 0;
-        Class tableCls = NSClassFromString(@"AWEAwemeDetailTableView");
-        for (UIView *v in self.view.subviews) {
-            if (tableCls && [v isKindOfClass:tableCls]) {
-                tableH = v.bounds.size.height;
-                offY = ((UIScrollView *)v).contentOffset.y;
-                break;
-            }
-        }
-        DYYYDbgWrite([NSString stringWithFormat:@"[VA] curPlayIdx=%lld curIdx=%lld tableH=%.1f offY=%.1f",
-                      cur, idx, tableH, offY]);
-    } @catch (NSException *e) {}
-}
-
-// v456 DBG
-- (double)contentOffsetYForCellAtIndex:(long long)index {
-    double y = %orig;
-    if (DYYYDbgShouldLog(@"CO", 10)) {
-        DYYYDbgWrite([NSString stringWithFormat:@"[CO] idx=%lld y=%.1f", index, y]);
-    }
-    return y;
 }
 
 %end
