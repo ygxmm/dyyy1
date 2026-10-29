@@ -16925,9 +16925,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 static char kDYYYFeedTableOriginalHeightGapKey;
 static char kDYYYFeedTableFullScreenAppliedKey;
 
-// v229b: 前向声明，避免 v229 在 16630 处报 undeclared identifier
-static void DYYYExpandPlayInteraction(UIView *root);
-
 // v250: 只对单个 cell 里的 player VC 拉高。
 // v252probe: 写沙盒日志，定位错位时 cell/player VC 的状态
 
@@ -17769,38 +17766,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 }
 
 %end
-
-static void DYYYExpandPlayInteraction(UIView *root) {
-    if (!root) return;
-    Class playCls = NSClassFromString(@"AWEPlayInteractionViewController");
-    if (!playCls) return;
-    NSMutableArray *q = [NSMutableArray arrayWithObject:root];
-    int safety = 0;
-    while (q.count > 0 && safety++ < 500) {
-        UIView *v = q.firstObject;
-        [q removeObjectAtIndex:0];
-        UIResponder *r = v.nextResponder;
-        int d = 0;
-        while (r && d++ < 10) {
-            if ([r isKindOfClass:playCls]) {
-                UIView *vv = ((UIViewController *)r).view;
-                UIView *sv = vv.superview;
-                if (sv && vv.frame.size.height < sv.bounds.size.height - 1) {
-                    CGRect f = vv.frame;
-                    // v91: 不再强制 y=0，让 v77 的 -60 transform 生效
-                    f.size.height = sv.bounds.size.height;
-                    vv.frame = f;
-                    vv.clipsToBounds = NO;
-                    sv.clipsToBounds = NO;
-                }
-                break;
-            }
-            if ([r isKindOfClass:[UIViewController class]]) break;
-            r = r.nextResponder;
-        }
-        [q addObjectsFromArray:v.subviews];
-    }
-}
 
 static char kDYYYV29DoneKey; // v439
 
