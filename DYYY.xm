@@ -7763,6 +7763,21 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
     return %orig;
 }
 
+// v453: 补 hook cellHeight 和 cellHeightAtIndex:，让抖音内部算 contentOffset 时也用 852
+- (double)cellHeight {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        return [UIScreen mainScreen].bounds.size.height;
+    }
+    return %orig;
+}
+
+- (double)cellHeightAtIndex:(long long)index {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        return [UIScreen mainScreen].bounds.size.height;
+    }
+    return %orig;
+}
+
 %end
 
 %hook AWEAwemeDetailContainerPlayControlConfig
@@ -17804,7 +17819,7 @@ static char kDYYYV29DoneKey; // v439
     }
 
     // v439: 直接把自身 bottom 约束改 0 撑满（替代 _m_v29 的 BFS 方案）
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+    if (0 && DYYYGetBool(@"DYYYEnableFullScreen")) { // v453 临时禁用
         // 已经是屏幕高度就不用动
         CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
         if (self.bounds.size.height >= screenH - 1.0) return;
