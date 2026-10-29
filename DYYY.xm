@@ -17851,7 +17851,7 @@ static char kDYYYV29DoneKey; // v439
     }
 
     // v439: 直接把自身 bottom 约束改 0 撑满（替代 _m_v29 的 BFS 方案）
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+    if (0 && DYYYGetBool(@"DYYYEnableFullScreen")) { // v450 临时禁用，测 v449 是否独立生效
         // 已经是屏幕高度就不用动
         CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
         if (self.bounds.size.height >= screenH - 1.0) return;
