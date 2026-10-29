@@ -17831,6 +17831,43 @@ static void DYYYExpandPlayInteraction(UIView *root) {
         self.clipsToBounds = NO;
         DYYYExpandPlayInteraction(self);
     }
+
+    // v439: 直接把自身 bottom 约束改 0 撑满（替代 _m_v29 的 BFS 方案）
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        // 已经是屏幕高度就不用动
+        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+        if (self.bounds.size.height >= screenH - 1.0) return;
+        // 已经改过就不再改
+        if (objc_getAssociatedObject(self, &kDYYYV29DoneKey)) return;
+        // interaction VC 已经出现在父 VC 的 childViewControllers 里才改
+        UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
+        BOOL hasIC = NO;
+        for (UIViewController *child in vc.childViewControllers) {
+            if ([child isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")]) {
+                hasIC = YES;
+                break;
+            }
+        }
+        if (!hasIC) return;
+        // 改 self 上下两层的 bottom 约束
+        BOOL changed = NO;
+        NSMutableArray *pools = [NSMutableArray arrayWithObject:self.constraints];
+        if (self.superview) [pools addObject:self.superview.constraints];
+        for (NSArray *pool in pools) {
+            for (NSLayoutConstraint *c in pool) {
+                if (c.firstItem != self && c.secondItem != self) continue;
+                if (c.firstAttribute != NSLayoutAttributeBottom &&
+                    c.secondAttribute != NSLayoutAttributeBottom) continue;
+                if (fabs(c.constant) > 1.0) {
+                    c.constant = 0;
+                    changed = YES;
+                }
+            }
+        }
+        if (changed) {
+            objc_setAssociatedObject(self, &kDYYYV29DoneKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
 }
 
 %end
@@ -18401,86 +18438,8 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 // v29 用 associatedObject 标记已处理的 table，只动手一次
 static const void *kDYYYV29Done = &kDYYYV29Done;
 
-static void (*_o_v29)(id, SEL) = NULL;
 
-// v437: 递归查 view 树里有没有 interaction VC
-static BOOL DYYYViewTreeHasInteractionVC(UIView *root) {
-    if (!root) return NO;
-    Class icClass = NSClassFromString(@"AWEPlayInteractionViewController");
-    if (!icClass) return NO;
-    if ([root.nextResponder isKindOfClass:icClass]) return YES;
-    for (UIView *sub in root.subviews) {
-        if (DYYYViewTreeHasInteractionVC(sub)) return YES;
-    }
-    return NO;
-}
-
-static void _m_v29(id self, SEL _cmd) {
-    if (_o_v29) _o_v29(self, _cmd);
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-
-    @autoreleasepool {
-        UIViewController *vc = (UIViewController *)self;
-        UIView *rootView = vc.view;
-        if (!rootView || rootView.bounds.size.height < 700) return;
-
-        // v437: 只在 interaction VC 已存在时才改约束，避免打断创建
-        if (!DYYYViewTreeHasInteractionVC(rootView)) return;
-
-        // 找 table
-        UIView *table = nil;
-        NSMutableArray *q = [NSMutableArray arrayWithObject:rootView];
-        int safety = 0;
-        while (q.count > 0 && safety++ < 1000) {
-            UIView *v = q.firstObject;
-            [q removeObjectAtIndex:0];
-            if ([NSStringFromClass([v class]) isEqualToString:@"AWEAwemeDetailTableView"]) {
-                table = v; break;
-            }
-            for (UIView *s in v.subviews) [q addObject:s];
-        }
-        if (!table) return;
-
-        UIView *sv = table.superview;
-        if (!sv) return;
-
-        // 找 bottom 约束改 0
-        BOOL changed = NO;
-        NSMutableArray *pools = [NSMutableArray arrayWithObject:sv.constraints];
-        if (sv.superview) [pools addObject:sv.superview.constraints];
-
-        for (NSArray *pool in pools) {
-            for (NSLayoutConstraint *c in pool) {
-                if (c.firstItem != table && c.secondItem != table) continue;
-                if (c.firstAttribute != NSLayoutAttributeBottom &&
-                    c.secondAttribute != NSLayoutAttributeBottom) continue;
-                if (fabs(c.constant) > 1.0) {
-                    c.constant = 0;
-                    changed = YES;
-                }
-            }
-        }
-
-        if (changed) {
-            // 只在真正改过约束时触发一次重排
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [sv setNeedsLayout];
-                [sv layoutIfNeeded];
-            });
-        }
-    }
-}
-
-%ctor {
-    Class c = objc_getClass("AWEAwemeDetailTableViewController");
-    if (c) {
-        Method m = class_getInstanceMethod(c, @selector(viewDidLayoutSubviews));
-        if (m) {
-            _o_v29 = (void(*)(id,SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)_m_v29);
-        }
-    }
-}
+static char kDYYYV29DoneKey; // v439
 
 // ===== 隐藏"暂时没有更多了"底部占位（只对详情页，主页不动） =====
 %ctor {
