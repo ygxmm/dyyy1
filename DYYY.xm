@@ -7833,30 +7833,6 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
 }
 
 // v456 DBG
-- (double)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        return [UIScreen mainScreen].bounds.size.height;
-    }
-    return %orig;
-}
-
-// v456 DBG
-- (double)cellHeightAtIndex:(long long)index {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        return [UIScreen mainScreen].bounds.size.height;
-    }
-    return %orig;
-}
-
-// v457: fixedCellHeight
-- (double)fixedCellHeight {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        return [UIScreen mainScreen].bounds.size.height;
-    }
-    return %orig;
-}
-
-// v456 DBG
 - (double)contentOffsetYForCellAtIndex:(long long)index {
     double y = %orig;
     if (DYYYDbgShouldLog(@"CO", 10)) {
