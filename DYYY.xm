@@ -16846,7 +16846,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         UIView *vw = self.view;
         if (vw) {
             vw.clipsToBounds = NO;
-            if (NO && fabs(CGRectGetHeight(vw.frame) - screenH) > 0.5) { // DBG fullscreen-player-height-off
+            if (fabs(CGRectGetHeight(vw.frame) - screenH) > 0.5) {
                 CGRect f = vw.frame;
                 f.size.height = screenH;
                 vw.frame = f;
@@ -16893,7 +16893,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         UIView *vw = self.view;
         if (vw) {
             vw.clipsToBounds = NO;
-            if (NO && fabs(CGRectGetHeight(vw.frame) - screenH) > 0.5) { // DBG fullscreen-player-height-off
+            if (fabs(CGRectGetHeight(vw.frame) - screenH) > 0.5) {
                 CGRect f = vw.frame;
                 f.size.height = screenH;
                 vw.frame = f;
@@ -18405,6 +18405,7 @@ static void (*_o_v29)(id, SEL) = NULL;
 
 static void _m_v29(id self, SEL _cmd) {
     if (_o_v29) _o_v29(self, _cmd);
+    return; // DBG _m_v29 off
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
 
     @autoreleasepool {
