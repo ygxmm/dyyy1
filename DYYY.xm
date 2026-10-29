@@ -16846,7 +16846,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         UIView *vw = self.view;
         if (vw) {
             vw.clipsToBounds = NO;
-            if (fabs(CGRectGetHeight(vw.frame) - screenH) > 0.5) {
+            if (NO && fabs(CGRectGetHeight(vw.frame) - screenH) > 0.5) { // DBG fullscreen-player-height-off
                 CGRect f = vw.frame;
                 f.size.height = screenH;
                 vw.frame = f;
@@ -16893,7 +16893,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         UIView *vw = self.view;
         if (vw) {
             vw.clipsToBounds = NO;
-            if (fabs(CGRectGetHeight(vw.frame) - screenH) > 0.5) {
+            if (NO && fabs(CGRectGetHeight(vw.frame) - screenH) > 0.5) { // DBG fullscreen-player-height-off
                 CGRect f = vw.frame;
                 f.size.height = screenH;
                 vw.frame = f;
