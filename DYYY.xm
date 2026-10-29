@@ -7885,6 +7885,20 @@ static void DYYYTriggerNativeLongPressSpeedHaptic(void) {
     }
 }
 
+static void DYYYDbgWrite(NSString *msg) {
+    NSString *path = [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject]
+                      stringByAppendingPathComponent:@"DYYY-debug.log"];
+    NSData *data = [[msg stringByAppendingString:@"\n"] dataUsingEncoding:NSUTF8StringEncoding];
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+    if (!fh) {
+        [data writeToFile:path atomically:YES];
+    } else {
+        [fh seekToEndOfFile];
+        [fh writeData:data];
+        [fh closeFile];
+    }
+}
+
 static void DYYYBeginLongPressVerticalAdjustment(id owner,
                                                  UILongPressGestureRecognizer *gesture,
                                                  double initialSpeed) {
@@ -17850,13 +17864,26 @@ static char kDYYYV29DoneKey; // v439
         if (objc_getAssociatedObject(self, &kDYYYV29DoneKey)) return;
         // v446: 约束现成，直接改，不等 IC 创建
         // 时序安全：在 table 自己的 layoutSubviews 里改，不主动触发 layout，不打断 IC 创建
-        // DBG v448: 诊断 tableViewBottomMargin 和 table 当前高度
+        // DBG v448: 诊断 tableViewBottomMargin 和 table 当前高度，只写一次
         {
-            UIViewController *dbgVC = (UIViewController *)self.containerVC;
-            if ([dbgVC respondsToSelector:@selector(tableViewBottomMargin)]) {
-                double dbgMargin = [(id)dbgVC tableViewBottomMargin];
-                NSLog(@"[DYYY-DBG] margin=%.1f tableH=%.1f screenH=%.1f",
-                      dbgMargin, self.bounds.size.height, screenH);
+            static char kDYYYDbg448Key;
+            if (!objc_getAssociatedObject(self, &kDYYYDbg448Key)) {
+                objc_setAssociatedObject(self, &kDYYYDbg448Key, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                UIViewController *dbgVC = (UIViewController *)self.containerVC;
+                NSString *msg = nil;
+                if (!dbgVC) {
+                    msg = @"[v448] containerVC=nil";
+                } else if ([dbgVC respondsToSelector:@selector(tableViewBottomMargin)]) {
+                    double dbgMargin = [(id)dbgVC tableViewBottomMargin];
+                    msg = [NSString stringWithFormat:
+                        @"[v448] margin=%.1f tableH=%.1f screenH=%.1f cellCount=%lu",
+                        dbgMargin, self.bounds.size.height, screenH,
+                        (unsigned long)self.subviews.count];
+                } else {
+                    msg = @"[v448] containerVC 没有 tableViewBottomMargin";
+                }
+                NSLog(@"[DYYY-DBG] %@", msg);
+                DYYYDbgWrite(msg);
             }
         }
         // 改 self 上下三层的 bottom 约束（table / superview / 祖父）
