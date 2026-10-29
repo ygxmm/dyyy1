@@ -7788,6 +7788,30 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
     return YES;
 }
 
+// v457: 让 heightForRowAtIndexPath 返回 852，和 table 高度统一
+- (double)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        return [UIScreen mainScreen].bounds.size.height;
+    }
+    return %orig;
+}
+
+// v457: cellHeightAtIndex: 返回 852，让抖音内部算 contentOffset 也用 852
+- (double)cellHeightAtIndex:(long long)index {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        return [UIScreen mainScreen].bounds.size.height;
+    }
+    return %orig;
+}
+
+// v457: fixedCellHeight 返回 852，覆盖 contentOffsetYForCellAtIndex 内部可能用它的情况
+- (double)fixedCellHeight {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        return [UIScreen mainScreen].bounds.size.height;
+    }
+    return %orig;
+}
+
 // v456 DBG
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
@@ -7810,20 +7834,26 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
 
 // v456 DBG
 - (double)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    double h = %orig;
-    if (DYYYDbgShouldLog(@"HR", 5)) {
-        DYYYDbgWrite([NSString stringWithFormat:@"[HR] idx=%ld h=%.1f", (long)indexPath.row, h]);
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        return [UIScreen mainScreen].bounds.size.height;
     }
-    return h;
+    return %orig;
 }
 
 // v456 DBG
 - (double)cellHeightAtIndex:(long long)index {
-    double h = %orig;
-    if (DYYYDbgShouldLog(@"CH", 10)) {
-        DYYYDbgWrite([NSString stringWithFormat:@"[CH] idx=%lld h=%.1f", index, h]);
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        return [UIScreen mainScreen].bounds.size.height;
     }
-    return h;
+    return %orig;
+}
+
+// v457: fixedCellHeight
+- (double)fixedCellHeight {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        return [UIScreen mainScreen].bounds.size.height;
+    }
+    return %orig;
 }
 
 // v456 DBG
