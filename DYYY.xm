@@ -7755,29 +7755,6 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
     return YES;
 }
 
-// v452: FullScreen 下行高返回屏幕高度，让抖音按 852 算 contentSize 和 contentOffset
-- (double)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        return [UIScreen mainScreen].bounds.size.height;
-    }
-    return %orig;
-}
-
-// v453: 补 hook cellHeight 和 cellHeightAtIndex:，让抖音内部算 contentOffset 时也用 852
-- (double)cellHeight {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        return [UIScreen mainScreen].bounds.size.height;
-    }
-    return %orig;
-}
-
-- (double)cellHeightAtIndex:(long long)index {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        return [UIScreen mainScreen].bounds.size.height;
-    }
-    return %orig;
-}
-
 %end
 
 %hook AWEAwemeDetailContainerPlayControlConfig
@@ -16936,6 +16913,8 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %end
 
+static char kDYYYFeedTableOriginalHeightGapKey;
+static char kDYYYFeedTableFullScreenAppliedKey;
 
 // v250: 只对单个 cell 里的 player VC 拉高。
 // v252probe: 写沙盒日志，定位错位时 cell/player VC 的状态
@@ -17819,7 +17798,7 @@ static char kDYYYV29DoneKey; // v439
     }
 
     // v439: 直接把自身 bottom 约束改 0 撑满（替代 _m_v29 的 BFS 方案）
-    if (0 && DYYYGetBool(@"DYYYEnableFullScreen")) { // v453 临时禁用
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         // 已经是屏幕高度就不用动
         CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
         if (self.bounds.size.height >= screenH - 1.0) return;
