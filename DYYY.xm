@@ -26,10 +26,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view);
 #import "AwemeHeaders.h"
 
 
-
-
-
-
 #import "CityManager.h"
 #import "DYYYBottomAlertView.h"
 #import "DYYYGlassConfirmView.h"
@@ -6875,7 +6871,6 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 }
 
 %end
-
 
 
 %hook AWEDProgressCoreContainer
@@ -16014,9 +16009,6 @@ static Class tabBarButtonClass = nil;
                      (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
 
 
-
-
-
     if (isPlayVC && enableBlur) {
         if (frame.origin.x != 0) {
             return;
@@ -16351,7 +16343,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         }
     }
 }
-
 
 
 - (void)viewDidDisappear:(BOOL)animated {
@@ -18397,14 +18388,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
     }
 }
-
-// ===== 详情页 Cell 撑满全屏（严格限定 AWEAwemeDetailTableView） =====
-
-// ===== v29: 每个 table 只处理一次，不再每帧 dispatch =====
-// v28 每次 layout 都 dispatch_async + layoutIfNeeded → 打断主页加载
-// v29 用 associatedObject 标记已处理的 table，只动手一次
-static const void *kDYYYV29Done = &kDYYYV29Done;
-
 
 
 // ===== 隐藏"暂时没有更多了"底部占位（只对详情页，主页不动） =====
