@@ -2467,3 +2467,8 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 + (BOOL)enableCommentRenderingOptimize:(id)context;
 + (BOOL)enableCommentAdaptiveWindowResponsiveLayout;
 @end
+
+// v441: 详情页 cell VC，interactionController 属性直取用
+@interface AWEAwemeDetailCellViewController : NSObject
+@property (nonatomic, readonly, strong) id interactionController;
+@end

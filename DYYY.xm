@@ -17850,12 +17850,9 @@ static char kDYYYV29DoneKey; // v439
         if (!vc) return;
         BOOL hasIC = NO;
         for (UIViewController *child in vc.childViewControllers) {
-            if (![child respondsToSelector:@selector(interactionController)]) continue;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-            id ic = [child performSelector:@selector(interactionController)];
-#pragma clang diagnostic pop
-            if (ic) { hasIC = YES; break; }
+            if (![child isKindOfClass:[AWEAwemeDetailCellViewController class]]) continue;
+            AWEAwemeDetailCellViewController *cellVC = (AWEAwemeDetailCellViewController *)child;
+            if (cellVC.interactionController) { hasIC = YES; break; }
         }
         if (!hasIC) return;
         // 改 self 上下三层的 bottom 约束（table / superview / 祖父）
