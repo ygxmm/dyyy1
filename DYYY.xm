@@ -16913,8 +16913,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %end
 
-static char kDYYYFeedTableOriginalHeightGapKey;
-static char kDYYYFeedTableFullScreenAppliedKey;
 
 // v250: 只对单个 cell 里的 player VC 拉高。
 // v252probe: 写沙盒日志，定位错位时 cell/player VC 的状态
