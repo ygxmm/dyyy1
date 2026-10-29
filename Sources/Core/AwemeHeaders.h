@@ -1610,6 +1610,10 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 - (double)fixedCellHeight;
 - (id)dataSourceModelForIndexPath:(NSIndexPath *)indexPath;
 - (id)currentInteractionController;
+- (double)cellHeightAtIndex:(long long)index;
+- (double)contentOffsetYForCellAtIndex:(long long)index;
+@property (nonatomic) long long currentPlayIndex;
+@property (nonatomic) long long currentIndex;
 @end
 @interface AWEMixVideoPanelDetailTableViewController : AWEAwemeDetailTableViewController
 @property(nonatomic, assign) BOOL isShowingRelatedMixViewController;
