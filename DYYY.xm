@@ -17849,8 +17849,9 @@ static char kDYYYV29DoneKey; // v439
         }
         if (!vc) return;
         BOOL hasIC = NO;
+        Class dyyyCellVCClass = NSClassFromString(@"AWEAwemeDetailCellViewController");
         for (UIViewController *child in vc.childViewControllers) {
-            if (![child isKindOfClass:[AWEAwemeDetailCellViewController class]]) continue;
+            if (!dyyyCellVCClass || ![child isKindOfClass:dyyyCellVCClass]) continue;
             AWEAwemeDetailCellViewController *cellVC = (AWEAwemeDetailCellViewController *)child;
             if (cellVC.interactionController) { hasIC = YES; break; }
         }
