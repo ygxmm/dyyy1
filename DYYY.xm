@@ -17841,22 +17841,28 @@ static char kDYYYV29DoneKey; // v439
         if (self.bounds.size.height >= screenH - 1.0) return;
         // 已经改过就不再改
         if (objc_getAssociatedObject(self, &kDYYYV29DoneKey)) return;
-        // interaction VC 已经出现在父 VC 的 childViewControllers 里才改
-        // v440: 用 AWEAwemeDetailTableView.containerVC 属性直取，不走响应链回溯
+        // v441: interaction VC 挂在 cellVC 的属性上，不是 tableVC 的 child
+        // 遍历 cellVC，检查 interactionController 属性是否已创建
         UIViewController *vc = (UIViewController *)self.containerVC;
+        if (!vc) {
+            vc = [DYYYUtils firstAvailableViewControllerFromView:self]; // fallback
+        }
         if (!vc) return;
         BOOL hasIC = NO;
         for (UIViewController *child in vc.childViewControllers) {
-            if ([child isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")]) {
-                hasIC = YES;
-                break;
-            }
+            if (![child respondsToSelector:@selector(interactionController)]) continue;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+            id ic = [child performSelector:@selector(interactionController)];
+#pragma clang diagnostic pop
+            if (ic) { hasIC = YES; break; }
         }
         if (!hasIC) return;
-        // 改 self 上下两层的 bottom 约束
+        // 改 self 上下三层的 bottom 约束（table / superview / 祖父）
         BOOL changed = NO;
         NSMutableArray *pools = [NSMutableArray arrayWithObject:self.constraints];
         if (self.superview) [pools addObject:self.superview.constraints];
+        if (self.superview.superview) [pools addObject:self.superview.superview.constraints];
         for (NSArray *pool in pools) {
             for (NSLayoutConstraint *c in pool) {
                 if (c.firstItem != self && c.secondItem != self) continue;
