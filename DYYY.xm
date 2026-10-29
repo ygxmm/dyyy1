@@ -17814,14 +17814,21 @@ static char kDYYYV29DoneKey; // v439
 - (void)layoutSubviews {
     %orig;
 
-    // v419: 换爹方案，在原位置遍历子视图，实现背景透明
+    // v447: 性能优化——isKindOfClass + 类缓存，替代 NSStringFromClass + containsString
+    // 逻辑等价：原来按类名字符串匹配，现在按类继承链匹配，命中范围一致
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        static Class sDYYYDetailCellClass = nil;
+        static Class sDYYYCellContentClass = nil;
+        static dispatch_once_t sDYYYOnce;
+        dispatch_once(&sDYYYOnce, ^{
+            sDYYYDetailCellClass = NSClassFromString(@"AWEAwemeDetailTableViewCell");
+            sDYYYCellContentClass = NSClassFromString(@"UITableViewCellContentView");
+        });
         for (UIView *subview in self.subviews) {
-            NSString *cls = NSStringFromClass([subview class]);
-            if ([cls containsString:@"AWEAwemeDetailTableViewCell"]) {
+            if (sDYYYDetailCellClass && [subview isKindOfClass:sDYYYDetailCellClass]) {
                 subview.backgroundColor = [UIColor clearColor];
                 for (UIView *content in subview.subviews) {
-                    if ([content isKindOfClass:NSClassFromString(@"UITableViewCellContentView")]) {
+                    if (sDYYYCellContentClass && [content isKindOfClass:sDYYYCellContentClass]) {
                         content.backgroundColor = [UIColor clearColor];
                     }
                 }
