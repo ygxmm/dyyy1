@@ -7755,6 +7755,14 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
     return YES;
 }
 
+// v452: FullScreen 下行高返回屏幕高度，让抖音按 852 算 contentSize 和 contentOffset
+- (double)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        return [UIScreen mainScreen].bounds.size.height;
+    }
+    return %orig;
+}
+
 %end
 
 %hook AWEAwemeDetailContainerPlayControlConfig
