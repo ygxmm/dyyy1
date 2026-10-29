@@ -17848,12 +17848,14 @@ static char kDYYYV29DoneKey; // v439
             vc = [DYYYUtils firstAvailableViewControllerFromView:self]; // fallback
         }
         if (!vc) return;
+        // v443: 用 containerVC.currentInteractionController 直取，省掉 childVCs 遍历
         BOOL hasIC = NO;
-        Class dyyyCellVCClass = NSClassFromString(@"AWEAwemeDetailCellViewController");
-        for (UIViewController *child in vc.childViewControllers) {
-            if (!dyyyCellVCClass || ![child isKindOfClass:dyyyCellVCClass]) continue;
-            AWEAwemeDetailCellViewController *cellVC = (AWEAwemeDetailCellViewController *)child;
-            if (cellVC.interactionController) { hasIC = YES; break; }
+        if ([vc respondsToSelector:@selector(currentInteractionController)]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+            id dyyyIC = [vc performSelector:@selector(currentInteractionController)];
+#pragma clang diagnostic pop
+            if (dyyyIC) hasIC = YES;
         }
         if (!hasIC) return;
         // 改 self 上下三层的 bottom 约束（table / superview / 祖父）
