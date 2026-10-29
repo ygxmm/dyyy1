@@ -17802,6 +17802,8 @@ static void DYYYExpandPlayInteraction(UIView *root) {
     }
 }
 
+static char kDYYYV29DoneKey; // v439
+
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
@@ -17827,9 +17829,9 @@ static void DYYYExpandPlayInteraction(UIView *root) {
         }
     }
     // 关键：解除 TableView 的裁剪，让 cell 内撑到 852 的视频溢出显示
+    // v440: 删掉 DYYYExpandPlayInteraction(self)，v439 约束修改已让 interaction VC 天然 852
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         self.clipsToBounds = NO;
-        DYYYExpandPlayInteraction(self);
     }
 
     // v439: 直接把自身 bottom 约束改 0 撑满（替代 _m_v29 的 BFS 方案）
@@ -17840,7 +17842,9 @@ static void DYYYExpandPlayInteraction(UIView *root) {
         // 已经改过就不再改
         if (objc_getAssociatedObject(self, &kDYYYV29DoneKey)) return;
         // interaction VC 已经出现在父 VC 的 childViewControllers 里才改
-        UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
+        // v440: 用 AWEAwemeDetailTableView.containerVC 属性直取，不走响应链回溯
+        UIViewController *vc = (UIViewController *)self.containerVC;
+        if (!vc) return;
         BOOL hasIC = NO;
         for (UIViewController *child in vc.childViewControllers) {
             if ([child isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")]) {
@@ -18439,7 +18443,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 static const void *kDYYYV29Done = &kDYYYV29Done;
 
 
-static char kDYYYV29DoneKey; // v439
 
 // ===== 隐藏"暂时没有更多了"底部占位（只对详情页，主页不动） =====
 %ctor {
