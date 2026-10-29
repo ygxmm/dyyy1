@@ -17850,6 +17850,15 @@ static char kDYYYV29DoneKey; // v439
         if (objc_getAssociatedObject(self, &kDYYYV29DoneKey)) return;
         // v446: 约束现成，直接改，不等 IC 创建
         // 时序安全：在 table 自己的 layoutSubviews 里改，不主动触发 layout，不打断 IC 创建
+        // DBG v448: 诊断 tableViewBottomMargin 和 table 当前高度
+        {
+            UIViewController *dbgVC = (UIViewController *)self.containerVC;
+            if ([dbgVC respondsToSelector:@selector(tableViewBottomMargin)]) {
+                double dbgMargin = [(id)dbgVC tableViewBottomMargin];
+                NSLog(@"[DYYY-DBG] margin=%.1f tableH=%.1f screenH=%.1f",
+                      dbgMargin, self.bounds.size.height, screenH);
+            }
+        }
         // 改 self 上下三层的 bottom 约束（table / superview / 祖父）
         BOOL changed = NO;
         NSMutableArray *pools = [NSMutableArray arrayWithObject:self.constraints];
