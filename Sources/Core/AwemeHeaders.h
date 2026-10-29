@@ -1605,7 +1605,6 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 - (BOOL)prefersStatusBarHidden;
 @end
 @interface AWEAwemeDetailTableViewController : UIViewController
-@property (nonatomic, readonly) double tableViewBottomMargin;
 - (BOOL)prefersStatusBarHidden;
 - (double)cellHeight;
 - (double)fixedCellHeight;
