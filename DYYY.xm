@@ -17841,23 +17841,8 @@ static char kDYYYV29DoneKey; // v439
         if (self.bounds.size.height >= screenH - 1.0) return;
         // 已经改过就不再改
         if (objc_getAssociatedObject(self, &kDYYYV29DoneKey)) return;
-        // v441: interaction VC 挂在 cellVC 的属性上，不是 tableVC 的 child
-        // 遍历 cellVC，检查 interactionController 属性是否已创建
-        UIViewController *vc = (UIViewController *)self.containerVC;
-        if (!vc) {
-            vc = [DYYYUtils firstAvailableViewControllerFromView:self]; // fallback
-        }
-        if (!vc) return;
-        // v443: 用 containerVC.currentInteractionController 直取，省掉 childVCs 遍历
-        BOOL hasIC = NO;
-        if ([vc respondsToSelector:@selector(currentInteractionController)]) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-            id dyyyIC = [vc performSelector:@selector(currentInteractionController)];
-#pragma clang diagnostic pop
-            if (dyyyIC) hasIC = YES;
-        }
-        if (!hasIC) return;
+        // v446: 约束现成，直接改，不等 IC 创建
+        // 时序安全：在 table 自己的 layoutSubviews 里改，不主动触发 layout，不打断 IC 创建
         // 改 self 上下三层的 bottom 约束（table / superview / 祖父）
         BOOL changed = NO;
         NSMutableArray *pools = [NSMutableArray arrayWithObject:self.constraints];
