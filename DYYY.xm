@@ -18403,15 +18403,29 @@ static const void *kDYYYV29Done = &kDYYYV29Done;
 
 static void (*_o_v29)(id, SEL) = NULL;
 
+// v437: 递归查 view 树里有没有 interaction VC
+static BOOL DYYYViewTreeHasInteractionVC(UIView *root) {
+    if (!root) return NO;
+    Class icClass = NSClassFromString(@"AWEPlayInteractionViewController");
+    if (!icClass) return NO;
+    if ([root.nextResponder isKindOfClass:icClass]) return YES;
+    for (UIView *sub in root.subviews) {
+        if (DYYYViewTreeHasInteractionVC(sub)) return YES;
+    }
+    return NO;
+}
+
 static void _m_v29(id self, SEL _cmd) {
     if (_o_v29) _o_v29(self, _cmd);
-    return; // DBG _m_v29 off
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
 
     @autoreleasepool {
         UIViewController *vc = (UIViewController *)self;
         UIView *rootView = vc.view;
-        if (!rootView || rootView.bounds.size.height < 800) return;
+        if (!rootView || rootView.bounds.size.height < 700) return;
+
+        // v437: 只在 interaction VC 已存在时才改约束，避免打断创建
+        if (!DYYYViewTreeHasInteractionVC(rootView)) return;
 
         // 找 table
         UIView *table = nil;
@@ -18426,9 +18440,6 @@ static void _m_v29(id self, SEL _cmd) {
             for (UIView *s in v.subviews) [q addObject:s];
         }
         if (!table) return;
-
-        // 已经处理过？直接退出
-        if (objc_getAssociatedObject(table, kDYYYV29Done)) return;
 
         UIView *sv = table.superview;
         if (!sv) return;
@@ -18449,9 +18460,6 @@ static void _m_v29(id self, SEL _cmd) {
                 }
             }
         }
-
-        // 标记已处理（无论是否改过，都不再处理这个 table）
-        objc_setAssociatedObject(table, kDYYYV29Done, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
         if (changed) {
             // 只在真正改过约束时触发一次重排
