@@ -14664,15 +14664,11 @@ static void DYYYApplySearchShiftIfNeeded(id vc) {
         }
         CGAffineTransform orig = origVal.CGAffineTransformValue;
 
-        // v467: 全屏开时 interaction 层整体上移 60，抵消抖音原生 frame.y=60。
-        // v465 拉高 player 到 852 后，interaction 若在 y=60 会底部溢出 60，
-        // 滑动时每帧重绘错位层 → 卡帧。用 transform.ty=-60 抵消，不动 frame，
-        // 避开 v334 直接改 self.view.frame 的频闪问题。
+        // v468: 全屏开时 interaction 层保持原生 y=60（下移 60，避开顶部搜索栏）。
+        // 撤销 DYYYApplySearchShiftIfNeeded 额外的 ty+60，只保留 frame 原生偏移。
         if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-            CGAffineTransform target = orig;
-            target.ty -= 60.0;
-            if (!CGAffineTransformEqualToTransform(v.transform, target)) {
-                v.transform = target;
+            if (!CGAffineTransformEqualToTransform(v.transform, orig)) {
+                v.transform = orig;
             }
             return;
         }
