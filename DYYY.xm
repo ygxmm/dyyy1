@@ -16866,15 +16866,12 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 - (void)viewDidLayoutSubviews {
     %orig;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        // DYYY修复：直接改主视图高度到屏幕高度，并解除裁剪
-        // 里面的 TTMetalViewVP 是 clips=0，会自动溢出到 852
-        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+        // v459: 只解除裁剪,不改 frame。TTMetalViewVP 自身 clips=0 会溢出到 852。
+        // 3ffe7a0 删掉 viewDidLayoutSubviews 里改 frame 的自触发循环(改 frame ->
+        // 重布局 -> 再进回调 -> 主线程堵死)。
         UIView *vw = self.view;
         if (vw) {
             vw.clipsToBounds = NO;
-            // DYYY修复: 删除改 frame 逻辑，避免 viewDidLayoutSubviews 自触发重布局
-            // 根因: 在 viewDidLayoutSubviews 里改自己 frame 会触发新一轮 layout,
-            //       直播全屏旋转时 alongside 高频触发 -> 改 frame -> 重布局循环 -> 主线程堵死
         }
     }
 }
@@ -16911,15 +16908,12 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 - (void)viewDidLayoutSubviews {
     %orig;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        // DYYY修复：直接改主视图高度到屏幕高度，并解除裁剪
-        // 里面的 TTMetalViewVP 是 clips=0，会自动溢出到 852
-        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+        // v459: 只解除裁剪,不改 frame。TTMetalViewVP 自身 clips=0 会溢出到 852。
+        // 3ffe7a0 删掉 viewDidLayoutSubviews 里改 frame 的自触发循环(改 frame ->
+        // 重布局 -> 再进回调 -> 主线程堵死)。
         UIView *vw = self.view;
         if (vw) {
             vw.clipsToBounds = NO;
-            // DYYY修复: 删除改 frame 逻辑，避免 viewDidLayoutSubviews 自触发重布局
-            // 根因: 在 viewDidLayoutSubviews 里改自己 frame 会触发新一轮 layout,
-            //       直播全屏旋转时 alongside 高频触发 -> 改 frame -> 重布局循环 -> 主线程堵死
         }
     }
 }
