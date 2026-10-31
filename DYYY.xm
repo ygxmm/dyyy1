@@ -7751,6 +7751,17 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
 
 %group AutoPlay
 
+static void DYYYScanTabBarHeightViews(UIView *v, int d) {
+    if (!v || d > 4) return;
+    for (UIView *s in v.subviews) {
+        if ([s isMemberOfClass:[UIView class]] &&
+            fabs(s.frame.size.height - originalTabBarHeight) < 0.5) {
+            s.backgroundColor = [UIColor clearColor];
+        }
+        DYYYScanTabBarHeightViews(s, d + 1);
+    }
+}
+
 %hook AWEAwemeDetailTableViewController
 
 - (BOOL)hasIphoneAutoPlaySwitch {
@@ -7786,20 +7797,9 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
     %orig;
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
     if (originalTabBarHeight <= 0) return;
-    [self dy_scanTabBarHeightViews:self.view depth:0];
+    DYYYScanTabBarHeightViews(self.view, 0);
 }
 
-%new
-- (void)dy_scanTabBarHeightViews:(UIView *)v depth:(int)d {
-    if (!v || d > 4) return;
-    for (UIView *s in v.subviews) {
-        if ([s isMemberOfClass:[UIView class]] &&
-            fabs(s.frame.size.height - originalTabBarHeight) < 0.5) {
-            s.backgroundColor = [UIColor clearColor];
-        }
-        [self dy_scanTabBarHeightViews:s depth:d + 1];
-    }
-}
 
 %end
 
@@ -16095,20 +16095,9 @@ static Class tabBarButtonClass = nil;
     %orig;
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
     if (originalTabBarHeight <= 0) return;
-    [self dy_scanTabBarHeightViews:self.view depth:0];
+    DYYYScanTabBarHeightViews(self.view, 0);
 }
 
-%new
-- (void)dy_scanTabBarHeightViews:(UIView *)v depth:(int)d {
-    if (!v || d > 4) return;
-    for (UIView *s in v.subviews) {
-        if ([s isMemberOfClass:[UIView class]] &&
-            fabs(s.frame.size.height - originalTabBarHeight) < 0.5) {
-            s.backgroundColor = [UIColor clearColor];
-        }
-        [self dy_scanTabBarHeightViews:s depth:d + 1];
-    }
-}
 
 %end
 
