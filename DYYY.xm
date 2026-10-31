@@ -14663,9 +14663,6 @@ static void DYYYApplySearchShiftIfNeeded(id vc) {
             objc_setAssociatedObject(vc, &kDYYYOrigTransformKey, origVal, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         CGAffineTransform orig = origVal.CGAffineTransformValue;
-
-        // v469: 全屏时搜索页 UI 保持下移 60（恢复原逻辑）。
-        // BottomOffset 三处改为搜索页不上移，与此处 +60 不冲突。
         CGAffineTransform target = orig;
         target.ty += 60.0;
 
@@ -16258,14 +16255,11 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     }
 }
 
-// v346/v469: HUD 容器底部偏移 -60（上移 60），仅首页 feed 生效。
-// 搜索页详情整层已下移 60，这里再上移会叠加冲突 → 搜索页返回 orig 不上移。
+// v346: HUD 容器底部偏移 +60（让左右栈和栈容器都上移 60）
 - (double)leftContainerBottomOffset {
     double orig = %orig;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        NSString *refer = self.referString;
-        BOOL isSearch = [refer isKindOfClass:[NSString class]] && [refer containsString:@"search"];
-        if (!isSearch) return orig - 60.0;
+        return orig - 60.0;
     }
     return orig;
 }
@@ -16273,9 +16267,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 - (double)p_leftAndRightContainerBottomOffset {
     double orig = %orig;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        NSString *refer = self.referString;
-        BOOL isSearch = [refer isKindOfClass:[NSString class]] && [refer containsString:@"search"];
-        if (!isSearch) return orig - 60.0;
+        return orig - 60.0;
     }
     return orig;
 }
@@ -16283,9 +16275,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 - (double)p_stackContainerViewBottomOffset {
     double orig = %orig;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        NSString *refer = self.referString;
-        BOOL isSearch = [refer isKindOfClass:[NSString class]] && [refer containsString:@"search"];
-        if (!isSearch) return orig - 60.0;
+        return orig - 60.0;
     }
     return orig;
 }
