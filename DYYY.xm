@@ -16021,6 +16021,37 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
+    // v460 性能优化：前置数值预判，避免每帧上千次响应链回溯
+    // 原逻辑只有"高度差 ≈ tabBarHeight"时才可能改 frame，稳定状态下高度差=0，
+    // 99.9% 的 setFrame 回溯完最后都是 %orig(frame)。前置过滤等价且零回溯。
+    if (!enableBlur && enableFS) {
+        if (frame.origin.x != 0 && frame.origin.y != 0) {
+            %orig(frame);
+            return;
+        }
+        CGRect superF = self.superview.frame;
+        CGFloat superH = CGRectGetHeight(superF);
+        CGFloat selfH = CGRectGetHeight(frame);
+        if (superH <= 0 || selfH <= 0 || selfH >= superH ||
+            fabs((superH - selfH) - gCurrentTabBarHeight) >= 1.0) {
+            %orig(frame);
+            return;
+        }
+        UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
+        Class PlayVCClass1 = %c(AWEAwemePlayVideoViewController);
+        Class PlayVCClass2 = %c(AWEDPlayerFeedPlayerViewController);
+        Class PlayVCClass3 = %c(AWEDPlayerViewController_Merge);
+        BOOL isPlayVC = ((PlayVCClass1 && [vc isKindOfClass:PlayVCClass1]) ||
+                         (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
+                         (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
+        if (isPlayVC) {
+            frame.size.height = superH;
+        }
+        %orig(frame);
+        return;
+    }
+
+    // 评论模糊开启的情况：保留原路径（比例较低，暂不优化）
     UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
     Class PlayVCClass1 = %c(AWEAwemePlayVideoViewController);
     Class PlayVCClass2 = %c(AWEDPlayerFeedPlayerViewController);
@@ -16029,7 +16060,6 @@ static Class tabBarButtonClass = nil;
     BOOL isPlayVC = ((PlayVCClass1 && [vc isKindOfClass:PlayVCClass1]) ||
                      (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
                      (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
-
 
     if (isPlayVC && enableBlur) {
         if (frame.origin.x != 0) {
@@ -16049,7 +16079,6 @@ static Class tabBarButtonClass = nil;
                 frame.size.height = CGRectGetHeight(superF);
             }
         }
-
         %orig(frame);
         return;
     }
