@@ -16021,10 +16021,34 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
-    // v461: 改 frame 走三个 VC 的 player 改 frame hook，全局不再回溯响应链。
-    // 评论模糊吞 frame 逻辑随之移除：如需恢复，单独 hook 对应 VC 的 setFrame。
-    (void)enableBlur;
-    (void)enableFS;
+    // v461: 常规改 frame 走三个 VC 的 changePlayerFrameIfNeededWithAnimated: hook。
+    // v462: 评论区/面板打开时抖音内部可能把 player view 压到 769（852-tabBar），
+    //       需要全局兜底拉回 852。用前置数值预判，只有高度差 ≈ tabBarHeight 才溯源响应链，
+    //       稳定状态下高度差=0 直接跳过，性能接近 v461。
+    if (!enableBlur && enableFS) {
+        if (frame.origin.x != 0 && frame.origin.y != 0) {
+            %orig(frame);
+            return;
+        }
+        CGRect superF = self.superview.frame;
+        CGFloat superH = CGRectGetHeight(superF);
+        CGFloat selfH = CGRectGetHeight(frame);
+        if (superH > 0 && selfH > 0 && selfH < superH &&
+            fabs((superH - selfH) - gCurrentTabBarHeight) < 1.0) {
+            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
+            Class PlayVCClass1 = %c(AWEAwemePlayVideoViewController);
+            Class PlayVCClass2 = %c(AWEDPlayerFeedPlayerViewController);
+            Class PlayVCClass3 = %c(AWEDPlayerViewController_Merge);
+            BOOL isPlayVC = ((PlayVCClass1 && [vc isKindOfClass:PlayVCClass1]) ||
+                             (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
+                             (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
+            if (isPlayVC) {
+                frame.size.height = superH;
+            }
+        }
+        %orig(frame);
+        return;
+    }
     %orig(frame);
 }
 
