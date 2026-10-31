@@ -16021,67 +16021,10 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
-    // v460 性能优化：前置数值预判，避免每帧上千次响应链回溯
-    // 原逻辑只有"高度差 ≈ tabBarHeight"时才可能改 frame，稳定状态下高度差=0，
-    // 99.9% 的 setFrame 回溯完最后都是 %orig(frame)。前置过滤等价且零回溯。
-    if (!enableBlur && enableFS) {
-        if (frame.origin.x != 0 && frame.origin.y != 0) {
-            %orig(frame);
-            return;
-        }
-        CGRect superF = self.superview.frame;
-        CGFloat superH = CGRectGetHeight(superF);
-        CGFloat selfH = CGRectGetHeight(frame);
-        if (superH <= 0 || selfH <= 0 || selfH >= superH ||
-            fabs((superH - selfH) - gCurrentTabBarHeight) >= 1.0) {
-            %orig(frame);
-            return;
-        }
-        UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-        Class PlayVCClass1 = %c(AWEAwemePlayVideoViewController);
-        Class PlayVCClass2 = %c(AWEDPlayerFeedPlayerViewController);
-        Class PlayVCClass3 = %c(AWEDPlayerViewController_Merge);
-        BOOL isPlayVC = ((PlayVCClass1 && [vc isKindOfClass:PlayVCClass1]) ||
-                         (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
-                         (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
-        if (isPlayVC) {
-            frame.size.height = superH;
-        }
-        %orig(frame);
-        return;
-    }
-
-    // 评论模糊开启的情况：保留原路径（比例较低，暂不优化）
-    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-    Class PlayVCClass1 = %c(AWEAwemePlayVideoViewController);
-    Class PlayVCClass2 = %c(AWEDPlayerFeedPlayerViewController);
-    Class PlayVCClass3 = %c(AWEDPlayerViewController_Merge);
-
-    BOOL isPlayVC = ((PlayVCClass1 && [vc isKindOfClass:PlayVCClass1]) ||
-                     (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
-                     (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
-
-    if (isPlayVC && enableBlur) {
-        if (frame.origin.x != 0) {
-            return;
-        }
-    }
-
-    if (isPlayVC && enableFS) {
-        if (frame.origin.x != 0 && frame.origin.y != 0) {
-            %orig(frame);
-            return;
-        }
-        CGRect superF = self.superview.frame;
-        if (CGRectGetHeight(superF) > 0 && CGRectGetHeight(frame) > 0 && CGRectGetHeight(frame) < CGRectGetHeight(superF)) {
-            CGFloat diff = CGRectGetHeight(superF) - CGRectGetHeight(frame);
-            if (fabs(diff - gCurrentTabBarHeight) < 1.0) {
-                frame.size.height = CGRectGetHeight(superF);
-            }
-        }
-        %orig(frame);
-        return;
-    }
+    // v461: 改 frame 走三个 VC 的 player 改 frame hook，全局不再回溯响应链。
+    // 评论模糊吞 frame 逻辑随之移除：如需恢复，单独 hook 对应 VC 的 setFrame。
+    (void)enableBlur;
+    (void)enableFS;
     %orig(frame);
 }
 
@@ -16862,6 +16805,18 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %hook AWEAwemePlayVideoViewController
 
+- (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
+    %orig(animated);
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    UIView *vw = self.view;
+    if (vw && fabs(vw.frame.size.height - screenH) > 0.5) {
+        CGRect f = vw.frame;
+        f.size.height = screenH;
+        vw.frame = f;
+    }
+}
+
 - (void)setIsAutoPlay:(BOOL)arg0 {
     %orig(arg0);
     DYYYApplyNormalPlaybackSpeedToPlayerFallback(self);
@@ -16890,6 +16845,18 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         return NO;
     }
     return %orig;
+}
+
+- (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
+    %orig(animated);
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    UIView *vw = self.view;
+    if (vw && fabs(vw.frame.size.height - screenH) > 0.5) {
+        CGRect f = vw.frame;
+        f.size.height = screenH;
+        vw.frame = f;
+    }
 }
 
 - (void)viewDidLayoutSubviews {
@@ -16932,6 +16899,18 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         return NO;
     }
     return %orig;
+}
+
+- (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
+    %orig(animated);
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    UIView *vw = self.view;
+    if (vw && fabs(vw.frame.size.height - screenH) > 0.5) {
+        CGRect f = vw.frame;
+        f.size.height = screenH;
+        vw.frame = f;
+    }
 }
 
 - (void)viewDidLayoutSubviews {
