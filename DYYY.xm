@@ -16871,11 +16871,9 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         UIView *vw = self.view;
         if (vw) {
             vw.clipsToBounds = NO;
-            if (fabs(CGRectGetHeight(vw.frame) - screenH) > 0.5) {
-                CGRect f = vw.frame;
-                f.size.height = screenH;
-                vw.frame = f;
-            }
+            // DYYY修复: 删除改 frame 逻辑，避免 viewDidLayoutSubviews 自触发重布局
+            // 根因: 在 viewDidLayoutSubviews 里改自己 frame 会触发新一轮 layout,
+            //       直播全屏旋转时 alongside 高频触发 -> 改 frame -> 重布局循环 -> 主线程堵死
         }
     }
 }
@@ -16918,11 +16916,9 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         UIView *vw = self.view;
         if (vw) {
             vw.clipsToBounds = NO;
-            if (fabs(CGRectGetHeight(vw.frame) - screenH) > 0.5) {
-                CGRect f = vw.frame;
-                f.size.height = screenH;
-                vw.frame = f;
-            }
+            // DYYY修复: 删除改 frame 逻辑，避免 viewDidLayoutSubviews 自触发重布局
+            // 根因: 在 viewDidLayoutSubviews 里改自己 frame 会触发新一轮 layout,
+            //       直播全屏旋转时 alongside 高频触发 -> 改 frame -> 重布局循环 -> 主线程堵死
         }
     }
 }
