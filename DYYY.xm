@@ -16981,11 +16981,29 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     %orig;
     if (gDYYYInRotation) return;
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    // v465: 搜索页/部分路径下 player view 高度只有 792（少 60），兜底拉高到屏幕高度。
-    // 旋转中直接跳过，避免改 frame 触发重布局（3ffe7a0 的教训）。
     CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
     UIView *vw = self.view;
     if (vw) {
+        // PROBE: 记录进入时的 frame + 父链
+        {
+            NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+            if (dir.length > 0) {
+                NSString *lp = [dir stringByAppendingPathComponent:@"DYYY_parent_probe.log"];
+                FILE *f = fopen([lp UTF8String], "a");
+                if (f) {
+                    UIView *p1 = vw.superview;
+                    UIView *p2 = p1 ? p1.superview : nil;
+                    UIView *p3 = p2 ? p2.superview : nil;
+                    fprintf(f, "BEFORE self=%s h=%.0f | super=%s h=%.0f | p2=%s h=%.0f | p3=%s h=%.0f | autoresize=%lu\n",
+                        class_getName(object_getClass(vw)), vw.frame.size.height,
+                        p1 ? class_getName(object_getClass(p1)) : "(nil)", p1 ? p1.frame.size.height : 0,
+                        p2 ? class_getName(object_getClass(p2)) : "(nil)", p2 ? p2.frame.size.height : 0,
+                        p3 ? class_getName(object_getClass(p3)) : "(nil)", p3 ? p3.frame.size.height : 0,
+                        (unsigned long)vw.autoresizingMask);
+                    fclose(f);
+                }
+            }
+        }
         if (vw.frame.size.height > 100 &&
             fabs(vw.frame.size.height - screenH) > 0.5) {
             CGRect f = vw.frame;
