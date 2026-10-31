@@ -16953,6 +16953,9 @@ static char kDYYYFeedTableFullScreenAppliedKey;
 %hook AWEFeedTableView
 - (void)layoutSubviews {
     %orig;
+    // 旋转期跳过改 frame：layoutSubviews 里改 self.frame 会触发新一轮 layout，
+    // 旋转时 screenH 仍在变，循环占满主线程导致冻屏。旋转结束后下一帧自动恢复。
+    if (gDYYYInRotation) return;
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
 
     // v336: table 高 852，clipsToBounds=NO，cell 高由 table 高度决定
