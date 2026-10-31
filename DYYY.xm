@@ -65,6 +65,7 @@ static const CGFloat kInvalidHeight = -1.0;
 static CGFloat gGlobalTransparency = kInvalidAlpha;
 static CGFloat gCurrentTabBarHeight = kInvalidHeight;
 static CGFloat originalTabBarHeight = kInvalidHeight;
+static BOOL gDYYYInRotation = NO;  // 旋转中标志：viewWillTransitionToSize 置位，completion + 0.3s 兜底复位
 static NSString *const kDYYYGlobalTransparencyKey = @"DYYYGlobalTransparency";
 static NSString *const kDYYYGlobalTransparencyDidChangeNotification = @"DYYYGlobalTransparencyDidChangeNotification";
 static NSString *const kDYYYEnableLoginBypassKey = @"DYYYEnableLoginBypass";
@@ -17000,6 +17001,17 @@ static char kDYYYFeedTableFullScreenAppliedKey;
 %end
 
 %hook UIViewController
+
+- (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
+    gDYYYInRotation = YES;
+    [coordinator animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> ctx) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            gDYYYInRotation = NO;
+        });
+    }];
+    %orig(size, coordinator);
+}
+
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
     isAppInTransition = YES;
@@ -17628,6 +17640,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 %hook TTMetalView
 - (void)setCenter:(CGPoint)center {
+    if (gDYYYInRotation) { %orig(center); return; }
     BOOL shouldAdjust = NO;
     UIView *view = (UIView *)self;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
@@ -17654,6 +17667,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 %hook TTMetalViewNew
 - (void)setCenter:(CGPoint)center {
+    if (gDYYYInRotation) { %orig(center); return; }
     BOOL shouldAdjust = NO;
     UIView *view = (UIView *)self;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
@@ -17680,6 +17694,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 %hook TTMetalViewVP
 - (void)setCenter:(CGPoint)center {
+    if (gDYYYInRotation) { %orig(center); return; }
     BOOL shouldAdjust = NO;
     UIView *view = (UIView *)self;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
