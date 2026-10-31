@@ -2485,31 +2485,40 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 // @implementation 仍留在 DYYY.xm
 // ============================================================
 
+// 首页 feed 进度条叠加时间刻度标签（章节、广告点等）
+// dyyy_ 前缀方法由 DYYY.xm 的 %new 实现
 @interface AWEFeedProgressSlider (DYYYProgressLabel)
-- (NSString *)dyyy_formatTimeFromSeconds:(CGFloat)seconds;
-- (CGFloat)dyyy_modelDurationInSeconds;
-- (CGFloat)dyyy_scheduleVerticalOffset;
-- (void)dyyy_removeScheduleLabels;
-- (void)dyyy_updateScheduleLabelsWithCurrentTime:(CGFloat)currentTime totalDuration:(CGFloat)totalDuration;
+- (NSString *)dyyy_formatTimeFromSeconds:(CGFloat)seconds;            // 秒数格式化 mm:ss / hh:mm:ss
+- (CGFloat)dyyy_modelDurationInSeconds;                                // 从 awemeModel 取视频总时长
+- (CGFloat)dyyy_scheduleVerticalOffset;                                // 刻度标签纵向偏移（避免重叠进度条）
+- (void)dyyy_removeScheduleLabels;                                     // 刷新前清理旧标签
+- (void)dyyy_updateScheduleLabelsWithCurrentTime:(CGFloat)currentTime totalDuration:(CGFloat)totalDuration;  // 按当前播放时间刷新所有标签位置
 @end
 
+// 播放交互层同步刷新刻度（点击/拖动进度条时重算标签位置）
 @interface AWEPlayInteractionProgressController (DYYYProgressLabel)
 - (void)dyyy_syncScheduleLabelsWithCurrentTime:(CGFloat)currentTime totalDuration:(CGFloat)totalDuration;
 @end
 
+// 播放器核心容器同步刷新刻度（AWED 前缀 = 新播放器路径）
 @interface AWEDProgressCoreContainer (DYYYProgressLabel)
 - (void)dyyy_syncScheduleLabelsWithCurrentTime:(CGFloat)currentTime totalDuration:(CGFloat)totalDuration;
 @end
 
+// 老版本兼容 fallback：拿不到具体类时在任意 view 上画刻度
 @interface UIView (DYYYProgressLabelLegacy)
 - (void)dyyy_updateScheduleLabelsLegacyWithCurrentTime:(CGFloat)currentTime totalDuration:(CGFloat)totalDuration model:(id)model;
 @end
 
+// 抖音私有媒体信息中心（SDK 未暴露）
+// 用于 DYYYDisableFeedNowPlayingInfo：禁止首页视频污染锁屏/控制中心
 @interface AWENowPlayingInfoCenter : NSObject
-@property(nonatomic, weak) id playingPlayer;
+@property(nonatomic, weak) id playingPlayer;                          // 当前播放器实例
 @end
 
+// 系统 MediaPlayer 框架类补全（SDK 未公开完整声明）
+// 同上功能配套：清空系统媒体信息
 @interface MPNowPlayingInfoCenter : NSObject
-@property(nonatomic, copy) NSDictionary *nowPlayingInfo;
-+ (instancetype)defaultCenter;
+@property(nonatomic, copy) NSDictionary *nowPlayingInfo;              // 正在播放信息字典
++ (instancetype)defaultCenter;                                        // 单例入口
 @end
