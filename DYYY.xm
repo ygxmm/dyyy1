@@ -17003,15 +17003,6 @@ static char kDYYYFeedTableFullScreenAppliedKey;
 %hook UIViewController
 
 - (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
-    {
-        NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-        if (dir.length > 0) {
-            NSString *path = [dir stringByAppendingPathComponent:@"DYYY_rot_probe.log"];
-            NSString *line = [NSString stringWithFormat:@"[VC] %@ size=%fx%f\n", NSStringFromClass([self class]), size.width, size.height];
-            FILE *f = fopen([path UTF8String], "a");
-            if (f) { fprintf(f, "%s", [line UTF8String]); fclose(f); }
-        }
-    }
     gDYYYInRotation = YES;
     [coordinator animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> ctx) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -17649,15 +17640,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 %hook TTMetalView
 - (void)setCenter:(CGPoint)center {
-    if (gDYYYInRotation) {
-        NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-        if (dir.length > 0) {
-            NSString *path = [dir stringByAppendingPathComponent:@"DYYY_rot_probe.log"];
-            FILE *f = fopen([path UTF8String], "a");
-            if (f) { fprintf(f, "[setCenter SKIPPED]\n"); fclose(f); }
-        }
-        %orig(center); return;
-    }
+    if (gDYYYInRotation) { %orig(center); return; }
     BOOL shouldAdjust = NO;
     UIView *view = (UIView *)self;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
@@ -17684,15 +17667,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 %hook TTMetalViewNew
 - (void)setCenter:(CGPoint)center {
-    if (gDYYYInRotation) {
-        NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-        if (dir.length > 0) {
-            NSString *path = [dir stringByAppendingPathComponent:@"DYYY_rot_probe.log"];
-            FILE *f = fopen([path UTF8String], "a");
-            if (f) { fprintf(f, "[setCenter SKIPPED]\n"); fclose(f); }
-        }
-        %orig(center); return;
-    }
+    if (gDYYYInRotation) { %orig(center); return; }
     BOOL shouldAdjust = NO;
     UIView *view = (UIView *)self;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
@@ -17719,15 +17694,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 %hook TTMetalViewVP
 - (void)setCenter:(CGPoint)center {
-    if (gDYYYInRotation) {
-        NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-        if (dir.length > 0) {
-            NSString *path = [dir stringByAppendingPathComponent:@"DYYY_rot_probe.log"];
-            FILE *f = fopen([path UTF8String], "a");
-            if (f) { fprintf(f, "[setCenter SKIPPED]\n"); fclose(f); }
-        }
-        %orig(center); return;
-    }
+    if (gDYYYInRotation) { %orig(center); return; }
     BOOL shouldAdjust = NO;
     UIView *view = (UIView *)self;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
