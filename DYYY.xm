@@ -16049,6 +16049,22 @@ static Class tabBarButtonClass = nil;
         %orig(frame);
         return;
     }
+
+    // v463: 恢复 v461 删掉的评论模糊吞 frame 逻辑。
+    // enableBlur 开时，isPlayVC 下 origin.x != 0 的 setFrame 直接 return（不调 %orig），
+    // 阻止评论区打开时 video 缩小动画把 player view 改小。
+    if (enableBlur) {
+        UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
+        Class PlayVCClass1 = %c(AWEAwemePlayVideoViewController);
+        Class PlayVCClass2 = %c(AWEDPlayerFeedPlayerViewController);
+        Class PlayVCClass3 = %c(AWEDPlayerViewController_Merge);
+        BOOL isPlayVC = ((PlayVCClass1 && [vc isKindOfClass:PlayVCClass1]) ||
+                         (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
+                         (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
+        if (isPlayVC && frame.origin.x != 0) {
+            return;
+        }
+    }
     %orig(frame);
 }
 
