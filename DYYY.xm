@@ -16154,7 +16154,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 // 章节进度占位替换：按时间文本（如 "00:11"）识别，智能定位整个章节条容器
 // v368: 递归扫视图树，把边缘纯黑窄条透明（顶部/底部/左右）
-// 依据：D5/D6 探针证实黑条 {0,0,393,59} bg=纯黑挂在 HUD 根视图下（self.view 深 2 层），
+// 依据：实测确认黑条 {0,0,393,59} bg=纯黑挂在 HUD 根视图下（self.view 深 2 层），
 //       v367 只扫一层所以没命中；这里递归 5 层并覆盖四周。
 static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screenH, CGFloat safeTop, NSInteger depth) {
     if (!view || depth > 5) return;
@@ -16966,7 +16966,6 @@ static char kDYYYFeedTableOriginalHeightGapKey;
 static char kDYYYFeedTableFullScreenAppliedKey;
 
 // v250: 只对单个 cell 里的 player VC 拉高。
-// v252probe: 写沙盒日志，定位错位时 cell/player VC 的状态
 
 %hook AWEFeedTableView
 - (void)layoutSubviews {
@@ -18256,13 +18255,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 %ctor {
 
-    {
-        NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-        if (dir.length > 0) {
-            NSString *path = [dir stringByAppendingPathComponent:@"DYYY_probe_cell.log"];
-            [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
-        }
-    }
     [DYYYLoginBypassManager configureInitialStateIfNeeded];
 
     [[NSUserDefaults standardUserDefaults] registerDefaults:@{
