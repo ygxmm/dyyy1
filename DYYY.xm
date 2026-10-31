@@ -7802,6 +7802,21 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
     DYYYScanTabBarHeightViews(self.view, 0);
 }
 
+// v464.4: 从原 11357 块并入（合并重复 hook 块）
+- (BOOL)prefersStatusBarHidden {
+    if (DYYYGetBool(@"DYYYHideStatusbar")) {
+        return YES;
+    }
+    if (DYYYGetBool(@"DYYYHideStatusBarOnClear") && hideButton && hideButton.isElementsHidden) {
+        return YES;
+    }
+    if (class_getInstanceMethod([self class], @selector(prefersStatusBarHidden)) !=
+        class_getInstanceMethod([%c(AWEAwemeDetailTableViewController) class], @selector(prefersStatusBarHidden))) {
+        return %orig;
+    }
+    return NO;
+}
+
 
 %end
 
@@ -11350,23 +11365,6 @@ static void DYYYLiveDurationInstallFromInnerFeedCell(id cell) {
         DYYYLiveDurationRemoveFromView(self.view);
     }
     %orig;
-}
-%end
-
-// 主页状态栏
-%hook AWEAwemeDetailTableViewController
-- (BOOL)prefersStatusBarHidden {
-    if (DYYYGetBool(@"DYYYHideStatusbar")) {
-        return YES;
-    }
-    if (DYYYGetBool(@"DYYYHideStatusBarOnClear") && hideButton && hideButton.isElementsHidden) {
-        return YES;
-    }
-    if (class_getInstanceMethod([self class], @selector(prefersStatusBarHidden)) !=
-        class_getInstanceMethod([%c(AWEAwemeDetailTableViewController) class], @selector(prefersStatusBarHidden))) {
-        return %orig;
-    }
-    return NO;
 }
 %end
 
