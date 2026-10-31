@@ -16965,6 +16965,37 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     return %orig;
 }
 
+- (void)viewDidLayoutSubviews {
+    %orig;
+    // vPROBE: 打印 player view 的父链，确认改哪个父容器最稳
+    {
+        NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+        if (dir.length > 0) {
+            NSString *lp = [dir stringByAppendingPathComponent:@"DYYY_parent_probe.log"];
+            FILE *f = fopen([lp UTF8String], "a");
+            if (f) {
+                UIView *vw = self.view;
+                UIView *p1 = vw ? vw.superview : nil;
+                UIView *p2 = p1 ? p1.superview : nil;
+                UIView *p3 = p2 ? p2.superview : nil;
+                UIView *p4 = p3 ? p3.superview : nil;
+                fprintf(f, "self=%@ f=(%.0f,%.0f,%.0f,%.0f) super=%@ f=(%.0f,%.0f,%.0f,%.0f) | p2=%@ f=(%.0f,%.0f,%.0f,%.0f) | p3=%@ f=(%.0f,%.0f,%.0f,%.0f) | p4=%@ f=(%.0f,%.0f,%.0f,%.0f)\n",
+                    NSStringFromClass([self class]),
+                    vw.frame.origin.x, vw.frame.origin.y, vw.frame.size.width, vw.frame.size.height,
+                    p1 ? NSStringFromClass([p1 class]) : @"(nil)",
+                    p1 ? p1.frame.origin.x : 0, p1 ? p1.frame.origin.y : 0, p1 ? p1.frame.size.width : 0, p1 ? p1.frame.size.height : 0,
+                    p2 ? NSStringFromClass([p2 class]) : @"(nil)",
+                    p2 ? p2.frame.origin.x : 0, p2 ? p2.frame.origin.y : 0, p2 ? p2.frame.size.width : 0, p2 ? p2.frame.size.height : 0,
+                    p3 ? NSStringFromClass([p3 class]) : @"(nil)",
+                    p3 ? p3.frame.origin.x : 0, p3 ? p3.frame.origin.y : 0, p3 ? p3.frame.size.width : 0, p3 ? p3.frame.size.height : 0,
+                    p4 ? NSStringFromClass([p4 class]) : @"(nil)",
+                    p4 ? p4.frame.origin.x : 0, p4 ? p4.frame.origin.y : 0, p4 ? p4.frame.size.width : 0, p4 ? p4.frame.size.height : 0);
+                fclose(f);
+            }
+        }
+    }
+}
+
 - (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
     %orig(animated);
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
