@@ -2477,3 +2477,39 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @interface AWEAwemeDetailCellViewController : NSObject
 @property (nonatomic, readonly, strong) id interactionController;
 @end
+
+
+// ============================================================
+// v464: DYYY 私有分类声明 + SDK 未暴露类补全
+// 从 DYYY.xm 挪出，给 %new 方法做前置声明（硬约束 12）
+// @implementation 仍留在 DYYY.xm
+// ============================================================
+
+@interface AWEFeedProgressSlider (DYYYProgressLabel)
+- (NSString *)dyyy_formatTimeFromSeconds:(CGFloat)seconds;
+- (CGFloat)dyyy_modelDurationInSeconds;
+- (CGFloat)dyyy_scheduleVerticalOffset;
+- (void)dyyy_removeScheduleLabels;
+- (void)dyyy_updateScheduleLabelsWithCurrentTime:(CGFloat)currentTime totalDuration:(CGFloat)totalDuration;
+@end
+
+@interface AWEPlayInteractionProgressController (DYYYProgressLabel)
+- (void)dyyy_syncScheduleLabelsWithCurrentTime:(CGFloat)currentTime totalDuration:(CGFloat)totalDuration;
+@end
+
+@interface AWEDProgressCoreContainer (DYYYProgressLabel)
+- (void)dyyy_syncScheduleLabelsWithCurrentTime:(CGFloat)currentTime totalDuration:(CGFloat)totalDuration;
+@end
+
+@interface UIView (DYYYProgressLabelLegacy)
+- (void)dyyy_updateScheduleLabelsLegacyWithCurrentTime:(CGFloat)currentTime totalDuration:(CGFloat)totalDuration model:(id)model;
+@end
+
+@interface AWENowPlayingInfoCenter : NSObject
+@property(nonatomic, weak) id playingPlayer;
+@end
+
+@interface MPNowPlayingInfoCenter : NSObject
+@property(nonatomic, copy) NSDictionary *nowPlayingInfo;
++ (instancetype)defaultCenter;
+@end

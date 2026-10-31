@@ -1498,25 +1498,8 @@ static void DYYYScheduleCurrentAwemeTracking(id source, id fallbackAweme) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), trackingBlock);
 }
 
-@interface AWEFeedProgressSlider (DYYYProgressLabel)
-- (NSString *)dyyy_formatTimeFromSeconds:(CGFloat)seconds;
-- (CGFloat)dyyy_modelDurationInSeconds;
-- (CGFloat)dyyy_scheduleVerticalOffset;
-- (void)dyyy_removeScheduleLabels;
-- (void)dyyy_updateScheduleLabelsWithCurrentTime:(CGFloat)currentTime totalDuration:(CGFloat)totalDuration;
-@end
-
-@interface AWEPlayInteractionProgressController (DYYYProgressLabel)
-- (void)dyyy_syncScheduleLabelsWithCurrentTime:(CGFloat)currentTime totalDuration:(CGFloat)totalDuration;
-@end
-
-@interface AWEDProgressCoreContainer (DYYYProgressLabel)
-- (void)dyyy_syncScheduleLabelsWithCurrentTime:(CGFloat)currentTime totalDuration:(CGFloat)totalDuration;
-@end
-
-@interface UIView (DYYYProgressLabelLegacy)
-- (void)dyyy_updateScheduleLabelsLegacyWithCurrentTime:(CGFloat)currentTime totalDuration:(CGFloat)totalDuration model:(id)model;
-@end
+// v464: 4 处进度条分类声明已挪到 Sources/Core/AwemeHeaders.h
+// （给 %new 方法做前置声明，硬约束 12；@implementation 仍在本文件）
 
 @implementation UIView (DYYYProgressLabelLegacy)
 
@@ -2064,14 +2047,7 @@ static BOOL DYYYShouldSkipPrivacyRecordTaskStart(id task) {
 
 %end
 
-@interface AWENowPlayingInfoCenter : NSObject
-@property(nonatomic, weak) id playingPlayer;
-@end
-
-@interface MPNowPlayingInfoCenter : NSObject
-@property(nonatomic, copy) NSDictionary *nowPlayingInfo;
-+ (instancetype)defaultCenter;
-@end
+// v464: SDK 补全类已挪到 Sources/Core/AwemeHeaders.h
 
 static BOOL dyyyClearingFeedNowPlayingSystemInfo = NO;
 static CFTimeInterval dyyyLastFeedNowPlayingSystemClearTime = 0.0;
