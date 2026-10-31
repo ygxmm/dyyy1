@@ -7781,6 +7781,26 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
     return %orig;
 }
 
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    if (originalTabBarHeight <= 0) return;
+    [self dy_scanTabBarHeightViews:self.view depth:0];
+}
+
+%new
+- (void)dy_scanTabBarHeightViews:(UIView *)v depth:(int)d {
+    if (!v || d > 4) return;
+    for (UIView *s in v.subviews) {
+        if ([s isMemberOfClass:[UIView class]] &&
+            fabs(s.frame.size.height - originalTabBarHeight) < 0.5) {
+            s.backgroundColor = [UIColor clearColor];
+        }
+        [self dy_scanTabBarHeightViews:s depth:d + 1];
+    }
+}
+
 %end
 
 %hook AWEAwemeDetailContainerPlayControlConfig
@@ -15943,31 +15963,6 @@ static Class tabBarButtonClass = nil;
     %orig(backgroundColor);
 }
 
-- (void)layoutSubviews {
-    %orig;
-
-    BOOL enableFS = DYYYGetBoolCached(@"DYYYEnableFullScreen");
-    BOOL enableBlur = DYYYGetBoolCached(@"DYYYEnableCommentBlur");
-
-    // 全局 -layoutSubviews 会覆盖到界面上的每一个视图，两项开关都关闭时不必回溯响应链。
-    if (!enableFS && !enableBlur) {
-        return;
-    }
-
-    // 同一次布局里最多只回溯一次响应链，下面两段判定共用结果。
-    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-
-    if (enableFS) {
-        if (self.frame.size.height == originalTabBarHeight && originalTabBarHeight > 0) {
-            if ([vc isKindOfClass:%c(AWEMixVideoPanelDetailTableViewController)] || [vc isKindOfClass:%c(AWECommentInputViewController)] ||
-                [vc isKindOfClass:%c(AWEAwemeDetailTableViewController)]) {
-                self.backgroundColor = [UIColor clearColor];
-            }
-        }
-    }
-
-}
-
 - (void)setFrame:(CGRect)frame {
     // v382: 卡帧优化 —— 最便宜的 isMemberOfClass 放最前面
     // 99% 的 setFrame 调用来自 UILabel/UIButton/UIImageView 等子类，
@@ -16093,6 +16088,30 @@ static Class tabBarButtonClass = nil;
 }
 
 %end
+
+%hook AWECommentInputViewController
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    if (originalTabBarHeight <= 0) return;
+    [self dy_scanTabBarHeightViews:self.view depth:0];
+}
+
+%new
+- (void)dy_scanTabBarHeightViews:(UIView *)v depth:(int)d {
+    if (!v || d > 4) return;
+    for (UIView *s in v.subviews) {
+        if ([s isMemberOfClass:[UIView class]] &&
+            fabs(s.frame.size.height - originalTabBarHeight) < 0.5) {
+            s.backgroundColor = [UIColor clearColor];
+        }
+        [self dy_scanTabBarHeightViews:s depth:d + 1];
+    }
+}
+
+%end
+
 
 %hook AWEIMSkylightListView
 - (void)setFrame:(CGRect)frame {
