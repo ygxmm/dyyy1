@@ -91,6 +91,7 @@ static CGFloat gGlobalTransparency = kInvalidAlpha;
 static CGFloat gCurrentTabBarHeight = kInvalidHeight;
 static CGFloat originalTabBarHeight = kInvalidHeight;
 static BOOL gDYYYInRotation = NO;  // 旋转中标志：viewWillTransitionToSize 置位，completion + 0.3s 兜底复位
+#define kDYYYPlayerViewTag 0x44595901  // player view 标记，避免全局 setFrame hook 扫所有 view
 static NSString *const kDYYYGlobalTransparencyKey = @"DYYYGlobalTransparency";
 static NSString *const kDYYYGlobalTransparencyDidChangeNotification = @"DYYYGlobalTransparencyDidChangeNotification";
 static NSString *const kDYYYEnableLoginBypassKey = @"DYYYEnableLoginBypass";
@@ -15964,6 +15965,20 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)setFrame:(CGRect)frame {
+    // v480: 只处理标记过的 player view，打破抖音反复设 792 的 layout 循环。
+    if (self.tag == kDYYYPlayerViewTag &&
+        !gDYYYInRotation &&
+        DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+        if (self.frame.size.height >= screenH - 1.0 &&
+            frame.size.height < screenH - 0.5) {
+            return;
+        }
+        if (frame.size.height > 100 &&
+            fabs(frame.size.height - screenH) > 0.5) {
+            frame.size.height = screenH;
+        }
+    }
     // v382: 卡帧优化 —— 最便宜的 isMemberOfClass 放最前面
     // 99% 的 setFrame 调用来自 UILabel/UIButton/UIImageView 等子类，
     // 一行判定立即跳过，完全不碰关联对象（objc_getAssociatedObject 有全局锁，最贵）。
@@ -16844,6 +16859,11 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %hook AWEAwemePlayVideoViewController
 
+- (void)viewDidLoad {
+    %orig;
+    self.view.tag = kDYYYPlayerViewTag;
+}
+
 - (void)viewDidLayoutSubviews {
     %orig;
     if (gDYYYInRotation) return;
@@ -16897,6 +16917,11 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 %end
 
 %hook AWEDPlayerFeedPlayerViewController
+
+- (void)viewDidLoad {
+    %orig;
+    self.view.tag = kDYYYPlayerViewTag;
+}
 
 - (BOOL)enableHDR {
     if (DYYYShouldDisableAllHDR()) {
@@ -16957,6 +16982,11 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 %end
 
 %hook AWEDPlayerViewController_Merge
+
+- (void)viewDidLoad {
+    %orig;
+    self.view.tag = kDYYYPlayerViewTag;
+}
 
 - (BOOL)enableHDR {
     if (DYYYShouldDisableAllHDR()) {
