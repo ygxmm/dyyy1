@@ -5,38 +5,54 @@
 //  Channel: @huamidev
 //  Created on: 2024/10/04
 //
-#import <QuartzCore/QuartzCore.h>
-#include <stdarg.h>
-#import <AVFoundation/AVFoundation.h>
+// ============================================================
+// 系统框架
+// ============================================================
 #import <UIKit/UIKit.h>
+#import <AVFoundation/AVFoundation.h>
+#import <QuartzCore/QuartzCore.h>
 
-// v278: 前向声明
-static BOOL DYYYIsHomePlayInteraction(UIView *view);
-#import <dlfcn.h>
-#import <float.h>
-#import <math.h>
+// ============================================================
+// C 标准库
+// ============================================================
+#include <stdarg.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+#include <float.h>
+#include <dlfcn.h>
+#include <syslog.h>
+
+// ============================================================
+// 运行时 / 第三方
+// ============================================================
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import <os/lock.h>
 #import <substrate.h>
-#import <stdlib.h>
-#import <string.h>
-#import <syslog.h>
 
+// ============================================================
+// 项目核心
+// ============================================================
 #import "AwemeHeaders.h"
-
-
-#import "CityManager.h"
-#import "DYYYBottomAlertView.h"
-#import "DYYYGlassConfirmView.h"
-#import "DYYYManager.h"
-
-#import "AWMSafeDispatchTimer.h"
 #import "DYYYConstants.h"
-#import "DYYYFloatClearButton.h"
-#import "DYYYFloatSpeedButton.h"
-#import "DYYYLivePreStreamLayoutCoordinator.h"
+#import "DYYYUtils.h"
+#import "AWMSafeDispatchTimer.h"
+#import "CityManager.h"
+
+// ============================================================
+// 项目管理器
+// ============================================================
+#import "DYYYManager.h"
+#import "DYYYHookManager.h"
 #import "DYYYLoginBypassManager.h"
+#import "DYYYLivePreStreamLayoutCoordinator.h"
+#import "DYYYPrivacyRecordUploadGuard.h"
+#import "DYYYMiniProgramRewardBypass.h"
+
+// ============================================================
+// 项目 Hook 模块
+// ============================================================
 #import "DYYYLoginRepairHooks.h"
 #import "DYYYHideMusicButtonHooks.h"
 #import "DYYYHideShareContentViewHooks.h"
@@ -45,13 +61,22 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view);
 #import "DYYYHideTemplateCollectionHooks.h"
 #import "DYYYSearchKeyboardVoiceHooks.h"
 #import "DYYYHighFPSHooks.h"
+
+// ============================================================
+// 项目 UI 模块
+// ============================================================
+#import "DYYYBottomAlertView.h"
+#import "DYYYGlassConfirmView.h"
+#import "DYYYFloatClearButton.h"
+#import "DYYYFloatSpeedButton.h"
 #import "DYYYFPSOverlay.h"
-#import "DYYYHookManager.h"
-#import "DYYYMiniProgramRewardBypass.h"
-#import "DYYYPrivacyRecordUploadGuard.h"
 #import "DYYYSettingViewController.h"
 #import "DYYYToast.h"
-#import "DYYYUtils.h"
+
+// ============================================================
+// 前向声明（v278）
+// ============================================================
+static BOOL DYYYIsHomePlayInteraction(UIView *view);
 
 static CGFloat gStartY = 0.0;
 
