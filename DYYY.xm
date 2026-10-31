@@ -14663,6 +14663,16 @@ static void DYYYApplySearchShiftIfNeeded(id vc) {
             objc_setAssociatedObject(vc, &kDYYYOrigTransformKey, origVal, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         CGAffineTransform orig = origVal.CGAffineTransformValue;
+
+        // v466: 全屏开时撤销 shift，让 interaction 层和 player 852 对齐。
+        // v465 拉高 player 后，interaction 若仍 +60 会底部溢出 60，滑动卡帧。
+        if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+            if (!CGAffineTransformEqualToTransform(v.transform, orig)) {
+                v.transform = orig;
+            }
+            return;
+        }
+
         CGAffineTransform target = orig;
         target.ty += 60.0;
 
