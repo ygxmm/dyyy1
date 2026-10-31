@@ -16844,6 +16844,25 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %hook AWEAwemePlayVideoViewController
 
+- (void)viewDidLayoutSubviews {
+    %orig;
+    if (gDYYYInRotation) return;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    // v465: 搜索页/部分路径下 player view 高度只有 792（少 60），兜底拉高到屏幕高度。
+    // 旋转中直接跳过，避免改 frame 触发重布局（3ffe7a0 的教训）。
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    UIView *vw = self.view;
+    if (vw) {
+        if (vw.frame.size.height > 100 &&
+            fabs(vw.frame.size.height - screenH) > 0.5) {
+            CGRect f = vw.frame;
+            f.size.height = screenH;
+            vw.frame = f;
+        }
+        vw.clipsToBounds = NO;
+    }
+}
+
 - (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
     %orig(animated);
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
@@ -16900,14 +16919,20 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        // v459: 只解除裁剪,不改 frame。TTMetalViewVP 自身 clips=0 会溢出到 852。
-        // 3ffe7a0 删掉 viewDidLayoutSubviews 里改 frame 的自触发循环(改 frame ->
-        // 重布局 -> 再进回调 -> 主线程堵死)。
-        UIView *vw = self.view;
-        if (vw) {
-            vw.clipsToBounds = NO;
+    if (gDYYYInRotation) return;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    // v465: 搜索页/部分路径下 player view 高度只有 792（少 60），兜底拉高到屏幕高度。
+    // 旋转中直接跳过，避免改 frame 触发重布局（3ffe7a0 的教训）。
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    UIView *vw = self.view;
+    if (vw) {
+        if (vw.frame.size.height > 100 &&
+            fabs(vw.frame.size.height - screenH) > 0.5) {
+            CGRect f = vw.frame;
+            f.size.height = screenH;
+            vw.frame = f;
         }
+        vw.clipsToBounds = NO;
     }
 }
 
@@ -16954,14 +16979,20 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        // v459: 只解除裁剪,不改 frame。TTMetalViewVP 自身 clips=0 会溢出到 852。
-        // 3ffe7a0 删掉 viewDidLayoutSubviews 里改 frame 的自触发循环(改 frame ->
-        // 重布局 -> 再进回调 -> 主线程堵死)。
-        UIView *vw = self.view;
-        if (vw) {
-            vw.clipsToBounds = NO;
+    if (gDYYYInRotation) return;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    // v465: 搜索页/部分路径下 player view 高度只有 792（少 60），兜底拉高到屏幕高度。
+    // 旋转中直接跳过，避免改 frame 触发重布局（3ffe7a0 的教训）。
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    UIView *vw = self.view;
+    if (vw) {
+        if (vw.frame.size.height > 100 &&
+            fabs(vw.frame.size.height - screenH) > 0.5) {
+            CGRect f = vw.frame;
+            f.size.height = screenH;
+            vw.frame = f;
         }
+        vw.clipsToBounds = NO;
     }
 }
 
