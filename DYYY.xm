@@ -16985,9 +16985,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %end
 
-static char kDYYYFeedTableOriginalHeightGapKey;
-static char kDYYYFeedTableFullScreenAppliedKey;
-
 // v250: 只对单个 cell 里的 player VC 拉高。
 
 %hook AWEFeedTableView
@@ -18719,9 +18716,7 @@ static void DYYYMediaRestoreViewsUnderRoot(UIView *root) {
     }
 }
 
-static void DYYYMediaRestoreAllViews(void) {
-    for (UIView *view in gDYYYMediaManagedViews.allObjects) DYYYMediaRestoreView(view);
-}
+// v464.5: 删除未引用的媒体恢复聚合函数（零调用，功能由 DYYYMediaRestoreViewsUnderRoot 覆盖）
 
 static Class DYYYMediaInputClass(void) {
     static Class cls;
