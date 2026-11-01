@@ -16961,15 +16961,32 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        // v459: 只解除裁剪,不改 frame。TTMetalViewVP 自身 clips=0 会溢出到 852。
-        // 3ffe7a0 删掉 viewDidLayoutSubviews 里改 frame 的自触发循环(改 frame ->
-        // 重布局 -> 再进回调 -> 主线程堵死)。
-        UIView *vw = self.view;
-        if (vw) {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    if (gDYYYInRotation) return;
+    UIView *vw = self.view;
+    UIView *sv = vw.superview;
+    if (!vw || !sv) return;
+    // v484: 详情页 Merge.view 被压到 792（父层 852），TTMetalViewVP 按 792 算
+    // 宽高比，底部露 60px 黑边。改成跟随父层高度，子 view autoresize 自适应。
+    // 可见性判断：不可见 cell 不拉高，避免详情页多 cell 同时 852 渲染 GPU 过载。
+    if (vw.window) {
+        CGRect r = [vw convertRect:vw.bounds toView:vw.window];
+        if (!CGRectIntersectsRect(r, vw.window.bounds)) {
             vw.clipsToBounds = NO;
+            return;
         }
+    } else {
+        vw.clipsToBounds = NO;
+        return;
     }
+    CGFloat superH = sv.bounds.size.height;
+    if (superH > 100 && fabs(vw.frame.size.height - superH) > 0.5) {
+        CGRect f = vw.frame;
+        f.origin.y = 0;
+        f.size.height = superH;
+        vw.frame = f;
+    }
+    vw.clipsToBounds = NO;
 }
 
 - (void)setIsAutoPlay:(BOOL)arg0 {
