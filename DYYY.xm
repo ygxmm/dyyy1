@@ -19133,3 +19133,12 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     }
 }
 
+
+%hook AWEAwemeDetailTableViewCell
+
+- (BOOL)enableFullScreenPlay:(unsigned long long)type {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return YES;
+    return %orig(type);
+}
+
+%end
