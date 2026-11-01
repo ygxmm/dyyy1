@@ -17009,6 +17009,11 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     return %orig;
 }
 
+- (void)setPlayerBackgroundView:(id)view {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    %orig(view);
+}
+
 - (void)viewDidLayoutSubviews {
     %orig;
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
