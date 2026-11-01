@@ -17604,7 +17604,9 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     
     // v426: 严格隔离小日常，防止 UIKit 死锁和爆栈
     UIResponder *responder = self;
-    while (responder) {
+    int guard = 0;
+    // v489: 加入最大循环限制，防止 Swift 混淆或响应链循环导致主线程死锁
+    while (responder && guard++ < 20) {
         NSString *cls = NSStringFromClass([responder class]);
         if ([cls containsString:@"Story"] || [cls containsString:@"Moment"]) {
             return; // 如果是小日常，直接放弃修改，保持原生布局
@@ -18004,11 +18006,13 @@ static char kDYYYV29DoneKey; // v439
     if (parentVC && ([parentVC isKindOfClass:%c(AWEAwemeDetailTableViewController)] || [parentVC isKindOfClass:%c(AWEAwemeDetailCellViewController)])) {
         static char kDYCommentHideCacheKey;
         UIView *target = objc_getAssociatedObject(self, &kDYCommentHideCacheKey);
-        if (!target) {
+        // v489: 不能用 ASSIGN 保存 UI 控件，防止页面销毁后变成野指针导致闪退。
+        // 如果 target 失效（被移出父视图），则重新查找。
+        if (!target || target.superview != self) {
             for (UIView *subview in [self subviews]) {
                 if ([subview class] == [UIView class]) {
                     target = subview;
-                    objc_setAssociatedObject(self, &kDYCommentHideCacheKey, target, OBJC_ASSOCIATION_ASSIGN);
+                    objc_setAssociatedObject(self, &kDYCommentHideCacheKey, target, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                     break;
                 }
             }
