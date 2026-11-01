@@ -17064,6 +17064,16 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 }
 
 %end
+%hook AWEAwemeDetailTableViewCell
+
+- (BOOL)enableFullScreenPlay:(unsigned long long)type {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return YES;
+    return %orig(type);
+}
+
+%end
+
+
 
 // v250: 只对单个 cell 里的 player VC 拉高。
 
@@ -19133,12 +19143,3 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     }
 }
 
-
-%hook AWEAwemeDetailTableViewCell
-
-- (BOOL)enableFullScreenPlay:(unsigned long long)type {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return YES;
-    return %orig(type);
-}
-
-%end
