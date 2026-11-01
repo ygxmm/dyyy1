@@ -10056,7 +10056,8 @@ static BOOL DYYYShouldVerifiedCollapseCommentHeaderModel(id model) {
 
     UIResponder *responder = self;
     UIViewController *parentVC = nil;
-    while ((responder = [responder nextResponder])) {
+    int guard = 0;
+    while ((responder = [responder nextResponder]) && guard++ < 50) {
         if ([responder isKindOfClass:%c(AWEFeedContainerViewController)]) {
             parentVC = (UIViewController *)responder;
             break;
@@ -17628,7 +17629,8 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     
     BOOL isAuthorProfile = NO;
     responder = self;
-    while ((responder = [responder nextResponder])) {
+    guard = 0;
+    while ((responder = [responder nextResponder]) && guard++ < 50) {
         NSString *cls = NSStringFromClass([responder class]);
         if ([cls containsString:@"UserHomeViewController"] || [cls containsString:@"ProfileViewController"]) {
             isAuthorProfile = YES;

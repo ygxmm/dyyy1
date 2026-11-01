@@ -975,7 +975,8 @@ static void DYYYApplyDisplayLocationToLabel(UILabel *label, NSString *displayLoc
 
 + (UIViewController *)firstAvailableViewControllerFromView:(UIView *)view {
     UIResponder *responder = view;
-    while ((responder = [responder nextResponder])) {
+    int guard = 0;
+    while ((responder = [responder nextResponder]) && guard++ < 100) {
         if ([responder isKindOfClass:[UIViewController class]]) {
             return (UIViewController *)responder;
         }
@@ -984,7 +985,11 @@ static void DYYYApplyDisplayLocationToLabel(UILabel *label, NSString *displayLoc
 }
 
 + (UIViewController *)findViewControllerOfClass:(Class)targetClass inViewController:(UIViewController *)vc {
-    if (!targetClass || !vc)
+    return [self findViewControllerOfClass:targetClass inViewController:vc depth:0];
+}
+
++ (UIViewController *)findViewControllerOfClass:(Class)targetClass inViewController:(UIViewController *)vc depth:(int)depth {
+    if (!targetClass || !vc || depth > 50)
         return nil;
 
     if ([vc isKindOfClass:targetClass]) {
@@ -992,19 +997,20 @@ static void DYYYApplyDisplayLocationToLabel(UILabel *label, NSString *displayLoc
     }
 
     for (UIViewController *childVC in vc.childViewControllers) {
-        UIViewController *found = [self findViewControllerOfClass:targetClass inViewController:childVC];
+        UIViewController *found = [self findViewControllerOfClass:targetClass inViewController:childVC depth:depth+1];
         if (found)
             return found;
     }
 
-    return [self findViewControllerOfClass:targetClass inViewController:vc.presentedViewController];
+    return [self findViewControllerOfClass:targetClass inViewController:vc.presentedViewController depth:depth+1];
 }
 
 + (UIResponder *)findAncestorResponderOfClass:(Class)targetClass fromView:(UIView *)view {
     if (!view)
         return nil;
     UIResponder *responder = view.superview;
-    while (responder) {
+    int guard = 0;
+    while (responder && guard++ < 100) {
         if ([responder isKindOfClass:targetClass]) {
             return responder;
         }
