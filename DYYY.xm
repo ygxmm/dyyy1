@@ -11180,10 +11180,8 @@ static void DYYYLiveDurationInstallFromInnerFeedCell(id cell) {
 }
 
 - (void)dealloc {
-    UIViewController *viewController = DYYYLiveDurationContainerAudienceVC(self);
-    if ([viewController isKindOfClass:[UIViewController class]]) {
-        DYYYLiveDurationRemoveFromView(viewController.view);
-    }
+    // v486: 移除 dealloc 里的 DYYYLiveDurationRemoveFromView(viewController.view)，
+    // 避免页面销毁时访问已释放的 view 导致野指针崩溃。
     %orig;
 }
 
@@ -11224,10 +11222,7 @@ static void DYYYLiveDurationInstallFromInnerFeedCell(id cell) {
 }
 
 - (void)dealloc {
-    UIViewController *viewController = DYYYLiveDurationSafeValue(self, @"audienceViewController");
-    if ([viewController isKindOfClass:[UIViewController class]]) {
-        DYYYLiveDurationRemoveFromView(viewController.view);
-    }
+    // v486: 同上，移除 dealloc 里的视图操作。
     %orig;
 }
 
@@ -11361,9 +11356,7 @@ static void DYYYLiveDurationInstallFromInnerFeedCell(id cell) {
 }
 
 - (void)dealloc {
-    if (self.isViewLoaded) {
-        DYYYLiveDurationRemoveFromView(self.view);
-    }
+    // v486: 移除 dealloc 里的 self.view 访问，避免崩溃。
     %orig;
 }
 %end
