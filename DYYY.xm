@@ -16283,6 +16283,13 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 - (void)viewDidLayoutSubviews {
     %orig;
     DYYYApplySearchShiftIfNeeded(self);
+    // v483: 搜索页详情 interaction 视觉 y=120，底部溢出 120px，屏幕底部 792-852
+    // 区域露出 interaction 内部黑色元素（输入框背景/渐变）→ 闪黑。
+    // clipsToBounds=YES 让溢出部分不渲染，底部露出视频层。transform/frame 不动，
+    // 原“UI 下移 60”功能保持不变。
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && self.view) {
+        self.view.clipsToBounds = YES;
+    }
     
 
     
