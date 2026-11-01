@@ -2446,6 +2446,7 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 
 
 @interface AWEAwemeDetailTableViewCell : UITableViewCell
+- (BOOL)enableFullScreenPlay:(unsigned long long)type;
 @end
 
 
