@@ -91,7 +91,6 @@ static CGFloat gGlobalTransparency = kInvalidAlpha;
 static CGFloat gCurrentTabBarHeight = kInvalidHeight;
 static CGFloat originalTabBarHeight = kInvalidHeight;
 static BOOL gDYYYInRotation = NO;  // 旋转中标志：viewWillTransitionToSize 置位，completion + 0.3s 兜底复位
-#define kDYYYPlayerViewTag 0x44595901  // player view 标记，避免全局 setFrame hook 扫所有 view
 static NSString *const kDYYYGlobalTransparencyKey = @"DYYYGlobalTransparency";
 static NSString *const kDYYYGlobalTransparencyDidChangeNotification = @"DYYYGlobalTransparencyDidChangeNotification";
 static NSString *const kDYYYEnableLoginBypassKey = @"DYYYEnableLoginBypass";
@@ -15965,57 +15964,6 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)setFrame:(CGRect)frame {
-    // PERF_PROBE: 统计 setFrame 频率 + tag 命中，每 2s 写沙盒日志
-    {
-        static NSUInteger sTotal = 0;
-        static NSUInteger sTagHit = 0;
-        static CFAbsoluteTime sLast = 0;
-        sTotal++;
-        if (self.tag == kDYYYPlayerViewTag) sTagHit++;
-        CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
-        if (sLast == 0) {
-            sLast = now;
-        } else if (now - sLast >= 2.0) {
-            NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-            if (dir.length > 0) {
-                NSString *lp = [dir stringByAppendingPathComponent:@"DYYY_perf.log"];
-                FILE *f = fopen([lp UTF8String], "a");
-                if (f) {
-                    fprintf(f, "[setFrame] total=%lu tagHit=%lu over %.2fs -> %.0f/s tag=%.0f/s\n",
-                        (unsigned long)sTotal, (unsigned long)sTagHit,
-                        now - sLast, sTotal / (now - sLast), sTagHit / (now - sLast));
-                    fclose(f);
-                }
-            }
-            sTotal = 0;
-            sTagHit = 0;
-            sLast = now;
-        }
-    }
-    // v481: 只对屏幕内可见的 player view 保持 852。
-    // 不可见的允许抖音缩回 792，避免详情页滑动时 6+ 个 852 同时渲染 GPU 过载。
-    if (self.tag == kDYYYPlayerViewTag &&
-        !gDYYYInRotation &&
-        DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        BOOL visible = NO;
-        if (self.window) {
-            CGRect r = [self convertRect:self.bounds toView:self.window];
-            visible = CGRectIntersectsRect(r, self.window.bounds);
-        }
-        if (!visible) {
-            %orig(frame);
-            return;
-        }
-        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-        if (self.frame.size.height >= screenH - 1.0 &&
-            frame.size.height < screenH - 0.5) {
-            return;
-        }
-        if (frame.size.height > 100 &&
-            fabs(frame.size.height - screenH) > 0.5) {
-            frame.size.height = screenH;
-        }
-    }
     // v382: 卡帧优化 —— 最便宜的 isMemberOfClass 放最前面
     // 99% 的 setFrame 调用来自 UILabel/UIButton/UIImageView 等子类，
     // 一行判定立即跳过，完全不碰关联对象（objc_getAssociatedObject 有全局锁，最贵）。
@@ -16896,30 +16844,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %hook AWEAwemePlayVideoViewController
 
-- (void)viewDidLoad {
-    %orig;
-    self.view.tag = kDYYYPlayerViewTag;
-}
-
-- (void)viewDidLayoutSubviews {
-    %orig;
-    if (gDYYYInRotation) return;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    // v465: 搜索页/部分路径下 player view 高度只有 792（少 60），兜底拉高到屏幕高度。
-    // 旋转中直接跳过，避免改 frame 触发重布局（3ffe7a0 的教训）。
-    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-    UIView *vw = self.view;
-    if (vw) {
-        if (vw.frame.size.height > 100 &&
-            fabs(vw.frame.size.height - screenH) > 0.5) {
-            CGRect f = vw.frame;
-            f.size.height = screenH;
-            vw.frame = f;
-        }
-        vw.clipsToBounds = NO;
-    }
-}
-
 - (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
     %orig(animated);
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
@@ -16955,11 +16879,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %hook AWEDPlayerFeedPlayerViewController
 
-- (void)viewDidLoad {
-    %orig;
-    self.view.tag = kDYYYPlayerViewTag;
-}
-
 - (BOOL)enableHDR {
     if (DYYYShouldDisableAllHDR()) {
         return NO;
@@ -16981,20 +16900,14 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    if (gDYYYInRotation) return;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    // v465: 搜索页/部分路径下 player view 高度只有 792（少 60），兜底拉高到屏幕高度。
-    // 旋转中直接跳过，避免改 frame 触发重布局（3ffe7a0 的教训）。
-    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-    UIView *vw = self.view;
-    if (vw) {
-        if (vw.frame.size.height > 100 &&
-            fabs(vw.frame.size.height - screenH) > 0.5) {
-            CGRect f = vw.frame;
-            f.size.height = screenH;
-            vw.frame = f;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        // v459: 只解除裁剪,不改 frame。TTMetalViewVP 自身 clips=0 会溢出到 852。
+        // 3ffe7a0 删掉 viewDidLayoutSubviews 里改 frame 的自触发循环(改 frame ->
+        // 重布局 -> 再进回调 -> 主线程堵死)。
+        UIView *vw = self.view;
+        if (vw) {
+            vw.clipsToBounds = NO;
         }
-        vw.clipsToBounds = NO;
     }
 }
 
@@ -17020,11 +16933,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %hook AWEDPlayerViewController_Merge
 
-- (void)viewDidLoad {
-    %orig;
-    self.view.tag = kDYYYPlayerViewTag;
-}
-
 - (BOOL)enableHDR {
     if (DYYYShouldDisableAllHDR()) {
         return NO;
@@ -17046,38 +16954,14 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    if (gDYYYInRotation) return;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-    UIView *vw = self.view;
-    if (vw) {
-        // PROBE: 记录进入时的 frame + 父链
-        {
-            NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-            if (dir.length > 0) {
-                NSString *lp = [dir stringByAppendingPathComponent:@"DYYY_parent_probe.log"];
-                FILE *f = fopen([lp UTF8String], "a");
-                if (f) {
-                    UIView *p1 = vw.superview;
-                    UIView *p2 = p1 ? p1.superview : nil;
-                    UIView *p3 = p2 ? p2.superview : nil;
-                    fprintf(f, "BEFORE self=%s h=%.0f | super=%s h=%.0f | p2=%s h=%.0f | p3=%s h=%.0f | autoresize=%lu\n",
-                        class_getName(object_getClass(vw)), vw.frame.size.height,
-                        p1 ? class_getName(object_getClass(p1)) : "(nil)", p1 ? p1.frame.size.height : 0,
-                        p2 ? class_getName(object_getClass(p2)) : "(nil)", p2 ? p2.frame.size.height : 0,
-                        p3 ? class_getName(object_getClass(p3)) : "(nil)", p3 ? p3.frame.size.height : 0,
-                        (unsigned long)vw.autoresizingMask);
-                    fclose(f);
-                }
-            }
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        // v459: 只解除裁剪,不改 frame。TTMetalViewVP 自身 clips=0 会溢出到 852。
+        // 3ffe7a0 删掉 viewDidLayoutSubviews 里改 frame 的自触发循环(改 frame ->
+        // 重布局 -> 再进回调 -> 主线程堵死)。
+        UIView *vw = self.view;
+        if (vw) {
+            vw.clipsToBounds = NO;
         }
-        if (vw.frame.size.height > 100 &&
-            fabs(vw.frame.size.height - screenH) > 0.5) {
-            CGRect f = vw.frame;
-            f.size.height = screenH;
-            vw.frame = f;
-        }
-        vw.clipsToBounds = NO;
     }
 }
 
