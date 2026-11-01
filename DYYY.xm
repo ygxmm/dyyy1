@@ -15965,10 +15965,20 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)setFrame:(CGRect)frame {
-    // v480: 只处理标记过的 player view，打破抖音反复设 792 的 layout 循环。
+    // v481: 只对屏幕内可见的 player view 保持 852。
+    // 不可见的允许抖音缩回 792，避免详情页滑动时 6+ 个 852 同时渲染 GPU 过载。
     if (self.tag == kDYYYPlayerViewTag &&
         !gDYYYInRotation &&
         DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        BOOL visible = NO;
+        if (self.window) {
+            CGRect r = [self convertRect:self.bounds toView:self.window];
+            visible = CGRectIntersectsRect(r, self.window.bounds);
+        }
+        if (!visible) {
+            %orig(frame);
+            return;
+        }
         CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
         if (self.frame.size.height >= screenH - 1.0 &&
             frame.size.height < screenH - 0.5) {
