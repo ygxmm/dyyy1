@@ -738,7 +738,12 @@ static CGFloat DYYYViewControllerVisibilityScore(UIViewController *viewControlle
         return -1.0;
     }
 
-    CGRect frameInWindow = [view convertRect:view.bounds toView:window];
+    CGRect frameInWindow = CGRectZero;
+    @try {
+        frameInWindow = [view convertRect:view.bounds toView:window];
+    } @catch (__unused NSException *exception) {
+        return -1.0;
+    }
     CGRect visibleFrame = CGRectIntersection(frameInWindow, window.bounds);
     if (CGRectIsNull(visibleFrame) || CGRectIsEmpty(visibleFrame)) {
         return -1.0;
@@ -9475,10 +9480,18 @@ static void DYYYApplyAvatarFollowPromptSettingsWithRetry(id owner) {
     dispatch_async(dispatch_get_main_queue(), ^{
         id target = weakTarget;
         if (!target) return;
+        // v487: 页面销毁时立即停止后续操作，避免死锁和野指针
+        if ([target isKindOfClass:[UIView class]] && !((UIView *)target).window) return;
+        if ([target isKindOfClass:[UIViewController class]] && !((UIViewController *)target).view.window) return;
+        
         DYYYApplyAvatarFollowPromptSettingsSafely(target);
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             id target2 = weakTarget;
             if (!target2) return;
+            // v487: 延迟后再次校验状态
+            if ([target2 isKindOfClass:[UIView class]] && !((UIView *)target2).window) return;
+            if ([target2 isKindOfClass:[UIViewController class]] && !((UIViewController *)target2).view.window) return;
+            
             DYYYApplyAvatarFollowPromptSettingsSafely(target2);
             objc_setAssociatedObject(target2, &kDYYYAvatarFollowDeferredApplyKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         });
@@ -16397,6 +16410,11 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         __weak AWEPlayInteractionViewController *weakSelf = self;
         dispatch_async(dispatch_get_main_queue(), ^{
           AWEPlayInteractionViewController *strongSelf = weakSelf;
+          if (!strongSelf) return;
+          
+          // v487: 如果视图已经销毁或在后台，不要再去遍历全局 Window 树，避免 UIKit 死锁
+          if (!strongSelf.viewIfLoaded || !strongSelf.viewIfLoaded.window) return;
+          
           AWEPlayInteractionViewController *replacementController =
               DYYYResolvePlaybackInteractionController(nil, dyyyCurrentSpeedAweme, YES);
           if (replacementController == strongSelf) {
