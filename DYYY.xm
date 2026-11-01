@@ -14663,17 +14663,6 @@ static void DYYYApplySearchShiftIfNeeded(id vc) {
             objc_setAssociatedObject(vc, &kDYYYOrigTransformKey, origVal, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         CGAffineTransform orig = origVal.CGAffineTransformValue;
-
-        // v482: 全屏时撤销搜索页 interaction 的 +60 transform。
-        // interaction 原生 frame y=60，再加 ty+60 视觉 y=120，底部溢出 120px，
-        // 屏幕底部 792-852 区域露出 interaction 内部黑色元素 → 闪黑。
-        if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-            if (!CGAffineTransformEqualToTransform(v.transform, orig)) {
-                v.transform = orig;
-            }
-            return;
-        }
-
         CGAffineTransform target = orig;
         target.ty += 60.0;
 
