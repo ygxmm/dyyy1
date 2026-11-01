@@ -17026,7 +17026,8 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     // 可见性判断：不可见 cell 不拉高，避免详情页多 cell 同时 852 渲染 GPU 过载。
     if (vw.window) {
         CGRect r = [vw convertRect:vw.bounds toView:vw.window];
-        if (!CGRectIntersectsRect(r, vw.window.bounds)) {
+        CGRect relaxed = CGRectInset(vw.window.bounds, 0, -vw.bounds.size.height);
+        if (!CGRectIntersectsRect(r, relaxed)) {
             vw.clipsToBounds = NO;
             return;
         }
