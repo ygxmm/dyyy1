@@ -3510,6 +3510,11 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
     return %orig;
 }
 
+- (void)setPlayerBackgroundView:(id)view {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    %orig(view);
+}
+
 - (BOOL)enableBackgroundViewConfig {
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return NO;
     return %orig;
