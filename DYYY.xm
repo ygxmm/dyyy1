@@ -807,7 +807,9 @@ static NSArray<UIViewController *> *DYYYViewControllersInActiveWindowHierarchy(v
     UIWindow *window = [DYYYUtils getActiveWindow];
     UIViewController *rootViewController = window.rootViewController;
     NSMutableOrderedSet<UIViewController *> *viewControllers = [NSMutableOrderedSet orderedSet];
-    while (rootViewController) {
+    // v492: 加上最大遍历深度限制
+    int guard = 0;
+    while (rootViewController && guard++ < 50) {
         [viewControllers addObjectsFromArray:DYYYViewControllersInHierarchy(rootViewController)];
         rootViewController = rootViewController.presentedViewController;
     }
@@ -6950,7 +6952,9 @@ static NSString *const kDYYYLongPressCopyEnabledKey = @"DYYYLongPressCopyTextEna
         [self addGestureRecognizer:highPriorityLongPress];
 
         UIView *currentView = self;
-        while (currentView.superview) {
+        // v492: 限制父视图遍历深度
+        int guard = 0;
+        while (currentView.superview && guard++ < 50) {
             currentView = currentView.superview;
 
             for (UIGestureRecognizer *recognizer in currentView.gestureRecognizers) {
@@ -8505,8 +8509,10 @@ static void DYYYAttachAvatarPreviewSaveLongPress(id controller) {
         alert.popoverPresentationController.sourceRect = CGRectMake(location.x, location.y, 1.0, 1.0);
     }
 
+    // v492: 防止 presentedViewController 死循环导致主线程卡死
     UIViewController *presentingController = (UIViewController *)self;
-    while (presentingController.presentedViewController) {
+    int guard = 0;
+    while (presentingController.presentedViewController && guard++ < 20) {
         presentingController = presentingController.presentedViewController;
     }
     [presentingController presentViewController:alert animated:YES completion:nil];
@@ -18037,12 +18043,18 @@ static char kDYYYV29DoneKey; // v439
 
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         UIView *parentView = self.superview;
-        while (parentView) {
+        // v492: 限制遍历深度，且异步块里使用弱引用防野指针
+        int guard = 0;
+        while (parentView && guard++ < 50) {
             if ([NSStringFromClass([parentView class]) isEqualToString:@"UIView"]) {
+                __weak UIView *weakParent = parentView;
                 dispatch_async(dispatch_get_main_queue(), ^{
-                  parentView.backgroundColor = [UIColor clearColor];
-                  parentView.layer.backgroundColor = [UIColor clearColor].CGColor;
-                  parentView.opaque = NO;
+                  UIView *strongParent = weakParent;
+                  if (strongParent) {
+                      strongParent.backgroundColor = [UIColor clearColor];
+                      strongParent.layer.backgroundColor = [UIColor clearColor].CGColor;
+                      strongParent.opaque = NO;
+                  }
                 });
                 break;
             }
