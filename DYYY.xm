@@ -15965,6 +15965,33 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)setFrame:(CGRect)frame {
+    // PERF_PROBE: 统计 setFrame 频率 + tag 命中，每 2s 写沙盒日志
+    {
+        static NSUInteger sTotal = 0;
+        static NSUInteger sTagHit = 0;
+        static CFAbsoluteTime sLast = 0;
+        sTotal++;
+        if (self.tag == kDYYYPlayerViewTag) sTagHit++;
+        CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+        if (sLast == 0) {
+            sLast = now;
+        } else if (now - sLast >= 2.0) {
+            NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+            if (dir.length > 0) {
+                NSString *lp = [dir stringByAppendingPathComponent:@"DYYY_perf.log"];
+                FILE *f = fopen([lp UTF8String], "a");
+                if (f) {
+                    fprintf(f, "[setFrame] total=%lu tagHit=%lu over %.2fs -> %.0f/s tag=%.0f/s\n",
+                        (unsigned long)sTotal, (unsigned long)sTagHit,
+                        now - sLast, sTotal / (now - sLast), sTagHit / (now - sLast));
+                    fclose(f);
+                }
+            }
+            sTotal = 0;
+            sTagHit = 0;
+            sLast = now;
+        }
+    }
     // v481: 只对屏幕内可见的 player view 保持 852。
     // 不可见的允许抖音缩回 792，避免详情页滑动时 6+ 个 852 同时渲染 GPU 过载。
     if (self.tag == kDYYYPlayerViewTag &&
