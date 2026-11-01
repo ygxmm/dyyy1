@@ -3499,6 +3499,22 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
     %orig(lutFilter, DYYYShouldDisableAllHDR() ? nil : HDRLutImage);
 }
 
+// v495: 拦截原生播放器背景图，防止底部黑边
+- (void)updatePlayerBackgroundViewIfNeededWhenLandscape:(BOOL)landscape fromHomepageHot:(BOOL)fromHomepageHot {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    %orig(landscape, fromHomepageHot);
+}
+
+- (id)getPlayerBackgroundView {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return nil;
+    return %orig;
+}
+
+- (BOOL)enableBackgroundViewConfig {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return NO;
+    return %orig;
+}
+
 %end
 
 %hook AWEDPlayerBrightnessContainer
@@ -16975,6 +16991,17 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         f.size.height = screenH;
         vw.frame = f;
     }
+}
+
+// v495: 拦截原生播放器背景图生成/更新，防止滑动返回旧视频时底部变黑
+- (void)updatePlayerBackgroundViewIfNeededWhenLandscape:(BOOL)landscape fromHomepageHot:(BOOL)fromHomepageHot {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    %orig(landscape, fromHomepageHot);
+}
+
+- (id)getPlayerBackgroundView {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return nil;
+    return %orig;
 }
 
 - (void)viewDidLayoutSubviews {
