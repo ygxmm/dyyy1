@@ -13368,7 +13368,7 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 
 - (void)setVideo:(AWEVideoModel *)video {
     DYYYStripHDRHintsFromVideoModel(video);
-    %orig;
+    %orig(video);
 }
 
 - (AWEVideoModel *)video {
@@ -17060,7 +17060,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     if (hideButton && hideButton.isElementsHidden) {
         [hideButton hideUIElements];
     }
-    %orig;
+    %orig(model);
 }
 %end
 
