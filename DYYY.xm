@@ -14710,6 +14710,25 @@ static void DYYYApplySearchShiftIfNeeded(id vc) {
 }
 
 
+// v521: 交互层比父容器高出时（搜索详情页 y=60/h=852，底边 912 超出 852），
+// 按溢出量整体上移。只做 transform，不改 frame，不触发重排。
+// 必须放在 DYYYApplySearchShiftIfNeeded 之后：开关关闭时那个函数会把 transform
+// 还原成 identity，顺序反了会把这里的位移抹掉。
+static void DYYYClampInteractionOverflow(UIViewController *vc) {
+    if (DYYY_FS_ON()) return;
+    UIView *v = vc.view;
+    UIView *sv = v.superview;
+    if (!v || !sv) return;
+    CGFloat overflow = CGRectGetMaxY(v.frame) - CGRectGetHeight(sv.bounds);
+    CGAffineTransform target = CGAffineTransformIdentity;
+    if (overflow > 1.0 && overflow < 200.0) {
+        target = CGAffineTransformMakeTranslation(0, -overflow);
+    }
+    if (!CGAffineTransformEqualToTransform(v.transform, target)) {
+        v.transform = target;
+    }
+}
+
 static void DYYYUpdateManagedPrivacyHalfScreenAppearance(AFDPrivacyHalfScreenViewController *viewController) {
     BOOL isDarkMode = [DYYYUtils isDarkMode];
 
@@ -16312,6 +16331,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 - (void)viewDidLayoutSubviews {
     %orig;
     DYYYApplySearchShiftIfNeeded(self);
+    DYYYClampInteractionOverflow(self);
     // v483: 搜索页详情 interaction 视觉 y=120，底部溢出 120px，屏幕底部 792-852
     // 区域露出 interaction 内部黑色元素（输入框背景/渐变）→ 闪黑。
     // clipsToBounds=YES 让溢出部分不渲染，底部露出视频层。transform/frame 不动，
