@@ -22,6 +22,8 @@
 #include <float.h>
 #include <dlfcn.h>
 #include <syslog.h>
+#include <mach/mach.h>
+#include <dlfcn.h>
 
 // ============================================================
 // 运行时 / 第三方
@@ -50,6 +52,7 @@
 // ===================== DYYY 卡顿探测（临时） =====================
 static volatile int64_t gDYYYBeatMS = 0;
 static volatile intptr_t gDYYYMarker = 0;
+static mach_port_t gDYYYMainThreadPort = MACH_PORT_NULL;
 static __thread int gDYYYSetFrameDepth = 0;
 static void DYYYSetFrameDepthDec(int *p) { (void)p; gDYYYSetFrameDepth--; }
 static dispatch_source_t gDYYYBeatSrc = nil;
@@ -83,6 +86,7 @@ static void DYYYHangMonitorStart(void) {
         dispatch_source_set_event_handler(beatTimer, ^{
           gDYYYBeatMS = (int64_t)(CFAbsoluteTimeGetCurrent() * 1000.0);
         });
+        gDYYYMainThreadPort = pthread_mach_thread_np(pthread_self());
         dispatch_resume(beatTimer);
 
         dispatch_queue_t q = dispatch_queue_create("dyyy.hang", DISPATCH_QUEUE_SERIAL);
@@ -97,6 +101,26 @@ static void DYYYHangMonitorStart(void) {
           if (lag > 800) {
               const char *m = (const char *)gDYYYMarker;
               DYYYHangLog(@"[HANG] lag=%lldms marker=%s", lag, m ? m : "-");
+              if (gDYYYMainThreadPort != MACH_PORT_NULL) {
+                  arm_thread_state64_t st;
+                  mach_msg_type_number_t cnt = ARM_THREAD_STATE64_COUNT;
+                  kern_return_t kr = thread_get_state(gDYYYMainThreadPort, ARM_THREAD_STATE64,
+                                                      (thread_state_t)&st, &cnt);
+                  if (kr == KERN_SUCCESS) {
+                      uintptr_t pc = (uintptr_t)st.__pc;
+                      Dl_info di;
+                      const char *sym = "?";
+                      const char *img = "?";
+                      if (dladdr((void *)pc, &di)) {
+                          if (di.dli_sname) sym = di.dli_sname;
+                          if (di.dli_fname) img = di.dli_fname;
+                      }
+                      DYYYHangLog(@"[STACK] pc=0x%lx sym=%s img=%s",
+                                  (unsigned long)pc, sym, img);
+                  } else {
+                      DYYYHangLog(@"[STACK] thread_get_state failed kr=%d", (int)kr);
+                  }
+              }
           }
           static int aliveTick = 0;
           if (++aliveTick % 10 == 0) {
