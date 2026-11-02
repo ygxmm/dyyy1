@@ -15072,6 +15072,28 @@ static void DYYYRepairTabBarInternalBackground(UIView *tabBar) {
     }
 }
 
+static void DYYYDiagLog(NSString *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
+    va_end(ap);
+    NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    if (!dir) return;
+    NSString *path = [dir stringByAppendingPathComponent:@"dyyy_diag.log"];
+    NSArray<NSString *> *stack = [NSThread callStackSymbols];
+    NSUInteger n = MIN(stack.count, 12);
+    NSString *line = [NSString stringWithFormat:@"%@ | %@\n%@\n\n", [NSDate date], msg,
+                      [[stack subarrayWithRange:NSMakeRange(0, n)] componentsJoinedByString:@"\n"]];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+        [@"" writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    }
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+    if (!fh) return;
+    [fh seekToEndOfFile];
+    [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+    [fh closeFile];
+}
+
 %hook AWENormalModeTabBar
 
 static Class barBackgroundClass = nil;
@@ -15115,6 +15137,13 @@ static Class tabBarButtonClass = nil;
         gCurrentTabBarHeight = originalTabBarHeight;
         NSLog(@"[DYYY] initializeOriginalTabBarHeight: gCurrentTabBarHeight synced to %.1f.", gCurrentTabBarHeight);
     }
+}
+
+- (void)setFrame:(CGRect)frame {
+    if (fabs(frame.size.height - self.frame.size.height) > 0.5) {
+        DYYYDiagLog(@"tabBar setFrame %@ -> %@ FS=%d", NSStringFromCGRect(self.frame), NSStringFromCGRect(frame), (int)DYYYGetBool(@"DYYYEnableFullScreen"));
+    }
+    %orig(frame);
 }
 
 - (void)didMoveToWindow {
@@ -17856,7 +17885,9 @@ static char kDYYYV29DoneKey; // v439
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
-    // DYYY修复：不改高度，避免污染分页算法
+    if (fabs(frame.size.height - self.frame.size.height) > 0.5) {
+        DYYYDiagLog(@"detailTable setFrame %@ -> %@ FS=%d", NSStringFromCGRect(self.frame), NSStringFromCGRect(frame), (int)DYYYGetBool(@"DYYYEnableFullScreen"));
+    }
     %orig(frame);
 }
 
