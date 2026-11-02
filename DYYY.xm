@@ -7774,6 +7774,30 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
 - (void)changeModernFullScreen:(BOOL)fullScreen;
 @end
 
+// 类转储里有、项目头文件未收录的入口字段
+@interface AWEAwemeDetailTableViewController (DYYYEntryInfo)
+@property (nonatomic, copy) NSString *enterFrom;
+@property (nonatomic, copy) NSString * previousPage;
+@end
+
+static void DYYYRefLog(NSString *fmt, ...) {
+    va_list ap; va_start(ap, fmt);
+    NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
+    va_end(ap);
+    NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    if (!dir) return;
+    NSString *path = [dir stringByAppendingPathComponent:@"dyyy_ref.log"];
+    NSString *line = [NSString stringWithFormat:@"%@ %@\n", [NSDate date], msg];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+        [@"" writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    }
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+    if (!fh) return;
+    [fh seekToEndOfFile];
+    [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+    [fh closeFile];
+}
+
 %hook AWEAwemeDetailTableViewController
 
 - (BOOL)hasIphoneAutoPlaySwitch {
@@ -7819,6 +7843,7 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
 // 每个实例只切一次，避免与自身布局互相拉扯。
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
+    DYYYRefLog(@"[REF] refer=%@ enter=%@ prev=%@", self.referString, self.enterFrom, self.previousPage);
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
     static char kDYYYModernFullScreenKey;
     if (objc_getAssociatedObject(self, &kDYYYModernFullScreenKey)) return;
