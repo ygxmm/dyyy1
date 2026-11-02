@@ -7776,6 +7776,7 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
 
 // 类转储里有、项目头文件未收录的入口字段
 @interface AWEAwemeDetailTableViewController (DYYYEntryInfo)
+@property (nonatomic, copy) NSString *referString;
 @property (nonatomic, copy) NSString *enterFrom;
 @property (nonatomic, copy) NSString * previousPage;
 @end
