@@ -16060,7 +16060,13 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)setFrame:(CGRect)frame {
-    DYYY_TRACE("UIView.setFrame");
+    BOOL enableBlur = DYYYGetBoolCached(@"DYYYEnableCommentBlur");
+    BOOL enableFS = DYYYGetBoolCached(@"DYYYEnableFullScreen");
+    DYYY_TRACE((enableBlur || enableFS) ? "UIView.setFrame[on]" : "UIView.setFrame[off]");
+    if (!enableBlur && !enableFS) {
+        %orig(frame);
+        return;
+    }
     // v382: 卡帧优化 —— 最便宜的 isMemberOfClass 放最前面
     // 99% 的 setFrame 调用来自 UILabel/UIButton/UIImageView 等子类，
     // 一行判定立即跳过，完全不碰关联对象（objc_getAssociatedObject 有全局锁，最贵）。
@@ -16107,15 +16113,6 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
-    BOOL enableBlur = DYYYGetBoolCached(@"DYYYEnableCommentBlur");
-    BOOL enableFS = DYYYGetBoolCached(@"DYYYEnableFullScreen");
-
-    // -setFrame: 在滚动时每帧会被调用上千次，而下面的响应链回溯与类查找只有
-    // 毛玻璃或全屏开启时才会用到。两者都关闭时直接放行，行为与未 Hook 时一致。
-    if (!enableBlur && !enableFS) {
-        %orig(frame);
-        return;
-    }
 
     // v461: 常规改 frame 走三个 VC 的 changePlayerFrameIfNeededWithAnimated: hook。
     // v462: 评论区/面板打开时抖音内部可能把 player view 压到 769（852-tabBar），
