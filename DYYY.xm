@@ -16173,7 +16173,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         CGFloat x = f.origin.x, y = f.origin.y, w = f.size.width, h = f.size.height;
         if (w > 1.0 && h > 1.0) {
             BOOL edgeBar = NO;
-            if (fabs(x) < 1.0 && fabs(y) < 1.0 && w >= screenW * 0.5 && h <= safeTop + 4.0) edgeBar = YES;
+            if (fabs(x) < 1.0 && fabs(y) < 1.0 && w >= screenW * 0.5 && h <= safeTop + 60.0) edgeBar = YES;
             else if (fabs(x) < 1.0 && fabs((y + h) - screenH) < 2.0 && w >= screenW * 0.5 && h <= 120.0) edgeBar = YES;
             else if (fabs(x) < 1.0 && w <= 120.0 && h >= screenH * 0.2) edgeBar = YES;
             else if (fabs((x + w) - screenW) < 2.0 && w <= 120.0 && h >= screenH * 0.2) edgeBar = YES;
