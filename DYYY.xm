@@ -27,6 +27,17 @@
 // setFrame 钩子重入闸：钩子内部会改 frame，可能触发新一轮布局并重入本方法
 static __thread int gDYYYSetFrameDepth = 0;
 static void DYYYSetFrameDepthDec(int *p) { (void)p; gDYYYSetFrameDepth--; }
+
+// v530 实验：置 1 则停用全部「外力掰布局」的全屏逻辑，只保留抖音自己的
+// changeModernFullScreen: 调用。用来验证原生接口是否真能撑开页面。
+#define DYYY_LEGACY_FS_DISABLED 1
+static BOOL DYYYLegacyFSActive(void) {
+#if DYYY_LEGACY_FS_DISABLED
+    return NO;
+#else
+    return DYYYGetBool(@"DYYYEnableFullScreen");
+#endif
+}
 #include <dlfcn.h>
 
 // ============================================================
@@ -6845,13 +6856,13 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 // v356: 进度条位置 -60（让首页全屏时进度条上移）
 - (double)sliderYOffset {
     double orig = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) return orig - 60.0;
+    if (DYYYLegacyFSActive()) return orig - 60.0;
     return orig;
 }
 
 - (double)posAdjustY {
     double orig = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) return orig - 60.0;
+    if (DYYYLegacyFSActive()) return orig - 60.0;
     return orig;
 }
 
@@ -6879,7 +6890,7 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 // v361: 直接改进度条 frame 返回值
 - (struct CGRect)progressSliderNormalFrame {
     struct CGRect f = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+    if (DYYYLegacyFSActive()) {
         f.origin.y -= 60.0;
     }
     return f;
@@ -6887,7 +6898,7 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 
 - (struct CGRect)progressSliderWakeUpFrame {
     struct CGRect f = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+    if (DYYYLegacyFSActive()) {
         f.origin.y -= 60.0;
     }
     return f;
@@ -6895,7 +6906,7 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 
 - (struct CGRect)progressSliderUnderViewFrame {
     struct CGRect f = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+    if (DYYYLegacyFSActive()) {
         f.origin.y -= 60.0;
     }
     return f;
@@ -6903,7 +6914,7 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 
 - (double)timeLabelOriginY {
     double orig = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+    if (DYYYLegacyFSActive()) {
         return orig - 60.0;
     }
     return orig;
@@ -7816,7 +7827,7 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
 
 // v457: 让 heightForRowAtIndexPath 返回 852，和 table 高度统一
 - (double)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+    if (DYYYLegacyFSActive()) {
         return [UIScreen mainScreen].bounds.size.height;
     }
     return %orig;
@@ -7824,7 +7835,7 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
 
 // v457: cellHeightAtIndex: 返回 852，让抖音内部算 contentOffset 也用 852
 - (double)cellHeightAtIndex:(long long)index {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+    if (DYYYLegacyFSActive()) {
         return [UIScreen mainScreen].bounds.size.height;
     }
     return %orig;
@@ -7832,7 +7843,7 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
 
 // v457: fixedCellHeight 返回 852，覆盖 contentOffsetYForCellAtIndex 内部可能用它的情况
 - (double)fixedCellHeight {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+    if (DYYYLegacyFSActive()) {
         return [UIScreen mainScreen].bounds.size.height;
     }
     return %orig;
@@ -16034,7 +16045,7 @@ static Class tabBarButtonClass = nil;
     gDYYYSetFrameDepth++;
     int _dyyySfGuard __attribute__((unused, cleanup(DYYYSetFrameDepthDec))) = 0;
     BOOL enableBlur = DYYYGetBoolCached(@"DYYYEnableCommentBlur");
-    BOOL enableFS = DYYYGetBoolCached(@"DYYYEnableFullScreen");
+    BOOL enableFS = DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYLegacyFSActive();
     if (!enableBlur && !enableFS) {
         %orig(frame);
         return;
@@ -16294,7 +16305,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 // v346: HUD 容器底部偏移 +60（让左右栈和栈容器都上移 60）
 - (double)leftContainerBottomOffset {
     double orig = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+    if (DYYYLegacyFSActive()) {
         return orig - 60.0;
     }
     return orig;
@@ -16302,7 +16313,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (double)p_leftAndRightContainerBottomOffset {
     double orig = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+    if (DYYYLegacyFSActive()) {
         return orig - 60.0;
     }
     return orig;
@@ -16310,7 +16321,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (double)p_stackContainerViewBottomOffset {
     double orig = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+    if (DYYYLegacyFSActive()) {
         return orig - 60.0;
     }
     return orig;
@@ -16894,7 +16905,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
     %orig(animated);
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (!DYYYLegacyFSActive()) return;
     CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
     UIView *vw = self.view;
     if (vw && fabs(vw.frame.size.height - screenH) > 0.5) {
@@ -16936,7 +16947,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
     %orig(animated);
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (!DYYYLegacyFSActive()) return;
     CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
     UIView *vw = self.view;
     if (vw && fabs(vw.frame.size.height - screenH) > 0.5) {
@@ -16990,7 +17001,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
     %orig(animated);
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (!DYYYLegacyFSActive()) return;
     CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
     UIView *vw = self.view;
     if (vw && fabs(vw.frame.size.height - screenH) > 0.5) {
@@ -17578,7 +17589,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
             }
 
             // v364: 全屏开关开时右栈（点赞栏，label=right）上移 60
-            if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+            if (DYYYLegacyFSActive()) {
                 self.transform = CGAffineTransformTranslate(self.transform, 0, -60.0);
             }
         }
@@ -17952,7 +17963,7 @@ static char kDYYYV29DoneKey; // v439
 
     // v447: 性能优化——isKindOfClass + 类缓存，替代 NSStringFromClass + containsString
     // 逻辑等价：原来按类名字符串匹配，现在按类继承链匹配，命中范围一致
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+    if (DYYYLegacyFSActive()) {
         static Class sDYYYDetailCellClass = nil;
         static Class sDYYYCellContentClass = nil;
         static dispatch_once_t sDYYYOnce;
