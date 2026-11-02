@@ -14677,14 +14677,12 @@ static void DYYYApplySearchShiftIfNeeded(id vc) {
             objc_setAssociatedObject(vc, &kDYYYOrigTransformKey, origVal, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         CGAffineTransform orig = origVal.CGAffineTransformValue;
-        CGAffineTransform target = orig;
-        target.ty += 60.0;
-
-        // 3) 幂等
-        if (CGAffineTransformEqualToTransform(v.transform, target)) return;
-
-        // 4) 应用
-        v.transform = target;
+        // v540: 取消搜索详情页的 +60 下移。
+        // 底部位置现在由「交互层高度 852→792」控制，再叠一个 +60 会把 UI 压到底栏上。
+        if (!CGAffineTransformEqualToTransform(v.transform, CGAffineTransformIdentity)) {
+            v.transform = CGAffineTransformIdentity;
+        }
+        return;
     } @catch (NSException *e) {}
 }
 
