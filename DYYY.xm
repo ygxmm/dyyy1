@@ -38,6 +38,12 @@ static BOOL DYYYLegacyFSActive(void) {
     return DYYYGetBool(@"DYYYEnableFullScreen");
 #endif
 }
+
+// 底部 UI 补偿单独控制：全屏交给抖音自己的接口后，底部块会贴到屏幕下沿，
+// 仍需要上移 60。与老的全屏几何逻辑解耦，只跟随开关。
+static BOOL DYYYBottomInsetActive(void) {
+    return DYYYGetBool(@"DYYYEnableFullScreen");
+}
 #include <dlfcn.h>
 
 // ============================================================
@@ -6856,13 +6862,13 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 // v356: 进度条位置 -60（让首页全屏时进度条上移）
 - (double)sliderYOffset {
     double orig = %orig;
-    if (DYYYLegacyFSActive()) return orig - 60.0;
+    if (DYYYBottomInsetActive()) return orig - 60.0;
     return orig;
 }
 
 - (double)posAdjustY {
     double orig = %orig;
-    if (DYYYLegacyFSActive()) return orig - 60.0;
+    if (DYYYBottomInsetActive()) return orig - 60.0;
     return orig;
 }
 
@@ -6890,7 +6896,7 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 // v361: 直接改进度条 frame 返回值
 - (struct CGRect)progressSliderNormalFrame {
     struct CGRect f = %orig;
-    if (DYYYLegacyFSActive()) {
+    if (DYYYBottomInsetActive()) {
         f.origin.y -= 60.0;
     }
     return f;
@@ -6898,7 +6904,7 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 
 - (struct CGRect)progressSliderWakeUpFrame {
     struct CGRect f = %orig;
-    if (DYYYLegacyFSActive()) {
+    if (DYYYBottomInsetActive()) {
         f.origin.y -= 60.0;
     }
     return f;
@@ -6906,7 +6912,7 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 
 - (struct CGRect)progressSliderUnderViewFrame {
     struct CGRect f = %orig;
-    if (DYYYLegacyFSActive()) {
+    if (DYYYBottomInsetActive()) {
         f.origin.y -= 60.0;
     }
     return f;
@@ -6914,7 +6920,7 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 
 - (double)timeLabelOriginY {
     double orig = %orig;
-    if (DYYYLegacyFSActive()) {
+    if (DYYYBottomInsetActive()) {
         return orig - 60.0;
     }
     return orig;
@@ -16305,7 +16311,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 // v346: HUD 容器底部偏移 +60（让左右栈和栈容器都上移 60）
 - (double)leftContainerBottomOffset {
     double orig = %orig;
-    if (DYYYLegacyFSActive()) {
+    if (DYYYBottomInsetActive()) {
         return orig - 60.0;
     }
     return orig;
@@ -16313,7 +16319,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (double)p_leftAndRightContainerBottomOffset {
     double orig = %orig;
-    if (DYYYLegacyFSActive()) {
+    if (DYYYBottomInsetActive()) {
         return orig - 60.0;
     }
     return orig;
@@ -16321,7 +16327,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (double)p_stackContainerViewBottomOffset {
     double orig = %orig;
-    if (DYYYLegacyFSActive()) {
+    if (DYYYBottomInsetActive()) {
         return orig - 60.0;
     }
     return orig;
@@ -17589,7 +17595,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
             }
 
             // v364: 全屏开关开时右栈（点赞栏，label=right）上移 60
-            if (DYYYLegacyFSActive()) {
+            if (DYYYBottomInsetActive()) {
                 self.transform = CGAffineTransformTranslate(self.transform, 0, -60.0);
             }
         }
