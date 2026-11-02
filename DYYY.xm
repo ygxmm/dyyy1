@@ -47,6 +47,59 @@
 #import "DYYYHookManager.h"
 #import "DYYYLoginBypassManager.h"
 #import "DYYYLivePreStreamLayoutCoordinator.h"
+// ===================== DYYY 卡顿探测（临时） =====================
+static volatile int64_t gDYYYBeatMS = 0;
+static volatile intptr_t gDYYYMarker = 0;
+
+static void DYYYHangLog(NSString *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
+    va_end(ap);
+    NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    if (!dir) return;
+    NSString *path = [dir stringByAppendingPathComponent:@"dyyy_hang.log"];
+    NSString *line = [NSString stringWithFormat:@"%@ %@
+", [NSDate date], msg];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+        [@"" writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    }
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+    if (!fh) return;
+    [fh seekToEndOfFile];
+    [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+    [fh closeFile];
+}
+
+static void DYYYHangMonitorStart(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        CFRunLoopObserverRef ob = CFRunLoopObserverCreateWithHandler(
+            kCFAllocatorDefault, kCFRunLoopBeforeWaiting, true, 0,
+            ^(CFRunLoopObserverRef observer, CFRunLoopActivity activity) {
+              gDYYYBeatMS = (int64_t)(CFAbsoluteTimeGetCurrent() * 1000.0);
+            });
+        CFRunLoopAddObserver(CFRunLoopGetMain(), ob, kCFRunLoopCommonModes);
+
+        dispatch_queue_t q = dispatch_queue_create("dyyy.hang", DISPATCH_QUEUE_SERIAL);
+        dispatch_source_t t = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, q);
+        dispatch_source_set_timer(t, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), NSEC_PER_SEC, 0);
+        dispatch_source_set_event_handler(t, ^{
+          int64_t now = (int64_t)(CFAbsoluteTimeGetCurrent() * 1000.0);
+          int64_t beat = gDYYYBeatMS;
+          if (beat <= 0) return;
+          int64_t lag = now - beat;
+          if (lag > 1500) {
+              const char *m = (const char *)gDYYYMarker;
+              DYYYHangLog(@"[HANG] lag=%lldms marker=%s", lag, m ? m : "-");
+          }
+        });
+        dispatch_resume(t);
+    });
+}
+
+#define DYYY_TRACE(name) do { gDYYYMarker = (intptr_t)(name); } while (0)
+
 #import "DYYYPrivacyRecordUploadGuard.h"
 #import "DYYYMiniProgramRewardBypass.h"
 
@@ -15998,6 +16051,7 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)setFrame:(CGRect)frame {
+    DYYY_TRACE("UIView.setFrame");
     // v382: 卡帧优化 —— 最便宜的 isMemberOfClass 放最前面
     // 99% 的 setFrame 调用来自 UILabel/UIButton/UIImageView 等子类，
     // 一行判定立即跳过，完全不碰关联对象（objc_getAssociatedObject 有全局锁，最贵）。
@@ -16315,6 +16369,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 }
 
 - (void)viewDidLayoutSubviews {
+    DYYY_TRACE("InteractionVC.viewDidLayout");
     %orig;
     DYYYApplySearchShiftIfNeeded(self);
     // v483: 搜索页详情 interaction 视觉 y=120，底部溢出 120px，屏幕底部 792-852
@@ -17079,6 +17134,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %hook AWEFeedTableView
 - (void)layoutSubviews {
+    DYYY_TRACE("FeedTableView.layout");
     %orig;
     // 旋转期跳过改 frame：layoutSubviews 里改 self.frame 会触发新一轮 layout，
     // 旋转时 screenH 仍在变，循环占满主线程导致冻屏。旋转结束后下一帧自动恢复。
@@ -17517,6 +17573,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 }
 
 - (void)layoutSubviews {
+    DYYY_TRACE("ElementStackView.layout");
     BOOL insidePlayInteraction = DYYYViewIsInsidePlayInteraction(self);
     // 只清理播放交互层左侧栏。全局 reset 会把作品详情等页面里 element hook 已写好的缩放清掉。
     if (insidePlayInteraction) {
@@ -17655,6 +17712,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 %hook AWEStoryContainerCollectionView
 
 - (void)layoutSubviews {
+    DYYY_TRACE("StoryContainer.layout");
     %orig;
     
     // v426: 严格隔离小日常，防止 UIKit 死锁和爆栈
@@ -17946,6 +18004,7 @@ static char kDYYYV29DoneKey; // v439
 }
 
 - (void)layoutSubviews {
+    DYYY_TRACE("DetailTableView.layout");
     %orig;
 
     // v447: 性能优化——isKindOfClass + 类缓存，替代 NSStringFromClass + containsString
@@ -18375,6 +18434,8 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 %end
 
 %ctor {
+
+    DYYYHangMonitorStart();
 
     [DYYYLoginBypassManager configureInitialStateIfNeeded];
 
