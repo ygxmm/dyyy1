@@ -73,12 +73,12 @@ static void DYYYHangLog(NSString *fmt, ...) {
 static void DYYYHangMonitorStart(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        CFRunLoopObserverRef ob = CFRunLoopObserverCreateWithHandler(
-            kCFAllocatorDefault, kCFRunLoopBeforeWaiting, true, 0,
-            ^(CFRunLoopObserverRef observer, CFRunLoopActivity activity) {
-              gDYYYBeatMS = (int64_t)(CFAbsoluteTimeGetCurrent() * 1000.0);
-            });
-        CFRunLoopAddObserver(CFRunLoopGetMain(), ob, kCFRunLoopCommonModes);
+        dispatch_source_t beatTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+        dispatch_source_set_timer(beatTimer, dispatch_time(DISPATCH_TIME_NOW, 0), 500 * NSEC_PER_MSEC, 50 * NSEC_PER_MSEC);
+        dispatch_source_set_event_handler(beatTimer, ^{
+          gDYYYBeatMS = (int64_t)(CFAbsoluteTimeGetCurrent() * 1000.0);
+        });
+        dispatch_resume(beatTimer);
 
         dispatch_queue_t q = dispatch_queue_create("dyyy.hang", DISPATCH_QUEUE_SERIAL);
         dispatch_source_t t = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, q);
@@ -93,7 +93,7 @@ static void DYYYHangMonitorStart(void) {
               DYYYHangLog(@"[HANG] lag=%lldms marker=%s", lag, m ? m : "-");
           }
           static int aliveTick = 0;
-          if (++aliveTick % 30 == 0) {
+          if (++aliveTick % 10 == 0) {
               const char *m2 = (const char *)gDYYYMarker;
               DYYYHangLog(@"[ALIVE] lag=%lldms marker=%s", lag, m2 ? m2 : "-");
           }
