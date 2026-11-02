@@ -50,6 +50,8 @@
 // ===================== DYYY 卡顿探测（临时） =====================
 static volatile int64_t gDYYYBeatMS = 0;
 static volatile intptr_t gDYYYMarker = 0;
+static __thread int gDYYYSetFrameDepth = 0;
+static void DYYYSetFrameDepthDec(int *p) { (void)p; gDYYYSetFrameDepth--; }
 static dispatch_source_t gDYYYBeatSrc = nil;
 static dispatch_source_t gDYYYWatchSrc = nil;
 
@@ -16060,6 +16062,12 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)setFrame:(CGRect)frame {
+    if (gDYYYSetFrameDepth > 0) {
+        %orig(frame);
+        return;
+    }
+    gDYYYSetFrameDepth++;
+    int _dyyySfGuard __attribute__((unused, cleanup(DYYYSetFrameDepthDec))) = 0;
     BOOL enableBlur = DYYYGetBoolCached(@"DYYYEnableCommentBlur");
     BOOL enableFS = DYYYGetBoolCached(@"DYYYEnableFullScreen");
     DYYY_TRACE((enableBlur || enableFS) ? "UIView.setFrame[on]" : "UIView.setFrame[off]");
