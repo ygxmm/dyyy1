@@ -19128,3 +19128,29 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 }
 
 %end
+
+// v591: 利用详情页原生的 disableBlurView 关闭毛玻璃
+@interface AWEAwemeDetailTableViewController : UIViewController
+@property (nonatomic) BOOL disableBlurView;
+- (void)addBlurView;
+@end
+
+%hook AWEAwemeDetailTableViewController
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        // 开启全屏时，强制把它的毛玻璃开关关掉
+        self.disableBlurView = YES;
+    }
+}
+
+- (void)addBlurView {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        // 直接拦截，不调用原方法，彻底阻止毛玻璃的创建
+        return;
+    }
+    %orig;
+}
+
+%end
