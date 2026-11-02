@@ -59,8 +59,7 @@ static void DYYYHangLog(NSString *fmt, ...) {
     NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
     if (!dir) return;
     NSString *path = [dir stringByAppendingPathComponent:@"dyyy_hang.log"];
-    NSString *line = [NSString stringWithFormat:@"%@ %@
-", [NSDate date], msg];
+    NSString *line = [NSString stringWithFormat:@"%@ %@\n", [NSDate date], msg];
     if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
         [@"" writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
     }
