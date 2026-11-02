@@ -16253,14 +16253,14 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     %orig;
     // v535: 全屏时把交互层高度从 852 收到 792（屏幕高 - 60），
     // 底部锚定的内容随之上移 60。只改高度，不动 origin。
-    // v542: 只对「搜索进入的详情页」收缩交互层；其它页面一律走抖音原生布局。
-    NSString *dyyyRefer = self.referString;
-    BOOL isSearchDetail = [dyyyRefer isKindOfClass:[NSString class]] && [dyyyRefer containsString:@"search"];
-    if (isSearchDetail && DYYYBottomInsetActive() && self.view) {
+    if (DYYYBottomInsetActive() && self.view) {
         CGFloat screenH = CGRectGetHeight([UIScreen mainScreen].bounds);
         CGRect f = self.view.frame;
+        // v541: 只处理「满屏」的交互层（852）。769/792 这类页面本来就对，
+        // 统一改成 792 会让它们多出 23pt，反而压到低栏上。
         if (fabs(f.size.height - screenH) <= 1.0) {
-            f.size.height = screenH - 60.0;
+            CGFloat target = screenH - 60.0;
+            f.size.height = target;
             self.view.frame = f;
         }
     }
