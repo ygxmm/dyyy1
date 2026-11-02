@@ -16079,41 +16079,11 @@ static Class tabBarButtonClass = nil;
     // v382: 卡帧优化 —— 最便宜的 isMemberOfClass 放最前面
     // 99% 的 setFrame 调用来自 UILabel/UIButton/UIImageView 等子类，
     // 一行判定立即跳过，完全不碰关联对象（objc_getAssociatedObject 有全局锁，最贵）。
-    if ([self isMemberOfClass:[UIView class]]) {
-        // 只有裸 UIView 才继续查关联对象
-        static char kDYYYTopBlackBarFlagKey;
-        if (objc_getAssociatedObject(self, &kDYYYTopBlackBarFlagKey)) {
-            // 已标记的黑条：直接归零
-            self.hidden = YES;
-            %orig(CGRectZero);
-            return;
-        }
+    // v527: 黑条启发式已停用。
+    // 原逻辑会在任意 setFrame 里把「40~80pt、全宽、纯黑」的视图置零并隐藏，
+    // 满屏（852）滚动时反复打断布局，实测主线程卡死 30s 以上。
+    // 顶部黑条改由 DYYYClearBlackEdgeBars 在页面布局完成后统一清理。
 
-        // 便宜的浮点判定先走，命中才继续做贵的颜色解析
-        if (fabs(frame.origin.x) < 0.5 && fabs(frame.origin.y) < 0.5 &&
-            frame.size.height > 40.0 && frame.size.height < 80.0) {
-            CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
-            if (fabs(frame.size.width - screenW) < 1.0) {
-                CGColorRef cg = self.backgroundColor.CGColor;
-                if (cg) {
-                    const CGFloat *comp = CGColorGetComponents(cg);
-                    size_t n = CGColorGetNumberOfComponents(cg);
-                    CGFloat r = 0, g = 0, b = 0, a = 1;
-                    if (n >= 4) { r = comp[0]; g = comp[1]; b = comp[2]; a = comp[3]; }
-                    else if (n == 2) { r = comp[0]; g = comp[0]; b = comp[0]; a = comp[1]; }
-                    if (r < 0.05 && g < 0.05 && b < 0.05 && a > 0.95) {
-                        // 首次命中：打标记，以后走快速短路
-                        objc_setAssociatedObject(self, &kDYYYTopBlackBarFlagKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                        self.backgroundColor = [UIColor clearColor];
-                        self.layer.backgroundColor = [UIColor clearColor].CGColor;
-                        self.hidden = YES;
-                        %orig(CGRectZero);
-                        return;
-                    }
-                }
-            }
-        }
-    }
 
     DYYY_TRACE("setFrame:B_afterBlackbar");
     if (![NSThread isMainThread]) {
