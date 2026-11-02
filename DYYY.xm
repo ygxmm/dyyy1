@@ -7801,6 +7801,13 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
     }
 }
 
+// v529: 类转储 AWEAwemeDetailTableViewController.h 里有这两个成员，
+// 但项目内的 AwemeHeaders.h 来自较早的转储，没有收录，这里补声明。
+@interface AWEAwemeDetailTableViewController (DYYYModernFullScreen)
+@property (nonatomic, assign) BOOL isModernFullScreen;
+- (void)changeModernFullScreen:(BOOL)fullScreen;
+@end
+
 %hook AWEAwemeDetailTableViewController
 
 - (BOOL)hasIphoneAutoPlaySwitch {
