@@ -23,6 +23,7 @@
 #include <dlfcn.h>
 #include <syslog.h>
 #include <mach/mach.h>
+#include <pthread.h>
 #include <dlfcn.h>
 
 // ============================================================
@@ -107,7 +108,7 @@ static void DYYYHangMonitorStart(void) {
                   kern_return_t kr = thread_get_state(gDYYYMainThreadPort, ARM_THREAD_STATE64,
                                                       (thread_state_t)&st, &cnt);
                   if (kr == KERN_SUCCESS) {
-                      uintptr_t pc = (uintptr_t)st.__pc;
+                      uintptr_t pc = (uintptr_t)arm_thread_state64_get_pc(st);
                       Dl_info di;
                       const char *sym = "?";
                       const char *img = "?";
