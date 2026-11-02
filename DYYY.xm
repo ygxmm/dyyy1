@@ -6833,32 +6833,18 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 
 %end
 
-static UIView *DYYYProgressHostView(id controller) {
-    UIView *v = nil;
-    @try {
-        v = [controller valueForKey:@"progressSlider"];
-    } @catch (NSException *e) {}
-    if ([v isKindOfClass:[UIView class]]) return v;
-    id c = nil;
-    @try {
-        c = [controller valueForKey:@"container"];
-    } @catch (NSException *e) {}
-    if ([c isKindOfClass:[UIViewController class]]) return [(UIViewController *)c view];
-    return nil;
-}
-
 %hook AWEPlayInteractionProgressController
 
 // v356: 进度条位置 -60（让首页全屏时进度条上移）
 - (double)sliderYOffset {
     double orig = %orig;
-    if (DYYY_FS_SHIFT_ACTIVE(DYYYProgressHostView(self))) return orig - DYYY_FS_INSET;
+    if (DYYY_FS_ON()) return orig - DYYY_FS_INSET;
     return orig;
 }
 
 - (double)posAdjustY {
     double orig = %orig;
-    if (DYYY_FS_SHIFT_ACTIVE(DYYYProgressHostView(self))) return orig - DYYY_FS_INSET;
+    if (DYYY_FS_ON()) return orig - DYYY_FS_INSET;
     return orig;
 }
 
@@ -6886,7 +6872,7 @@ static UIView *DYYYProgressHostView(id controller) {
 // v361: 直接改进度条 frame 返回值
 - (struct CGRect)progressSliderNormalFrame {
     struct CGRect f = %orig;
-    if (DYYY_FS_SHIFT_ACTIVE(DYYYProgressHostView(self))) {
+    if (DYYY_FS_ON()) {
         f.origin.y -= DYYY_FS_INSET;
     }
     return f;
@@ -6894,7 +6880,7 @@ static UIView *DYYYProgressHostView(id controller) {
 
 - (struct CGRect)progressSliderWakeUpFrame {
     struct CGRect f = %orig;
-    if (DYYY_FS_SHIFT_ACTIVE(DYYYProgressHostView(self))) {
+    if (DYYY_FS_ON()) {
         f.origin.y -= DYYY_FS_INSET;
     }
     return f;
@@ -6902,7 +6888,7 @@ static UIView *DYYYProgressHostView(id controller) {
 
 - (struct CGRect)progressSliderUnderViewFrame {
     struct CGRect f = %orig;
-    if (DYYY_FS_SHIFT_ACTIVE(DYYYProgressHostView(self))) {
+    if (DYYY_FS_ON()) {
         f.origin.y -= DYYY_FS_INSET;
     }
     return f;
@@ -6910,7 +6896,7 @@ static UIView *DYYYProgressHostView(id controller) {
 
 - (double)timeLabelOriginY {
     double orig = %orig;
-    if (DYYY_FS_SHIFT_ACTIVE(DYYYProgressHostView(self))) return orig - DYYY_FS_INSET;
+    if (DYYY_FS_ON()) return orig - DYYY_FS_INSET;
     return orig;
 }
 
@@ -16307,19 +16293,19 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 // v346: HUD 容器底部偏移 +60（让左右栈和栈容器都上移 60）
 - (double)leftContainerBottomOffset {
     double orig = %orig;
-    if (DYYY_FS_SHIFT_ACTIVE(self.view)) return orig - DYYY_FS_INSET;
+    if (DYYY_FS_ON()) return orig - DYYY_FS_INSET;
     return orig;
 }
 
 - (double)p_leftAndRightContainerBottomOffset {
     double orig = %orig;
-    if (DYYY_FS_SHIFT_ACTIVE(self.view)) return orig - DYYY_FS_INSET;
+    if (DYYY_FS_ON()) return orig - DYYY_FS_INSET;
     return orig;
 }
 
 - (double)p_stackContainerViewBottomOffset {
     double orig = %orig;
-    if (DYYY_FS_SHIFT_ACTIVE(self.view)) return orig - DYYY_FS_INSET;
+    if (DYYY_FS_ON()) return orig - DYYY_FS_INSET;
     return orig;
 }
 
@@ -17576,7 +17562,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
             }
 
             // v364: 全屏开关开时右栈（点赞栏，label=right）上移 60
-            if (DYYY_FS_SHIFT_ACTIVE(self)) {
+            if (DYYYGetBool(@"DYYYEnableFullScreen")) {
                 self.transform = CGAffineTransformTranslate(self.transform, 0, -DYYY_FS_INSET);
             }
         }
