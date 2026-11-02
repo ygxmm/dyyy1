@@ -14697,6 +14697,15 @@ static void DYYYApplySearchShiftIfNeeded(id vc) {
             objc_setAssociatedObject(vc, &kDYYYOrigTransformKey, origVal, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         CGAffineTransform orig = origVal.CGAffineTransformValue;
+
+        // v516: 位移必须跟随全屏开关；关闭时用缓存的原值精确还原，不做 -60 算术
+        if (!DYYYGetBool(@"DYYYEnableFullScreen")) {
+            if (!CGAffineTransformEqualToTransform(v.transform, orig)) {
+                v.transform = orig;
+            }
+            return;
+        }
+
         CGAffineTransform target = orig;
         target.ty += 60.0;
 
