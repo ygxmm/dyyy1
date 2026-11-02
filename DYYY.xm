@@ -54,19 +54,6 @@
 static __thread int gDYYYSetFrameDepth = 0;
 static void DYYYSetFrameDepthDec(int *p) { (void)p; gDYYYSetFrameDepth--; }
 
-// v530 实验：置 1 则停用全部「外力掰布局」的全屏逻辑，只保留抖音自己的
-// changeModernFullScreen: 调用。用来验证原生接口是否真能撑开页面。
-#define DYYY_LEGACY_FS_DISABLED 1
-static BOOL DYYYLegacyFSActive(void) {
-#if DYYY_LEGACY_FS_DISABLED
-    return NO;
-#else
-    return DYYYGetBool(@"DYYYEnableFullScreen");
-#endif
-}
-
-// 底部 UI 补偿单独控制：全屏交给抖音自己的接口后，底部块会贴到屏幕下沿，
-// 仍需要上移 60。与老的全屏几何逻辑解耦，只跟随开关。
 static BOOL DYYYBottomInsetActive(void) {
     return DYYYGetBool(@"DYYYEnableFullScreen");
 }
@@ -6862,17 +6849,7 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 %hook AWEPlayInteractionProgressController
 
 // v356: 进度条位置 -60（让首页全屏时进度条上移）
-- (double)sliderYOffset {
-    double orig = %orig;
-    if (DYYYLegacyFSActive()) return orig - 60.0;
-    return orig;
-}
 
-- (double)posAdjustY {
-    double orig = %orig;
-    if (DYYYLegacyFSActive()) return orig - 60.0;
-    return orig;
-}
 
 %new
 - (void)dyyy_syncScheduleLabelsWithCurrentTime:(CGFloat)currentTime totalDuration:(CGFloat)totalDuration {
@@ -6896,37 +6873,7 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 }
 
 // v361: 直接改进度条 frame 返回值
-- (struct CGRect)progressSliderNormalFrame {
-    struct CGRect f = %orig;
-    if (DYYYLegacyFSActive()) {
-        f.origin.y -= 60.0;
-    }
-    return f;
-}
 
-- (struct CGRect)progressSliderWakeUpFrame {
-    struct CGRect f = %orig;
-    if (DYYYLegacyFSActive()) {
-        f.origin.y -= 60.0;
-    }
-    return f;
-}
-
-- (struct CGRect)progressSliderUnderViewFrame {
-    struct CGRect f = %orig;
-    if (DYYYLegacyFSActive()) {
-        f.origin.y -= 60.0;
-    }
-    return f;
-}
-
-- (double)timeLabelOriginY {
-    double orig = %orig;
-    if (DYYYLegacyFSActive()) {
-        return orig - 60.0;
-    }
-    return orig;
-}
 
 %end
 
@@ -7834,28 +7781,13 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
 }
 
 // v457: 让 heightForRowAtIndexPath 返回 852，和 table 高度统一
-- (double)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (DYYYLegacyFSActive()) {
-        return [UIScreen mainScreen].bounds.size.height;
-    }
-    return %orig;
-}
+
 
 // v457: cellHeightAtIndex: 返回 852，让抖音内部算 contentOffset 也用 852
-- (double)cellHeightAtIndex:(long long)index {
-    if (DYYYLegacyFSActive()) {
-        return [UIScreen mainScreen].bounds.size.height;
-    }
-    return %orig;
-}
+
 
 // v457: fixedCellHeight 返回 852，覆盖 contentOffsetYForCellAtIndex 内部可能用它的情况
-- (double)fixedCellHeight {
-    if (DYYYLegacyFSActive()) {
-        return [UIScreen mainScreen].bounds.size.height;
-    }
-    return %orig;
-}
+
 
 
 - (void)viewDidLayoutSubviews {
@@ -16053,7 +15985,7 @@ static Class tabBarButtonClass = nil;
     gDYYYSetFrameDepth++;
     int _dyyySfGuard __attribute__((unused, cleanup(DYYYSetFrameDepthDec))) = 0;
     BOOL enableBlur = DYYYGetBoolCached(@"DYYYEnableCommentBlur");
-    BOOL enableFS = DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYLegacyFSActive();
+    BOOL enableFS = DYYYGetBoolCached(@"DYYYEnableFullScreen");
     if (!enableBlur && !enableFS) {
         %orig(frame);
         return;
@@ -16317,29 +16249,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 }
 
 // v346: HUD 容器底部偏移 +60（让左右栈和栈容器都上移 60）
-- (double)leftContainerBottomOffset {
-    double orig = %orig;
-    if (DYYYLegacyFSActive()) {
-        return orig - 60.0;
-    }
-    return orig;
-}
 
-- (double)p_leftAndRightContainerBottomOffset {
-    double orig = %orig;
-    if (DYYYLegacyFSActive()) {
-        return orig - 60.0;
-    }
-    return orig;
-}
-
-- (double)p_stackContainerViewBottomOffset {
-    double orig = %orig;
-    if (DYYYLegacyFSActive()) {
-        return orig - 60.0;
-    }
-    return orig;
-}
 
 - (void)viewDidLayoutSubviews {
     %orig;
@@ -16927,17 +16837,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %hook AWEAwemePlayVideoViewController
 
-- (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
-    %orig(animated);
-    if (!DYYYLegacyFSActive()) return;
-    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-    UIView *vw = self.view;
-    if (vw && fabs(vw.frame.size.height - screenH) > 0.5) {
-        CGRect f = vw.frame;
-        f.size.height = screenH;
-        vw.frame = f;
-    }
-}
 
 - (void)setIsAutoPlay:(BOOL)arg0 {
     %orig(arg0);
@@ -16969,17 +16868,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     return %orig;
 }
 
-- (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
-    %orig(animated);
-    if (!DYYYLegacyFSActive()) return;
-    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-    UIView *vw = self.view;
-    if (vw && fabs(vw.frame.size.height - screenH) > 0.5) {
-        CGRect f = vw.frame;
-        f.size.height = screenH;
-        vw.frame = f;
-    }
-}
 
 - (void)viewDidLayoutSubviews {
     %orig;
@@ -17023,17 +16911,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     return %orig;
 }
 
-- (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
-    %orig(animated);
-    if (!DYYYLegacyFSActive()) return;
-    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-    UIView *vw = self.view;
-    if (vw && fabs(vw.frame.size.height - screenH) > 0.5) {
-        CGRect f = vw.frame;
-        f.size.height = screenH;
-        vw.frame = f;
-    }
-}
 
 // v495: 拦截原生播放器背景图生成/更新，防止滑动返回旧视频时底部变黑
 - (void)updatePlayerBackgroundViewIfNeededWhenLandscape:(BOOL)landscape fromHomepageHot:(BOOL)fromHomepageHot {
@@ -17613,9 +17490,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
             }
 
             // v364: 全屏开关开时右栈（点赞栏，label=right）上移 60
-            if (DYYYLegacyFSActive()) {
-                self.transform = CGAffineTransformTranslate(self.transform, 0, -60.0);
-            }
+
         }
         // 左侧昵称/文案元素按子元素分别缩放
         else if (hasScalableLeftElement) {
@@ -17987,25 +17862,7 @@ static char kDYYYV29DoneKey; // v439
 
     // v447: 性能优化——isKindOfClass + 类缓存，替代 NSStringFromClass + containsString
     // 逻辑等价：原来按类名字符串匹配，现在按类继承链匹配，命中范围一致
-    if (DYYYLegacyFSActive()) {
-        static Class sDYYYDetailCellClass = nil;
-        static Class sDYYYCellContentClass = nil;
-        static dispatch_once_t sDYYYOnce;
-        dispatch_once(&sDYYYOnce, ^{
-            sDYYYDetailCellClass = NSClassFromString(@"AWEAwemeDetailTableViewCell");
-            sDYYYCellContentClass = NSClassFromString(@"UITableViewCellContentView");
-        });
-        for (UIView *subview in self.subviews) {
-            if (sDYYYDetailCellClass && [subview isKindOfClass:sDYYYDetailCellClass]) {
-                subview.backgroundColor = [UIColor clearColor];
-                for (UIView *content in subview.subviews) {
-                    if (sDYYYCellContentClass && [content isKindOfClass:sDYYYCellContentClass]) {
-                        content.backgroundColor = [UIColor clearColor];
-                    }
-                }
-            }
-        }
-    }
+
     // v528: 全屏时行高已经是屏幕高（852），cell 与 table 等高，没有内容需要溢出。
     // 之前长期保持 clipsToBounds=NO，会让每帧渲染远超屏幕的内容，配合 852 行高
     // 造成主线程长时间满载（实测冻屏 3 分钟以上）。这里恢复裁剪以降低渲染负载。
