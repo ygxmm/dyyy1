@@ -46,6 +46,37 @@ FOUNDATION_EXPORT uint32_t gDYYYSettingsGeneration;
 #define DYYY_FS_HEIGHT() [UIScreen mainScreen].bounds.size.height
 // 全屏时底部元素上移的补偿量。tabbar + 安全区的实测值，改之前先看全屏逻辑说明。
 #define DYYY_FS_INSET 60.0
+
+// 全屏关闭时，详情页的内容区（cell）比交互层矮 60：交互层满屏 852，cell 只有 792，
+// 底部 UI 会掉到内容外面。这里量真实落差，只在正好 60 时判定成立，避免误伤
+// 视频详情页（cell 769，落差 83）这类本来就正常的页面。
+static inline CGFloat DYYYHostViewHeight(UIView *view) {
+    for (UIResponder *r = view; r; r = r.nextResponder) {
+        if (![r isKindOfClass:[UIViewController class]]) continue;
+        UIViewController *vc = (UIViewController *)r;
+        if (![vc isViewLoaded]) return 0.0;
+        return CGRectGetHeight(vc.view.bounds);
+    }
+    return 0.0;
+}
+
+static inline BOOL DYYYHasContentDeficit60(UIView *view) {
+    if (!view) return NO;
+    UIView *node = view;
+    NSInteger depth = 0;
+    while (node && depth < 16 && ![node isKindOfClass:[UITableViewCell class]]) {
+        node = node.superview;
+        depth++;
+    }
+    if (![node isKindOfClass:[UITableViewCell class]]) return NO;
+    CGFloat cellH = CGRectGetHeight(node.bounds);
+    CGFloat hostH = DYYYHostViewHeight(view);
+    if (cellH < 100.0 || hostH < 100.0) return NO;
+    return fabs((hostH - cellH) - 60.0) <= 1.0;
+}
+
+// 底部 UI 该不该上移：全屏开（老行为），或者全屏关但内容区正好矮 60。
+#define DYYY_FS_SHIFT_ACTIVE(view) (DYYY_FS_ON() || DYYYHasContentDeficit60(view))
 typedef NS_ENUM(NSInteger, MediaType) { MediaTypeVideo, MediaTypeImage, MediaTypeAudio, MediaTypeHeic };
 
 // 调节模式&全局状态
