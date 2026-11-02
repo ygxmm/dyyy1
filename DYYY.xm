@@ -16067,6 +16067,7 @@ static Class tabBarButtonClass = nil;
         %orig(frame);
         return;
     }
+    DYYY_TRACE("setFrame:A_blackbar");
     // v382: 卡帧优化 —— 最便宜的 isMemberOfClass 放最前面
     // 99% 的 setFrame 调用来自 UILabel/UIButton/UIImageView 等子类，
     // 一行判定立即跳过，完全不碰关联对象（objc_getAssociatedObject 有全局锁，最贵）。
@@ -16106,6 +16107,7 @@ static Class tabBarButtonClass = nil;
         }
     }
 
+    DYYY_TRACE("setFrame:B_afterBlackbar");
     if (![NSThread isMainThread]) {
         dispatch_async(dispatch_get_main_queue(), ^{
           [self setFrame:frame];
@@ -16129,6 +16131,7 @@ static Class tabBarButtonClass = nil;
         if (superH > 0 && selfH > 0 && selfH < superH &&
             fabs((superH - selfH) - gCurrentTabBarHeight) < 1.0) {
             UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
+            DYYY_TRACE("setFrame:C_lookupVC");
             Class PlayVCClass1 = %c(AWEAwemePlayVideoViewController);
             Class PlayVCClass2 = %c(AWEDPlayerFeedPlayerViewController);
             Class PlayVCClass3 = %c(AWEDPlayerViewController_Merge);
