@@ -14664,17 +14664,17 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 static char kDYYYSearchHitKey;
 static char kDYYYOrigTransformKey;
 
-static void DYYYApplySearchShiftIfNeeded(id vc) {
+static void DYYYApplySearchShiftIfNeeded(AWEPlayInteractionViewController *vc) {
     if (!vc) return;
 
     @try {
-        UIView *v = [vc valueForKey:@"view"];
+        UIView *v = vc.view;
         if (!v) return;
 
         // 1) referString 只读一次
         NSNumber *isSearch = objc_getAssociatedObject(vc, &kDYYYSearchHitKey);
         if (!isSearch) {
-            NSString *refer = [vc valueForKey:@"referString"];
+            NSString *refer = vc.referString;
             if (![refer isKindOfClass:[NSString class]] || refer.length == 0) return;
             BOOL hit = [refer containsString:@"search"];
             objc_setAssociatedObject(vc, &kDYYYSearchHitKey, @(hit), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
