@@ -52,19 +52,6 @@
 
 // setFrame 钩子重入闸：钩子内部会改 frame，可能触发新一轮布局并重入本方法
 static __thread int gDYYYSetFrameDepth = 0;
-// v544: 判断交互层是否挂在「详情页 cell」下（搜索→结果→点开视频 这类），
-// 而不是首页 feed 的 cell。dump 实测两者父 VC 不同，用它区分页面来源。
-static BOOL DYYYHostedByDetailCell(UIResponder *r) {
-    int depth = 0;
-    for (; r && depth < 30; r = r.nextResponder, depth++) {
-        if (![r isKindOfClass:[UIViewController class]]) continue;
-        NSString *name = NSStringFromClass([r class]);
-        if ([name isEqualToString:@"AWEAwemeDetailCellViewController"]) return YES;
-        if ([name isEqualToString:@"AWEFeedCellViewController"]) return NO;
-    }
-    return NO;
-}
-
 static void DYYYSetFrameDepthDec(int *p) { (void)p; gDYYYSetFrameDepth--; }
 
 static BOOL DYYYBottomInsetActive(void) {
@@ -16271,7 +16258,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         CGRect f = self.view.frame;
         // v541: 只处理「满屏」的交互层（852）。769/792 这类页面本来就对，
         // 统一改成 792 会让它们多出 23pt，反而压到低栏上。
-        if (fabs(f.size.height - screenH) <= 1.0 && DYYYHostedByDetailCell(self.view)) {
+        if (fabs(f.size.height - screenH) <= 1.0) {
             CGFloat target = screenH - 60.0;
             f.size.height = target;
             self.view.frame = f;
