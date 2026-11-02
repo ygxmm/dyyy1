@@ -19061,12 +19061,9 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
-// v592: 利用 Category 补齐原生属性声明，并 Hook 拦截毛玻璃
-@interface AWEAwemeDetailTableViewController (DYYYBlurFix)
-@property (nonatomic) BOOL disableBlurView;
-- (void)addBlurView;
-@end
 
+
+// v593: 头文件已补齐声明，这里直接 Hook 彻底清理
 %hook AWEAwemeDetailTableViewController
 
 - (void)viewDidLayoutSubviews {

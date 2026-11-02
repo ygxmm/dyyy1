@@ -1605,6 +1605,8 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 - (BOOL)prefersStatusBarHidden;
 @end
 @interface AWEAwemeDetailTableViewController : UIViewController
+@property (nonatomic) BOOL disableBlurView;
+- (void)addBlurView;
 - (BOOL)prefersStatusBarHidden;
 - (double)cellHeight;
 - (double)fixedCellHeight;
