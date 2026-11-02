@@ -16030,21 +16030,21 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
-    // v580.3: 全局拦截 Interaction 满屏，避免在 viewDidLayoutSubviews 中触发死锁
+    // v580.4: 全局拦截 Interaction，只要试图超过 792 就砍下来，防止漏网之鱼
     if (enableFS) {
         UIResponder *owner = self.nextResponder;
         if ([owner isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")]) {
             AWEPlayInteractionViewController *ic = (AWEPlayInteractionViewController *)owner;
-            CGFloat screenH = CGRectGetHeight([UIScreen mainScreen].bounds);
-            // 仅处理试图铺满全屏（852）的情况
-            if (fabs(CGRectGetHeight(frame) - screenH) <= 1.0) {
+            CGFloat targetH = CGRectGetHeight([UIScreen mainScreen].bounds) - 60.0;
+            // 放宽条件：只要高度大于目标高度+0.5，就拦截
+            if (CGRectGetHeight(frame) > targetH + 0.5) {
                 NSString *refer = ic.referString;
                 BOOL isSearchVideo = [refer isKindOfClass:[NSString class]] && [refer isEqualToString:@"general_search"];
                 AWEAwemeModel *aweme = (AWEAwemeModel *)ic.model;
                 BOOL isImageText = (aweme && [aweme respondsToSelector:@selector(awemeType)] && aweme.awemeType == 68) || DYYYInteractionUsesRichContent(ic);
                 
                 if (!isSearchVideo || isImageText) {
-                    frame.size.height = screenH - 60.0;
+                    frame.size.height = targetH;
                 }
             }
         }
@@ -16299,7 +16299,25 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     %orig;
     // v535: 全屏时把交互层高度从 852 收到 792（屏幕高 - 60），
     // 底部锚定的内容随之上移 60。只改高度，不动 origin。
-    // v580.3: frame 修改已移至全局 setFrame: 拦截，避免 layout 死锁引起看门狗崩溃
+    // v580.4: 安全兜底，防止某些情况下 setFrame 未拦截到
+    if (DYYYBottomInsetActive() && self.view) {
+        CGFloat targetH = CGRectGetHeight([UIScreen mainScreen].bounds) - 60.0;
+        if (self.view.frame.size.height > targetH + 0.5) {
+            NSString *refer = self.referString;
+            BOOL isSearchVideo = [refer isKindOfClass:[NSString class]] && [refer isEqualToString:@"general_search"];
+            AWEAwemeModel *aweme = (AWEAwemeModel *)self.model;
+            BOOL isImageText = (aweme && [aweme respondsToSelector:@selector(awemeType)] && aweme.awemeType == 68) || DYYYInteractionUsesRichContent(self);
+            
+            if (!isSearchVideo || isImageText) {
+                CGRect f = self.view.frame;
+                f.size.height = targetH;
+                // 禁止动画，防止 KVO 死循环
+                [UIView performWithoutAnimation:^{
+                    self.view.frame = f;
+                }];
+            }
+        }
+    }
     DYYYApplySearchShiftIfNeeded(self);
     // v483: 搜索页详情 interaction 视觉 y=120，底部溢出 120px，屏幕底部 792-852
     // 区域露出 interaction 内部黑色元素（输入框背景/渐变）→ 闪黑。
