@@ -88,12 +88,18 @@ static void DYYYHangMonitorStart(void) {
           int64_t beat = gDYYYBeatMS;
           if (beat <= 0) return;
           int64_t lag = now - beat;
-          if (lag > 1500) {
+          if (lag > 800) {
               const char *m = (const char *)gDYYYMarker;
               DYYYHangLog(@"[HANG] lag=%lldms marker=%s", lag, m ? m : "-");
           }
+          static int aliveTick = 0;
+          if (++aliveTick % 30 == 0) {
+              const char *m2 = (const char *)gDYYYMarker;
+              DYYYHangLog(@"[ALIVE] lag=%lldms marker=%s", lag, m2 ? m2 : "-");
+          }
         });
         dispatch_resume(t);
+        DYYYHangLog(@"[START] monitor up, threshold=800ms");
     });
 }
 
