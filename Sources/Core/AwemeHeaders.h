@@ -38,14 +38,6 @@ FOUNDATION_EXPORT uint32_t gDYYYSettingsGeneration;
         _dyyyCachedValue;                                                                                                                                      \
     })
 
-// ---- 全屏开关统一入口（v517）----
-// 全屏相关的判断一律走这里，避免 56 处各写各的。DYYYGetBoolCached 与 DYYYGetBool
-// 读到的值完全一致（代际号在 NSUserDefaultsDidChangeNotification 里同步自增），
-// 这里统一用缓存版，布局热路径不逐次查偏好。
-#define DYYY_FS_ON() DYYYGetBoolCached(@"DYYYEnableFullScreen")
-#define DYYY_FS_HEIGHT() [UIScreen mainScreen].bounds.size.height
-// 全屏时底部元素上移的补偿量。tabbar + 安全区的实测值，改之前先看全屏逻辑说明。
-#define DYYY_FS_INSET 60.0
 typedef NS_ENUM(NSInteger, MediaType) { MediaTypeVideo, MediaTypeImage, MediaTypeAudio, MediaTypeHeic };
 
 // 调节模式&全局状态
