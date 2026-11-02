@@ -7855,6 +7855,21 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
 }
 
 
+// v529: 交给抖音自己的全屏开关，而不是继续改行高/约束/裁剪。
+// 声明来自类转储：AWEAwemeDetailTableViewController
+//   @property BOOL isModernFullScreen;  - (void)changeModernFullScreen:(BOOL);
+// 每个实例只切一次，避免与自身布局互相拉扯。
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    static char kDYYYModernFullScreenKey;
+    if (objc_getAssociatedObject(self, &kDYYYModernFullScreenKey)) return;
+    objc_setAssociatedObject(self, &kDYYYModernFullScreenKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if ([self respondsToSelector:@selector(changeModernFullScreen:)]) {
+        [self changeModernFullScreen:YES];
+    }
+}
+
 %end
 
 %hook AWEAwemeDetailContainerPlayControlConfig
