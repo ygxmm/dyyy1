@@ -90,6 +90,7 @@ static const CGFloat kInvalidHeight = -1.0;
 static CGFloat gGlobalTransparency = kInvalidAlpha;
 static CGFloat gCurrentTabBarHeight = kInvalidHeight;
 static CGFloat originalTabBarHeight = kInvalidHeight;
+static CGFloat gDYYYDescBottomOffset = -60.0;
 static BOOL gDYYYInRotation = NO;  // 旋转中标志：viewWillTransitionToSize 置位，completion + 0.3s 兜底复位
 static NSString *const kDYYYGlobalTransparencyKey = @"DYYYGlobalTransparency";
 static NSString *const kDYYYGlobalTransparencyDidChangeNotification = @"DYYYGlobalTransparencyDidChangeNotification";
@@ -6838,13 +6839,13 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 // v356: 进度条位置 -60（让首页全屏时进度条上移）
 - (double)sliderYOffset {
     double orig = %orig;
-    if (DYYY_FS_ON()) return orig - DYYY_FS_INSET;
+    if (DYYY_FS_ON()) return orig + gDYYYDescBottomOffset;
     return orig;
 }
 
 - (double)posAdjustY {
     double orig = %orig;
-    if (DYYY_FS_ON()) return orig - DYYY_FS_INSET;
+    if (DYYY_FS_ON()) return orig + gDYYYDescBottomOffset;
     return orig;
 }
 
@@ -6873,7 +6874,7 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 - (struct CGRect)progressSliderNormalFrame {
     struct CGRect f = %orig;
     if (DYYY_FS_ON()) {
-        f.origin.y -= DYYY_FS_INSET;
+        f.origin.y += gDYYYDescBottomOffset;
     }
     return f;
 }
@@ -6881,7 +6882,7 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 - (struct CGRect)progressSliderWakeUpFrame {
     struct CGRect f = %orig;
     if (DYYY_FS_ON()) {
-        f.origin.y -= DYYY_FS_INSET;
+        f.origin.y += gDYYYDescBottomOffset;
     }
     return f;
 }
@@ -6889,14 +6890,14 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 - (struct CGRect)progressSliderUnderViewFrame {
     struct CGRect f = %orig;
     if (DYYY_FS_ON()) {
-        f.origin.y -= DYYY_FS_INSET;
+        f.origin.y += gDYYYDescBottomOffset;
     }
     return f;
 }
 
 - (double)timeLabelOriginY {
     double orig = %orig;
-    if (DYYY_FS_ON()) return orig - DYYY_FS_INSET;
+    if (DYYY_FS_ON()) return orig + gDYYYDescBottomOffset;
     return orig;
 }
 
@@ -16282,6 +16283,35 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     }
 }
 
+static UIView *DYYYFindDescLabel(UIView *root, int depth) {
+    if (!root || depth > 12) return nil;
+    if ([root isKindOfClass:NSClassFromString(@"AWEPlayInteractionDescriptionLabel")]) return root;
+    for (UIView *sub in root.subviews) {
+        UIView *hit = DYYYFindDescLabel(sub, depth + 1);
+        if (hit) return hit;
+    }
+    return nil;
+}
+
+// v526: 底部补偿量跟随文案高度。文案每高 1pt，抖音就把底部块顶高 1pt；
+// 固定 -60 只对"一行文案"的页面成立，长文案会多减。以 18pt（一行）为基准。
+static void DYYYUpdateDescBottomOffset(UIViewController *vc) {
+    UIView *root = vc.view;
+    if (!root) return;
+    CGFloat screenH = CGRectGetHeight([UIScreen mainScreen].bounds);
+    CGFloat rootH = CGRectGetHeight(root.bounds);
+    if (fabs(rootH - screenH) > 1.0) {
+        gDYYYDescBottomOffset = -60.0;
+        return;
+    }
+    UIView *desc = DYYYFindDescLabel(root, 0);
+    CGFloat descH = desc ? CGRectGetHeight(desc.bounds) : 18.0;
+    CGFloat extra = descH - 18.0;
+    if (extra < 0.0) extra = 0.0;
+    if (extra > 60.0) extra = 60.0;
+    gDYYYDescBottomOffset = -60.0 + extra;
+}
+
 %hook AWEPlayInteractionViewController
 
 - (void)onVideoPlayerViewDoubleClicked:(id)arg1 {
@@ -16310,25 +16340,26 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 // v346: HUD 容器底部偏移 +60（让左右栈和栈容器都上移 60）
 - (double)leftContainerBottomOffset {
     double orig = %orig;
-    if (DYYY_FS_ON()) return orig - DYYY_FS_INSET;
+    if (DYYY_FS_ON()) return orig + gDYYYDescBottomOffset;
     return orig;
 }
 
 - (double)p_leftAndRightContainerBottomOffset {
     double orig = %orig;
-    if (DYYY_FS_ON()) return orig - DYYY_FS_INSET;
+    if (DYYY_FS_ON()) return orig + gDYYYDescBottomOffset;
     return orig;
 }
 
 - (double)p_stackContainerViewBottomOffset {
     double orig = %orig;
-    if (DYYY_FS_ON()) return orig - DYYY_FS_INSET;
+    if (DYYY_FS_ON()) return orig + gDYYYDescBottomOffset;
     return orig;
 }
 
 - (void)viewDidLayoutSubviews {
     %orig;
     DYYYStretchInteractionToScreen(self);
+    DYYYUpdateDescBottomOffset(self);
     DYYYApplySearchShiftIfNeeded(self);
     // v483: 搜索页详情 interaction 视觉 y=120，底部溢出 120px，屏幕底部 792-852
     // 区域露出 interaction 内部黑色元素（输入框背景/渐变）→ 闪黑。
@@ -17581,7 +17612,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
             // v364: 全屏开关开时右栈（点赞栏，label=right）上移 60
             if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-                self.transform = CGAffineTransformTranslate(self.transform, 0, -DYYY_FS_INSET);
+                self.transform = CGAffineTransformTranslate(self.transform, 0, gDYYYDescBottomOffset);
             }
         }
         // 左侧昵称/文案元素按子元素分别缩放
