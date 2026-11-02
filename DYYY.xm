@@ -22,8 +22,11 @@
 #include <float.h>
 #include <dlfcn.h>
 #include <syslog.h>
-#include <mach/mach.h>
 #include <pthread.h>
+
+// setFrame 钩子重入闸：钩子内部会改 frame，可能触发新一轮布局并重入本方法
+static __thread int gDYYYSetFrameDepth = 0;
+static void DYYYSetFrameDepthDec(int *p) { (void)p; gDYYYSetFrameDepth--; }
 #include <dlfcn.h>
 
 // ============================================================
@@ -50,91 +53,6 @@
 #import "DYYYHookManager.h"
 #import "DYYYLoginBypassManager.h"
 #import "DYYYLivePreStreamLayoutCoordinator.h"
-// ===================== DYYY 卡顿探测（临时） =====================
-static volatile int64_t gDYYYBeatMS = 0;
-static volatile intptr_t gDYYYMarker = 0;
-static mach_port_t gDYYYMainThreadPort = MACH_PORT_NULL;
-static __thread int gDYYYSetFrameDepth = 0;
-static void DYYYSetFrameDepthDec(int *p) { (void)p; gDYYYSetFrameDepth--; }
-static dispatch_source_t gDYYYBeatSrc = nil;
-static dispatch_source_t gDYYYWatchSrc = nil;
-
-static void DYYYHangLog(NSString *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
-    va_end(ap);
-    NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-    if (!dir) return;
-    NSString *path = [dir stringByAppendingPathComponent:@"dyyy_hang.log"];
-    NSString *line = [NSString stringWithFormat:@"%@ %@\n", [NSDate date], msg];
-    if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
-        [@"" writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
-    }
-    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
-    if (!fh) return;
-    [fh seekToEndOfFile];
-    [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
-    [fh closeFile];
-}
-
-static void DYYYHangMonitorStart(void) {
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        gDYYYBeatSrc = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
-        dispatch_source_t beatTimer = gDYYYBeatSrc;
-        dispatch_source_set_timer(beatTimer, dispatch_time(DISPATCH_TIME_NOW, 0), 500 * NSEC_PER_MSEC, 50 * NSEC_PER_MSEC);
-        dispatch_source_set_event_handler(beatTimer, ^{
-          gDYYYBeatMS = (int64_t)(CFAbsoluteTimeGetCurrent() * 1000.0);
-        });
-        gDYYYMainThreadPort = pthread_mach_thread_np(pthread_self());
-        dispatch_resume(beatTimer);
-
-        dispatch_queue_t q = dispatch_queue_create("dyyy.hang", DISPATCH_QUEUE_SERIAL);
-        gDYYYWatchSrc = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, q);
-        dispatch_source_t t = gDYYYWatchSrc;
-        dispatch_source_set_timer(t, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), NSEC_PER_SEC, 0);
-        dispatch_source_set_event_handler(t, ^{
-          int64_t now = (int64_t)(CFAbsoluteTimeGetCurrent() * 1000.0);
-          int64_t beat = gDYYYBeatMS;
-          if (beat <= 0) return;
-          int64_t lag = now - beat;
-          if (lag > 800) {
-              const char *m = (const char *)gDYYYMarker;
-              DYYYHangLog(@"[HANG] lag=%lldms marker=%s", lag, m ? m : "-");
-              if (gDYYYMainThreadPort != MACH_PORT_NULL) {
-                  arm_thread_state64_t st;
-                  mach_msg_type_number_t cnt = ARM_THREAD_STATE64_COUNT;
-                  kern_return_t kr = thread_get_state(gDYYYMainThreadPort, ARM_THREAD_STATE64,
-                                                      (thread_state_t)&st, &cnt);
-                  if (kr == KERN_SUCCESS) {
-                      uintptr_t pc = (uintptr_t)arm_thread_state64_get_pc(st);
-                      Dl_info di;
-                      const char *sym = "?";
-                      const char *img = "?";
-                      if (dladdr((void *)pc, &di)) {
-                          if (di.dli_sname) sym = di.dli_sname;
-                          if (di.dli_fname) img = di.dli_fname;
-                      }
-                      DYYYHangLog(@"[STACK] pc=0x%lx sym=%s img=%s",
-                                  (unsigned long)pc, sym, img);
-                  } else {
-                      DYYYHangLog(@"[STACK] thread_get_state failed kr=%d", (int)kr);
-                  }
-              }
-          }
-          static int aliveTick = 0;
-          if (++aliveTick % 10 == 0) {
-              const char *m2 = (const char *)gDYYYMarker;
-              DYYYHangLog(@"[ALIVE] lag=%lldms marker=%s", lag, m2 ? m2 : "-");
-          }
-        });
-        dispatch_resume(t);
-        DYYYHangLog(@"[START] monitor up, threshold=800ms");
-    });
-}
-
-#define DYYY_TRACE(name) do { gDYYYMarker = (intptr_t)(name); } while (0)
 
 #import "DYYYPrivacyRecordUploadGuard.h"
 #import "DYYYMiniProgramRewardBypass.h"
@@ -16095,12 +16013,10 @@ static Class tabBarButtonClass = nil;
     int _dyyySfGuard __attribute__((unused, cleanup(DYYYSetFrameDepthDec))) = 0;
     BOOL enableBlur = DYYYGetBoolCached(@"DYYYEnableCommentBlur");
     BOOL enableFS = DYYYGetBoolCached(@"DYYYEnableFullScreen");
-    DYYY_TRACE((enableBlur || enableFS) ? "UIView.setFrame[on]" : "UIView.setFrame[off]");
     if (!enableBlur && !enableFS) {
         %orig(frame);
         return;
     }
-    DYYY_TRACE("setFrame:A_blackbar");
     // v382: 卡帧优化 —— 最便宜的 isMemberOfClass 放最前面
     // 99% 的 setFrame 调用来自 UILabel/UIButton/UIImageView 等子类，
     // 一行判定立即跳过，完全不碰关联对象（objc_getAssociatedObject 有全局锁，最贵）。
@@ -16110,7 +16026,6 @@ static Class tabBarButtonClass = nil;
     // 顶部黑条改由 DYYYClearBlackEdgeBars 在页面布局完成后统一清理。
 
 
-    DYYY_TRACE("setFrame:B_afterBlackbar");
     if (![NSThread isMainThread]) {
         dispatch_async(dispatch_get_main_queue(), ^{
           [self setFrame:frame];
@@ -16134,7 +16049,6 @@ static Class tabBarButtonClass = nil;
         if (superH > 0 && selfH > 0 && selfH < superH &&
             fabs((superH - selfH) - gCurrentTabBarHeight) < 1.0) {
             UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-            DYYY_TRACE("setFrame:C_lookupVC");
             Class PlayVCClass1 = %c(AWEAwemePlayVideoViewController);
             Class PlayVCClass2 = %c(AWEDPlayerFeedPlayerViewController);
             Class PlayVCClass3 = %c(AWEDPlayerViewController_Merge);
@@ -16381,7 +16295,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 }
 
 - (void)viewDidLayoutSubviews {
-    DYYY_TRACE("InteractionVC.viewDidLayout");
     %orig;
     DYYYApplySearchShiftIfNeeded(self);
     // v483: 搜索页详情 interaction 视觉 y=120，底部溢出 120px，屏幕底部 792-852
@@ -17146,7 +17059,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %hook AWEFeedTableView
 - (void)layoutSubviews {
-    DYYY_TRACE("FeedTableView.layout");
     %orig;
     // 旋转期跳过改 frame：layoutSubviews 里改 self.frame 会触发新一轮 layout，
     // 旋转时 screenH 仍在变，循环占满主线程导致冻屏。旋转结束后下一帧自动恢复。
@@ -17585,7 +17497,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 }
 
 - (void)layoutSubviews {
-    DYYY_TRACE("ElementStackView.layout");
     BOOL insidePlayInteraction = DYYYViewIsInsidePlayInteraction(self);
     // 只清理播放交互层左侧栏。全局 reset 会把作品详情等页面里 element hook 已写好的缩放清掉。
     if (insidePlayInteraction) {
@@ -17724,7 +17635,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 %hook AWEStoryContainerCollectionView
 
 - (void)layoutSubviews {
-    DYYY_TRACE("StoryContainer.layout");
     %orig;
     
     // v426: 严格隔离小日常，防止 UIKit 死锁和爆栈
@@ -18016,7 +17926,6 @@ static char kDYYYV29DoneKey; // v439
 }
 
 - (void)layoutSubviews {
-    DYYY_TRACE("DetailTableView.layout");
     %orig;
 
     // v447: 性能优化——isKindOfClass + 类缓存，替代 NSStringFromClass + containsString
@@ -18040,10 +17949,11 @@ static char kDYYYV29DoneKey; // v439
             }
         }
     }
-    // 关键：解除 TableView 的裁剪，让 cell 内撑到 852 的视频溢出显示
-    // v440: 删掉 DYYYExpandPlayInteraction(self)，v439 约束修改已让 interaction VC 天然 852
+    // v528: 全屏时行高已经是屏幕高（852），cell 与 table 等高，没有内容需要溢出。
+    // 之前长期保持 clipsToBounds=NO，会让每帧渲染远超屏幕的内容，配合 852 行高
+    // 造成主线程长时间满载（实测冻屏 3 分钟以上）。这里恢复裁剪以降低渲染负载。
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        self.clipsToBounds = NO;
+        self.clipsToBounds = YES;
     }
 
     // v439: 直接把自身 bottom 约束改 0 撑满（替代 _m_v29 的 BFS 方案）
@@ -18447,7 +18357,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 %ctor {
 
-    DYYYHangMonitorStart();
 
     [DYYYLoginBypassManager configureInitialStateIfNeeded];
 
