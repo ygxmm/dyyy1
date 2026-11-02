@@ -19063,7 +19063,10 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
-// v593: 头文件已补齐声明，这里直接 Hook 彻底清理
+
+// v594: 使用 %group 隔离，避免与文件内已有的 %hook 产生符号冲突
+%group DYYYBlurFixGroup
+
 %hook AWEAwemeDetailTableViewController
 
 - (void)viewDidLayoutSubviews {
@@ -19081,3 +19084,9 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 }
 
 %end
+
+%end
+
+%ctor {
+    %init(DYYYBlurFixGroup);
+}
