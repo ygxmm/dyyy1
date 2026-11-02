@@ -17676,8 +17676,20 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 %hook TTPlayerView
 
+// v539: 全屏时播放器自身底色强制透明，避免缩小后露出黑底（顶部黑条来源之一）。
+- (void)setBackgroundColor:(UIColor *)color {
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        %orig([UIColor clearColor]);
+        return;
+    }
+    %orig(color);
+}
+
 - (void)layoutSubviews {
     %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        return;   // 全屏时不要把黑色底传到父视图
+    }
     UIView *parent = self.superview;
     if (parent) {
         parent.backgroundColor = self.backgroundColor;
