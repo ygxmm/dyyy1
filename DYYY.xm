@@ -16030,6 +16030,26 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
+    // v580.3: 全局拦截 Interaction 满屏，避免在 viewDidLayoutSubviews 中触发死锁
+    if (enableFS) {
+        UIResponder *owner = self.nextResponder;
+        if ([owner isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")]) {
+            AWEPlayInteractionViewController *ic = (AWEPlayInteractionViewController *)owner;
+            CGFloat screenH = CGRectGetHeight([UIScreen mainScreen].bounds);
+            // 仅处理试图铺满全屏（852）的情况
+            if (fabs(CGRectGetHeight(frame) - screenH) <= 1.0) {
+                NSString *refer = ic.referString;
+                BOOL isSearchVideo = [refer isKindOfClass:[NSString class]] && [refer isEqualToString:@"general_search"];
+                AWEAwemeModel *aweme = (AWEAwemeModel *)ic.model;
+                BOOL isImageText = (aweme && [aweme respondsToSelector:@selector(awemeType)] && aweme.awemeType == 68) || DYYYInteractionUsesRichContent(ic);
+                
+                if (!isSearchVideo || isImageText) {
+                    frame.size.height = screenH - 60.0;
+                }
+            }
+        }
+    }
+
 
     // v461: 常规改 frame 走三个 VC 的 changePlayerFrameIfNeededWithAnimated: hook。
     // v462: 评论区/面板打开时抖音内部可能把 player view 压到 769（852-tabBar），
@@ -16279,29 +16299,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     %orig;
     // v535: 全屏时把交互层高度从 852 收到 792（屏幕高 - 60），
     // 底部锚定的内容随之上移 60。只改高度，不动 origin。
-    if (DYYYBottomInsetActive() && self.view) {
-        CGFloat screenH = CGRectGetHeight([UIScreen mainScreen].bounds);
-        CGRect f = self.view.frame;
-        // v541: 只处理「满屏」的交互层（852）。769/792 这类页面本来就对，
-        // 统一改成 792 会让它们多出 23pt，反而压到低栏上。
-        if (fabs(f.size.height - screenH) <= 1.0) {
-            // v580.2: 仅搜索结果的视频放行；搜索图文和其余所有页面继续钉住
-            NSString *refer = self.referString;
-            BOOL isSearchVideo = [refer isKindOfClass:[NSString class]] && 
-                                 [refer isEqualToString:@"general_search"];
-            
-            // 如果是图文（awemeType == 68 或 RichContent），即使是搜索进来的也钉住
-            AWEAwemeModel *aweme = (AWEAwemeModel *)self.model;
-            BOOL isImageText = (aweme && [aweme respondsToSelector:@selector(awemeType)] && aweme.awemeType == 68)
-                               || DYYYInteractionUsesRichContent(self);
-            
-            if (!isSearchVideo || isImageText) {
-                CGFloat target = screenH - 60.0;
-                f.size.height = target;
-                self.view.frame = f;
-            }
-        }
-    }
+    // v580.3: frame 修改已移至全局 setFrame: 拦截，避免 layout 死锁引起看门狗崩溃
     DYYYApplySearchShiftIfNeeded(self);
     // v483: 搜索页详情 interaction 视觉 y=120，底部溢出 120px，屏幕底部 792-852
     // 区域露出 interaction 内部黑色元素（输入框背景/渐变）→ 闪黑。
