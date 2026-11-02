@@ -54,10 +54,6 @@
 static __thread int gDYYYSetFrameDepth = 0;
 static void DYYYSetFrameDepthDec(int *p) { (void)p; gDYYYSetFrameDepth--; }
 
-static BOOL DYYYBottomInsetActive(void) {
-    return DYYYGetBool(@"DYYYEnableFullScreen");
-}
-
 #import "DYYYLivePreStreamLayoutCoordinator.h"
 
 #import "DYYYPrivacyRecordUploadGuard.h"
