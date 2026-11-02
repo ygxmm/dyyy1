@@ -16251,8 +16251,19 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    // v543: 不再约束交互层高度，让它保持抖音原生的 852 自行铺满。
-    // 之前的 852→792 会在底部留出 60pt 空隙，反而破坏原生布局。
+    // v535: 全屏时把交互层高度从 852 收到 792（屏幕高 - 60），
+    // 底部锚定的内容随之上移 60。只改高度，不动 origin。
+    if (DYYYBottomInsetActive() && self.view) {
+        CGFloat screenH = CGRectGetHeight([UIScreen mainScreen].bounds);
+        CGRect f = self.view.frame;
+        // v541: 只处理「满屏」的交互层（852）。769/792 这类页面本来就对，
+        // 统一改成 792 会让它们多出 23pt，反而压到低栏上。
+        if (fabs(f.size.height - screenH) <= 1.0) {
+            CGFloat target = screenH - 60.0;
+            f.size.height = target;
+            self.view.frame = f;
+        }
+    }
     DYYYApplySearchShiftIfNeeded(self);
     // v483: 搜索页详情 interaction 视觉 y=120，底部溢出 120px，屏幕底部 792-852
     // 区域露出 interaction 内部黑色元素（输入框背景/渐变）→ 闪黑。
