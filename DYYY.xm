@@ -16291,7 +16291,8 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
                                  [refer isEqualToString:@"general_search"];
             
             // 如果是图文（awemeType == 68 或 RichContent），即使是搜索进来的也钉住
-            BOOL isImageText = (self.model && [self.model respondsToSelector:@selector(awemeType)] && self.model.awemeType == 68)
+            AWEAwemeModel *aweme = (AWEAwemeModel *)self.model;
+            BOOL isImageText = (aweme && [aweme respondsToSelector:@selector(awemeType)] && aweme.awemeType == 68)
                                || DYYYInteractionUsesRichContent(self);
             
             if (!isSearchVideo || isImageText) {
