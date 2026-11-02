@@ -19111,21 +19111,20 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
-// v588: 专门狙击详情页里铺满全屏的毛玻璃遮罩
+
+// v589: 拦截毛玻璃的 setEffect: 方法，避开 layoutSubviews 的 Logos 编译坑
 %hook UIVisualEffectView
 
-- (void)layoutSubviews {
-    %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        // 获取当前所在的控制器
+- (void)setEffect:(UIVisualEffect *)effect {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && effect != nil) {
+        // 如果它在详情页控制器里，直接拦截并置空
         UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-        
-        // 仅当它在详情页控制器里才干掉，避免影响其他页面的毛玻璃
         if (vc && [vc isKindOfClass:NSClassFromString(@"AWEAwemeDetailTableViewController")]) {
-            self.effect = nil;
-            self.backgroundColor = [UIColor clearColor];
+            %orig(nil);
+            return;
         }
     }
+    %orig(effect);
 }
 
 %end
