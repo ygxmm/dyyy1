@@ -70,6 +70,20 @@ static BOOL DYYYLegacyFSActive(void) {
 static BOOL DYYYBottomInsetActive(void) {
     return DYYYGetBool(@"DYYYEnableFullScreen");
 }
+
+// 找同时装着左右元素栈的那个容器（dump 实测三者同父），不依赖属性名。
+static UIView *DYYYFindBottomBox(UIView *root) {
+    if (!root) return nil;
+    for (UIView *v in root.subviews) {
+        if ([v isKindOfClass:[AWEElementStackView class]] &&
+            [v.accessibilityLabel isEqualToString:@"right"]) {
+            return v.superview;
+        }
+        UIView *hit = DYYYFindBottomBox(v);
+        if (hit) return hit;
+    }
+    return nil;
+}
 #import "DYYYLivePreStreamLayoutCoordinator.h"
 
 #import "DYYYPrivacyRecordUploadGuard.h"
@@ -16345,7 +16359,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     // v532: 底部块整体上移，只用声明过的 bottomContainerView 一处。
     // 两个元素栈和进度容器都挂在它下面，位移一次即可，不再散在 10 个 getter 里。
     if (DYYYBottomInsetActive()) {
-        UIView *bottomBox = self.bottomContainerView;
+        UIView *bottomBox = DYYYFindBottomBox(self.view);
         if (bottomBox) {
             CGAffineTransform want = CGAffineTransformMakeTranslation(0, -60.0);
             if (!CGAffineTransformEqualToTransform(bottomBox.transform, want)) {
