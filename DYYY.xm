@@ -6838,13 +6838,13 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 // v356: 进度条位置 -60（让首页全屏时进度条上移）
 - (double)sliderYOffset {
     double orig = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) return orig - 60.0;
+    if (DYYY_FS_ON()) return orig - DYYY_FS_INSET;
     return orig;
 }
 
 - (double)posAdjustY {
     double orig = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) return orig - 60.0;
+    if (DYYY_FS_ON()) return orig - DYYY_FS_INSET;
     return orig;
 }
 
@@ -6872,33 +6872,31 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 // v361: 直接改进度条 frame 返回值
 - (struct CGRect)progressSliderNormalFrame {
     struct CGRect f = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        f.origin.y -= 60.0;
+    if (DYYY_FS_ON()) {
+        f.origin.y -= DYYY_FS_INSET;
     }
     return f;
 }
 
 - (struct CGRect)progressSliderWakeUpFrame {
     struct CGRect f = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        f.origin.y -= 60.0;
+    if (DYYY_FS_ON()) {
+        f.origin.y -= DYYY_FS_INSET;
     }
     return f;
 }
 
 - (struct CGRect)progressSliderUnderViewFrame {
     struct CGRect f = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        f.origin.y -= 60.0;
+    if (DYYY_FS_ON()) {
+        f.origin.y -= DYYY_FS_INSET;
     }
     return f;
 }
 
 - (double)timeLabelOriginY {
     double orig = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        return orig - 60.0;
-    }
+    if (DYYY_FS_ON()) return orig - DYYY_FS_INSET;
     return orig;
 }
 
@@ -7802,25 +7800,19 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
 
 // v457: 让 heightForRowAtIndexPath 返回 852，和 table 高度统一
 - (double)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        return [UIScreen mainScreen].bounds.size.height;
-    }
+    if (DYYY_FS_ON()) return DYYY_FS_HEIGHT();
     return %orig;
 }
 
 // v457: cellHeightAtIndex: 返回 852，让抖音内部算 contentOffset 也用 852
 - (double)cellHeightAtIndex:(long long)index {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        return [UIScreen mainScreen].bounds.size.height;
-    }
+    if (DYYY_FS_ON()) return DYYY_FS_HEIGHT();
     return %orig;
 }
 
 // v457: fixedCellHeight 返回 852，覆盖 contentOffsetYForCellAtIndex 内部可能用它的情况
 - (double)fixedCellHeight {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        return [UIScreen mainScreen].bounds.size.height;
-    }
+    if (DYYY_FS_ON()) return DYYY_FS_HEIGHT();
     return %orig;
 }
 
@@ -16301,25 +16293,19 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 // v346: HUD 容器底部偏移 +60（让左右栈和栈容器都上移 60）
 - (double)leftContainerBottomOffset {
     double orig = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        return orig - 60.0;
-    }
+    if (DYYY_FS_ON()) return orig - DYYY_FS_INSET;
     return orig;
 }
 
 - (double)p_leftAndRightContainerBottomOffset {
     double orig = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        return orig - 60.0;
-    }
+    if (DYYY_FS_ON()) return orig - DYYY_FS_INSET;
     return orig;
 }
 
 - (double)p_stackContainerViewBottomOffset {
     double orig = %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        return orig - 60.0;
-    }
+    if (DYYY_FS_ON()) return orig - DYYY_FS_INSET;
     return orig;
 }
 
@@ -17244,21 +17230,17 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 // v354: 让抖音的"账本"也用 852 —— 修改 row 高
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+    if (DYYY_FS_ON()) {
         UIWindow *win = [DYYYUtils getActiveWindow];
-        if (win) {
-            return win.bounds.size.height;
-        }
+        if (win) return win.bounds.size.height;
     }
     return %orig;
 }
 
 - (double)cellHeight {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+    if (DYYY_FS_ON()) {
         UIWindow *win = [DYYYUtils getActiveWindow];
-        if (win) {
-            return win.bounds.size.height;
-        }
+        if (win) return win.bounds.size.height;
     }
     return %orig;
 }
@@ -17519,11 +17501,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 }
 
 
-// v364 结论：AWEElementStackView 走 autolayout，setFrame: 只收到 (0,0,0,0)，
-// x≈329 判定从未真正命中。此方法不再做位移，仅保留透传（如需可完全删除）。
-- (void)setFrame:(CGRect)frame {
-    %orig(frame);
-}
 
 - (void)layoutSubviews {
     BOOL insidePlayInteraction = DYYYViewIsInsidePlayInteraction(self);
@@ -17586,7 +17563,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
             // v364: 全屏开关开时右栈（点赞栏，label=right）上移 60
             if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-                self.transform = CGAffineTransformTranslate(self.transform, 0, -60.0);
+                self.transform = CGAffineTransformTranslate(self.transform, 0, -DYYY_FS_INSET);
             }
         }
         // 左侧昵称/文案元素按子元素分别缩放
@@ -17776,91 +17753,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     if (parent) {
         parent.backgroundColor = self.backgroundColor;
     }
-}
-
-%end
-
-%hook TTMetalView
-- (void)setCenter:(CGPoint)center {
-    if (gDYYYInRotation) { %orig(center); return; }
-    BOOL shouldAdjust = NO;
-    UIView *view = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat viewWidth = CGRectGetWidth(view.bounds);
-        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-        if (viewWidth + 0.5f >= screenWidth) {
-            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
-            Class playClass = %c(AWEPlayVideoViewController);
-            if (playClass && [vc isKindOfClass:playClass]) {
-                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
-                AWEAwemeModel *model = playVC.model;
-                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
-                    shouldAdjust = YES;
-                }
-            }
-        }
-    }
-
-    // v329: 删除 center 上移（40.7.0 isShowLandscapeEntryView 恒 YES 导致误判）
-    %orig(center);
-}
-
-%end
-
-%hook TTMetalViewNew
-- (void)setCenter:(CGPoint)center {
-    if (gDYYYInRotation) { %orig(center); return; }
-    BOOL shouldAdjust = NO;
-    UIView *view = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat viewWidth = CGRectGetWidth(view.bounds);
-        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-        if (viewWidth + 0.5f >= screenWidth) {
-            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
-            Class playClass = %c(AWEPlayVideoViewController);
-            if (playClass && [vc isKindOfClass:playClass]) {
-                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
-                AWEAwemeModel *model = playVC.model;
-                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
-                    shouldAdjust = YES;
-                }
-            }
-        }
-    }
-
-    // v329: 删除 center 上移（40.7.0 isShowLandscapeEntryView 恒 YES 导致误判）
-    %orig(center);
-}
-
-%end
-
-%hook TTMetalViewVP
-- (void)setCenter:(CGPoint)center {
-    if (gDYYYInRotation) { %orig(center); return; }
-    BOOL shouldAdjust = NO;
-    UIView *view = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat viewWidth = CGRectGetWidth(view.bounds);
-        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-        if (viewWidth + 0.5f >= screenWidth) {
-            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
-            Class playClass = %c(AWEPlayVideoViewController);
-            if (playClass && [vc isKindOfClass:playClass]) {
-                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
-                AWEAwemeModel *model = playVC.model;
-                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
-                    shouldAdjust = YES;
-                }
-            }
-        }
-    }
-
-    // v323: 删除 center 上移 30pt（40.7.0 上 isShowLandscapeEntryView 恒 YES 导致误判）
-    %orig(center);
-}
-
-- (void)layoutSubviews {
-    %orig;
 }
 
 %end
