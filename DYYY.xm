@@ -16285,13 +16285,12 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         // v541: 只处理「满屏」的交互层（852）。769/792 这类页面本来就对，
         // 统一改成 792 会让它们多出 23pt，反而压到低栏上。
         if (fabs(f.size.height - screenH) <= 1.0) {
-            // v580: 精准识别搜索入口（general_search / search_middle_page）并放行
+            // v580: 仅搜索结果列表(general_search)放行；猜你想看(search_middle_page)和首页继续钉住
             NSString *refer = self.referString;
-            BOOL isSearch = [refer isKindOfClass:[NSString class]] && 
-                            ([refer isEqualToString:@"general_search"] || 
-                             [refer isEqualToString:@"search_middle_page"]);
+            BOOL isSearchResult = [refer isKindOfClass:[NSString class]] && 
+                                  [refer isEqualToString:@"general_search"];
             
-            if (!isSearch) {
+            if (!isSearchResult) {
                 CGFloat target = screenH - 60.0;
                 f.size.height = target;
                 self.view.frame = f;
