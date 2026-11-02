@@ -16372,9 +16372,12 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         if (@available(iOS 11.0, *)) {
             safeTop = self.view.safeAreaInsets.top;
         }
-        if (safeTop > 0.5) {
-            DYYYClearBlackEdgeBars(self.view, screenW, screenH, safeTop, 0);
+        // v537: 交互层不在安全区内时 safeAreaInsets.top 读到 0，原来这里直接跳过，
+        // 导致顶部黑条清不掉。给一个兜底高度，保证清理一定执行。
+        if (safeTop <= 0.5) {
+            safeTop = 47.0;
         }
+        DYYYClearBlackEdgeBars(self.view, screenW, screenH, safeTop, 0);
     }
 }
 
