@@ -7799,62 +7799,7 @@ static void DYYYRefLog(NSString *fmt, ...) {
     [fh closeFile];
 }
 
-%hook AWEAwemeDetailTableViewController
 
-- (BOOL)hasIphoneAutoPlaySwitch {
-    return YES;
-}
-
-// v457: 让 heightForRowAtIndexPath 返回 852，和 table 高度统一
-
-
-// v457: cellHeightAtIndex: 返回 852，让抖音内部算 contentOffset 也用 852
-
-
-// v457: fixedCellHeight 返回 852，覆盖 contentOffsetYForCellAtIndex 内部可能用它的情况
-
-
-
-- (void)viewDidLayoutSubviews {
-    %orig;
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    if (originalTabBarHeight <= 0) return;
-    DYYYScanTabBarHeightViews(self.view, 0);
-}
-
-// v464.4: 从原 11357 块并入（合并重复 hook 块）
-- (BOOL)prefersStatusBarHidden {
-    if (DYYYGetBool(@"DYYYHideStatusbar")) {
-        return YES;
-    }
-    if (DYYYGetBool(@"DYYYHideStatusBarOnClear") && hideButton && hideButton.isElementsHidden) {
-        return YES;
-    }
-    if (class_getInstanceMethod([self class], @selector(prefersStatusBarHidden)) !=
-        class_getInstanceMethod([%c(AWEAwemeDetailTableViewController) class], @selector(prefersStatusBarHidden))) {
-        return %orig;
-    }
-    return NO;
-}
-
-
-// v529: 交给抖音自己的全屏开关，而不是继续改行高/约束/裁剪。
-// 声明来自类转储：AWEAwemeDetailTableViewController
-//   @property BOOL isModernFullScreen;  - (void)changeModernFullScreen:(BOOL);
-// 每个实例只切一次，避免与自身布局互相拉扯。
-- (void)viewDidAppear:(BOOL)animated {
-    %orig;
-    DYYYRefLog(@"[REF] refer=%@ enter=%@ prev=%@", self.referString, self.enterFrom, self.previousPage);
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    static char kDYYYModernFullScreenKey;
-    if (objc_getAssociatedObject(self, &kDYYYModernFullScreenKey)) return;
-    objc_setAssociatedObject(self, &kDYYYModernFullScreenKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    if ([self respondsToSelector:@selector(changeModernFullScreen:)]) {
-        [self changeModernFullScreen:YES];
-    }
-}
-
-%end
 
 %hook AWEAwemeDetailContainerPlayControlConfig
 
@@ -19112,25 +19057,12 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
-// v589: 拦截毛玻璃的 setEffect: 方法，避开 layoutSubviews 的 Logos 编译坑
-%hook UIVisualEffectView
 
-- (void)setEffect:(UIVisualEffect *)effect {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && effect != nil) {
-        // 如果它在详情页控制器里，直接拦截并置空
-        UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-        if (vc && [vc isKindOfClass:NSClassFromString(@"AWEAwemeDetailTableViewController")]) {
-            %orig(nil);
-            return;
-        }
-    }
-    %orig(effect);
-}
 
-%end
 
-// v591: 利用详情页原生的 disableBlurView 关闭毛玻璃
-@interface AWEAwemeDetailTableViewController : UIViewController
+
+// v592: 利用 Category 补齐原生属性声明，并 Hook 拦截毛玻璃
+@interface AWEAwemeDetailTableViewController (DYYYBlurFix)
 @property (nonatomic) BOOL disableBlurView;
 - (void)addBlurView;
 @end
@@ -19140,14 +19072,12 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 - (void)viewDidLayoutSubviews {
     %orig;
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        // 开启全屏时，强制把它的毛玻璃开关关掉
         self.disableBlurView = YES;
     }
 }
 
 - (void)addBlurView {
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        // 直接拦截，不调用原方法，彻底阻止毛玻璃的创建
         return;
     }
     %orig;
