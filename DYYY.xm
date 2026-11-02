@@ -14688,24 +14688,12 @@ static void DYYYApplySearchShiftIfNeeded(id vc) {
             origVal = [NSValue valueWithCGAffineTransform:v.transform];
             objc_setAssociatedObject(vc, &kDYYYOrigTransformKey, origVal, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
-        CGAffineTransform orig = origVal.CGAffineTransformValue;
-
-        // v516: 位移必须跟随全屏开关；关闭时用缓存的原值精确还原，不做 -60 算术
-        if (!DYYYGetBool(@"DYYYEnableFullScreen")) {
-            if (!CGAffineTransformEqualToTransform(v.transform, orig)) {
-                v.transform = orig;
-            }
-            return;
+        // v522: 取消搜索详情页的 +60 下移。原生该交互层 transform 为 0，
+        // 我们加的 +60 让底部 UI 被推出屏幕，去掉后整体上移 60 回到原生位置。
+        if (!CGAffineTransformEqualToTransform(v.transform, CGAffineTransformIdentity)) {
+            v.transform = CGAffineTransformIdentity;
         }
-
-        CGAffineTransform target = orig;
-        target.ty += 60.0;
-
-        // 3) 幂等
-        if (CGAffineTransformEqualToTransform(v.transform, target)) return;
-
-        // 4) 应用
-        v.transform = target;
+        return;
     } @catch (NSException *e) {}
 }
 
