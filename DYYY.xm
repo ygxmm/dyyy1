@@ -7819,7 +7819,6 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    DYYYProbeVC(self);
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
     if (originalTabBarHeight <= 0) return;
     DYYYScanTabBarHeightViews(self.view, 0);
@@ -15059,84 +15058,6 @@ static void DYYYRepairTabBarInternalBackground(UIView *tabBar) {
     }
 }
 
-static void DYYYProbeLog(NSString *fmt, ...) {
-    static long _dyyyProbeCount = 0;
-    if (_dyyyProbeCount > 400) return;
-    va_list ap;
-    va_start(ap, fmt);
-    NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
-    va_end(ap);
-    _dyyyProbeCount++;
-    NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-    if (!dir) return;
-    NSString *path = [dir stringByAppendingPathComponent:@"dyyy_probe.log"];
-    NSString *line = [NSString stringWithFormat:@"%@ | %@\n", [NSDate date], msg];
-    if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
-        [@"" writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
-    }
-    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
-    if (!fh) return;
-    [fh seekToEndOfFile];
-    [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
-    [fh closeFile];
-}
-
-static CGFloat gProbeTbH = -1.0;
-static CGFloat gProbeTableH = -1.0;
-static CGFloat gProbeVcH = -1.0;
-
-static void DYYYProbeTabBarDidMove(UIView *v) {
-    UIWindow *w = v.window;
-    DYYYProbeLog(@"[TB] didMove frame=%@ winH=%.1f safeB=%.1f FS=%d",
-                 NSStringFromCGRect(v.frame), w ? CGRectGetHeight(w.bounds) : -1.0,
-                 w ? w.safeAreaInsets.bottom : -1.0,
-                 (int)DYYYGetBool(@"DYYYEnableFullScreen"));
-}
-
-static void DYYYProbeTabBar(UIView *v) {
-    CGFloat h = CGRectGetHeight(v.bounds);
-    if (fabs(h - gProbeTbH) < 0.5) return;
-    gProbeTbH = h;
-    UIWindow *w = v.window;
-    DYYYProbeLog(@"[TB] layout h=%.1f frame=%@ safeB=%.1f winH=%.1f supH=%.1f",
-                 h, NSStringFromCGRect(v.frame),
-                 w ? w.safeAreaInsets.bottom : -1.0,
-                 w ? CGRectGetHeight(w.bounds) : -1.0,
-                 v.superview ? CGRectGetHeight(v.superview.bounds) : -1.0);
-}
-
-static void DYYYProbeTable(UIView *v) {
-    CGFloat h = CGRectGetHeight(v.bounds);
-    if (fabs(h - gProbeTableH) < 0.5) return;
-    gProbeTableH = h;
-    UIWindow *w = v.window;
-    DYYYProbeLog(@"[DT] layout h=%.1f frame=%@ supH=%.1f safeB=%.1f FS=%d",
-                 h, NSStringFromCGRect(v.frame),
-                 v.superview ? CGRectGetHeight(v.superview.bounds) : -1.0,
-                 w ? w.safeAreaInsets.bottom : -1.0,
-                 (int)DYYYGetBool(@"DYYYEnableFullScreen"));
-}
-
-static void DYYYProbeTableSetFrame(UIView *v, CGRect frame) {
-    if (fabs(CGRectGetHeight(frame) - CGRectGetHeight(v.frame)) < 0.5) return;
-    NSArray *st = [NSThread callStackSymbols];
-    NSUInteger n = MIN(st.count, 8);
-    DYYYProbeLog(@"[DT] setFrame %@ -> %@ FS=%d stack=%@",
-                 NSStringFromCGRect(v.frame), NSStringFromCGRect(frame),
-                 (int)DYYYGetBool(@"DYYYEnableFullScreen"),
-                 [[st subarrayWithRange:NSMakeRange(0, n)] componentsJoinedByString:@" | "]);
-}
-
-static void DYYYProbeVC(UIViewController *vc) {
-    CGFloat h = CGRectGetHeight(vc.view.bounds);
-    if (fabs(h - gProbeVcH) < 0.5) return;
-    gProbeVcH = h;
-    UIWindow *w = vc.view.window;
-    DYYYProbeLog(@"[VC] layout h=%.1f safeB=%.1f sub=%lu",
-                 h, w ? w.safeAreaInsets.bottom : -1.0,
-                 (unsigned long)vc.view.subviews.count);
-}
-
 %hook AWENormalModeTabBar
 
 static Class barBackgroundClass = nil;
@@ -15184,7 +15105,6 @@ static Class tabBarButtonClass = nil;
 
 - (void)didMoveToWindow {
     %orig;
-    DYYYProbeTabBarDidMove(self);
     if (self.window) {
         [self initializeOriginalTabBarHeight];
     }
@@ -15192,7 +15112,6 @@ static Class tabBarButtonClass = nil;
 
 - (void)layoutSubviews {
     %orig;
-    DYYYProbeTabBar(self);
     DYYYRepairTabBarInternalBackground(self);
     // DYYY_FIX_TABBAR_BG_TRANSPARENT
     // 全屏时让底栏背景透明，不改变按钮和视频布局。
@@ -17923,13 +17842,12 @@ static char kDYYYV29DoneKey; // v439
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
-    DYYYProbeTableSetFrame(self, frame);
+    // DYYY修复：不改高度，避免污染分页算法
     %orig(frame);
 }
 
 - (void)layoutSubviews {
     %orig;
-    DYYYProbeTable(self);
 
     // v447: 性能优化——isKindOfClass + 类缓存，替代 NSStringFromClass + containsString
     // 逻辑等价：原来按类名字符串匹配，现在按类继承链匹配，命中范围一致
