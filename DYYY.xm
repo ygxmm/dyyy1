@@ -46,6 +46,14 @@
 #import "DYYYManager.h"
 #import "DYYYHookManager.h"
 #import "DYYYLoginBypassManager.h"
+// ---- DYYY probe 前置声明（v519-probe）----
+static void DYYYProbeLog(NSString *fmt, ...);
+static void DYYYProbeTabBarDidMove(UIView *v);
+static void DYYYProbeTabBar(UIView *v);
+static void DYYYProbeTable(UIView *v);
+static void DYYYProbeTableSetFrame(UIView *v, CGRect frame);
+static void DYYYProbeVC(UIViewController *vc);
+
 #import "DYYYLivePreStreamLayoutCoordinator.h"
 #import "DYYYPrivacyRecordUploadGuard.h"
 #import "DYYYMiniProgramRewardBypass.h"
