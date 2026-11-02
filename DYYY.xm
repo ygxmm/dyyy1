@@ -24,26 +24,6 @@
 #include <syslog.h>
 #include <pthread.h>
 
-// setFrame 钩子重入闸：钩子内部会改 frame，可能触发新一轮布局并重入本方法
-static __thread int gDYYYSetFrameDepth = 0;
-static void DYYYSetFrameDepthDec(int *p) { (void)p; gDYYYSetFrameDepth--; }
-
-// v530 实验：置 1 则停用全部「外力掰布局」的全屏逻辑，只保留抖音自己的
-// changeModernFullScreen: 调用。用来验证原生接口是否真能撑开页面。
-#define DYYY_LEGACY_FS_DISABLED 1
-static BOOL DYYYLegacyFSActive(void) {
-#if DYYY_LEGACY_FS_DISABLED
-    return NO;
-#else
-    return DYYYGetBool(@"DYYYEnableFullScreen");
-#endif
-}
-
-// 底部 UI 补偿单独控制：全屏交给抖音自己的接口后，底部块会贴到屏幕下沿，
-// 仍需要上移 60。与老的全屏几何逻辑解耦，只跟随开关。
-static BOOL DYYYBottomInsetActive(void) {
-    return DYYYGetBool(@"DYYYEnableFullScreen");
-}
 #include <dlfcn.h>
 
 // ============================================================
@@ -69,6 +49,27 @@ static BOOL DYYYBottomInsetActive(void) {
 #import "DYYYManager.h"
 #import "DYYYHookManager.h"
 #import "DYYYLoginBypassManager.h"
+
+// setFrame 钩子重入闸：钩子内部会改 frame，可能触发新一轮布局并重入本方法
+static __thread int gDYYYSetFrameDepth = 0;
+static void DYYYSetFrameDepthDec(int *p) { (void)p; gDYYYSetFrameDepth--; }
+
+// v530 实验：置 1 则停用全部「外力掰布局」的全屏逻辑，只保留抖音自己的
+// changeModernFullScreen: 调用。用来验证原生接口是否真能撑开页面。
+#define DYYY_LEGACY_FS_DISABLED 1
+static BOOL DYYYLegacyFSActive(void) {
+#if DYYY_LEGACY_FS_DISABLED
+    return NO;
+#else
+    return DYYYGetBool(@"DYYYEnableFullScreen");
+#endif
+}
+
+// 底部 UI 补偿单独控制：全屏交给抖音自己的接口后，底部块会贴到屏幕下沿，
+// 仍需要上移 60。与老的全屏几何逻辑解耦，只跟随开关。
+static BOOL DYYYBottomInsetActive(void) {
+    return DYYYGetBool(@"DYYYEnableFullScreen");
+}
 #import "DYYYLivePreStreamLayoutCoordinator.h"
 
 #import "DYYYPrivacyRecordUploadGuard.h"
@@ -16346,7 +16347,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     if (DYYYBottomInsetActive()) {
         UIView *bottomBox = self.bottomContainerView;
         if (bottomBox) {
-            CGAffineTransform want = CGAffineTransformMakeTranslation(0, -DYYY_FS_INSET);
+            CGAffineTransform want = CGAffineTransformMakeTranslation(0, -60.0);
             if (!CGAffineTransformEqualToTransform(bottomBox.transform, want)) {
                 bottomBox.transform = want;
             }
