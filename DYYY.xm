@@ -50,6 +50,8 @@
 // ===================== DYYY 卡顿探测（临时） =====================
 static volatile int64_t gDYYYBeatMS = 0;
 static volatile intptr_t gDYYYMarker = 0;
+static dispatch_source_t gDYYYBeatSrc = nil;
+static dispatch_source_t gDYYYWatchSrc = nil;
 
 static void DYYYHangLog(NSString *fmt, ...) {
     va_list ap;
@@ -73,7 +75,8 @@ static void DYYYHangLog(NSString *fmt, ...) {
 static void DYYYHangMonitorStart(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        dispatch_source_t beatTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+        gDYYYBeatSrc = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+        dispatch_source_t beatTimer = gDYYYBeatSrc;
         dispatch_source_set_timer(beatTimer, dispatch_time(DISPATCH_TIME_NOW, 0), 500 * NSEC_PER_MSEC, 50 * NSEC_PER_MSEC);
         dispatch_source_set_event_handler(beatTimer, ^{
           gDYYYBeatMS = (int64_t)(CFAbsoluteTimeGetCurrent() * 1000.0);
@@ -81,7 +84,8 @@ static void DYYYHangMonitorStart(void) {
         dispatch_resume(beatTimer);
 
         dispatch_queue_t q = dispatch_queue_create("dyyy.hang", DISPATCH_QUEUE_SERIAL);
-        dispatch_source_t t = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, q);
+        gDYYYWatchSrc = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, q);
+        dispatch_source_t t = gDYYYWatchSrc;
         dispatch_source_set_timer(t, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), NSEC_PER_SEC, 0);
         dispatch_source_set_event_handler(t, ^{
           int64_t now = (int64_t)(CFAbsoluteTimeGetCurrent() * 1000.0);
