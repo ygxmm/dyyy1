@@ -14709,6 +14709,24 @@ static void DYYYApplySearchShiftIfNeeded(id vc) {
 }
 
 
+// v524: 把高度不足屏幕的交互层拉到满屏（769 → 852），让所有详情页走同一套布局。
+// 每页最多尝试 3 次，防止和抖音自身布局互相拉扯（写 frame 会触发下一轮 layout）。
+static char kDYYYStretchTryKey;
+static void DYYYStretchInteractionToScreen(UIViewController *vc) {
+    UIView *v = vc.view;
+    if (!v) return;
+    CGFloat screenH = CGRectGetHeight([UIScreen mainScreen].bounds);
+    CGRect f = v.frame;
+    if (f.size.height > 700.0 && f.size.height < screenH - 1.0) {
+        NSInteger tried = [objc_getAssociatedObject(vc, &kDYYYStretchTryKey) integerValue];
+        if (tried >= 3) return;
+        objc_setAssociatedObject(vc, &kDYYYStretchTryKey, @(tried + 1), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        f.origin.y = 0;
+        f.size.height = screenH;
+        v.frame = f;
+    }
+}
+
 static void DYYYUpdateManagedPrivacyHalfScreenAppearance(AFDPrivacyHalfScreenViewController *viewController) {
     BOOL isDarkMode = [DYYYUtils isDarkMode];
 
@@ -16310,6 +16328,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)viewDidLayoutSubviews {
     %orig;
+    DYYYStretchInteractionToScreen(self);
     DYYYApplySearchShiftIfNeeded(self);
     // v483: 搜索页详情 interaction 视觉 y=120，底部溢出 120px，屏幕底部 792-852
     // 区域露出 interaction 内部黑色元素（输入框背景/渐变）→ 闪黑。
