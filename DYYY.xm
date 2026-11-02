@@ -71,19 +71,6 @@ static BOOL DYYYBottomInsetActive(void) {
     return DYYYGetBool(@"DYYYEnableFullScreen");
 }
 
-// 找同时装着左右元素栈的那个容器（dump 实测三者同父），不依赖属性名。
-static UIView *DYYYFindBottomBox(UIView *root) {
-    if (!root) return nil;
-    for (UIView *v in root.subviews) {
-        if ([v isKindOfClass:[AWEElementStackView class]] &&
-            [v.accessibilityLabel isEqualToString:@"right"]) {
-            return v.superview;
-        }
-        UIView *hit = DYYYFindBottomBox(v);
-        if (hit) return hit;
-    }
-    return nil;
-}
 #import "DYYYLivePreStreamLayoutCoordinator.h"
 
 #import "DYYYPrivacyRecordUploadGuard.h"
@@ -6877,13 +6864,13 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 // v356: 进度条位置 -60（让首页全屏时进度条上移）
 - (double)sliderYOffset {
     double orig = %orig;
-    if (DYYYLegacyFSActive()) return orig - 60.0;
+    if (DYYYBottomInsetActive()) return orig - 60.0;
     return orig;
 }
 
 - (double)posAdjustY {
     double orig = %orig;
-    if (DYYYLegacyFSActive()) return orig - 60.0;
+    if (DYYYBottomInsetActive()) return orig - 60.0;
     return orig;
 }
 
@@ -6911,7 +6898,7 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 // v361: 直接改进度条 frame 返回值
 - (struct CGRect)progressSliderNormalFrame {
     struct CGRect f = %orig;
-    if (DYYYLegacyFSActive()) {
+    if (DYYYBottomInsetActive()) {
         f.origin.y -= 60.0;
     }
     return f;
@@ -6919,7 +6906,7 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 
 - (struct CGRect)progressSliderWakeUpFrame {
     struct CGRect f = %orig;
-    if (DYYYLegacyFSActive()) {
+    if (DYYYBottomInsetActive()) {
         f.origin.y -= 60.0;
     }
     return f;
@@ -6927,7 +6914,7 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 
 - (struct CGRect)progressSliderUnderViewFrame {
     struct CGRect f = %orig;
-    if (DYYYLegacyFSActive()) {
+    if (DYYYBottomInsetActive()) {
         f.origin.y -= 60.0;
     }
     return f;
@@ -6935,7 +6922,7 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 
 - (double)timeLabelOriginY {
     double orig = %orig;
-    if (DYYYLegacyFSActive()) {
+    if (DYYYBottomInsetActive()) {
         return orig - 60.0;
     }
     return orig;
@@ -16332,7 +16319,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 // v346: HUD 容器底部偏移 +60（让左右栈和栈容器都上移 60）
 - (double)leftContainerBottomOffset {
     double orig = %orig;
-    if (DYYYLegacyFSActive()) {
+    if (DYYYBottomInsetActive()) {
         return orig - 60.0;
     }
     return orig;
@@ -16340,7 +16327,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (double)p_leftAndRightContainerBottomOffset {
     double orig = %orig;
-    if (DYYYLegacyFSActive()) {
+    if (DYYYBottomInsetActive()) {
         return orig - 60.0;
     }
     return orig;
@@ -16348,7 +16335,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (double)p_stackContainerViewBottomOffset {
     double orig = %orig;
-    if (DYYYLegacyFSActive()) {
+    if (DYYYBottomInsetActive()) {
         return orig - 60.0;
     }
     return orig;
@@ -16356,17 +16343,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    // v532: 底部块整体上移，只用声明过的 bottomContainerView 一处。
-    // 两个元素栈和进度容器都挂在它下面，位移一次即可，不再散在 10 个 getter 里。
-    if (DYYYBottomInsetActive()) {
-        UIView *bottomBox = DYYYFindBottomBox(self.view);
-        if (bottomBox) {
-            CGAffineTransform want = CGAffineTransformMakeTranslation(0, -60.0);
-            if (!CGAffineTransformEqualToTransform(bottomBox.transform, want)) {
-                bottomBox.transform = want;
-            }
-        }
-    }
     DYYYApplySearchShiftIfNeeded(self);
     // v483: 搜索页详情 interaction 视觉 y=120，底部溢出 120px，屏幕底部 792-852
     // 区域露出 interaction 内部黑色元素（输入框背景/渐变）→ 闪黑。
@@ -17627,7 +17603,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
             }
 
             // v364: 全屏开关开时右栈（点赞栏，label=right）上移 60
-            if (DYYYLegacyFSActive()) {
+            if (DYYYBottomInsetActive()) {
                 self.transform = CGAffineTransformTranslate(self.transform, 0, -60.0);
             }
         }
