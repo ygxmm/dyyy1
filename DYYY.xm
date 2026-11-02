@@ -54,35 +54,6 @@
 static __thread int gDYYYSetFrameDepth = 0;
 static void DYYYSetFrameDepthDec(int *p) { (void)p; gDYYYSetFrameDepth--; }
 
-static void DYYYKillBlackAndBlur(UIView *view) {
-    if (!view) return;
-    // 干掉毛玻璃
-    if ([view isKindOfClass:[UIVisualEffectView class]]) {
-        ((UIVisualEffectView *)view).effect = nil;
-        view.backgroundColor = [UIColor clearColor];
-    }
-    // 干掉纯黑/深色背景
-    UIColor *bg = view.backgroundColor;
-    if (bg && CGColorGetAlpha(bg.CGColor) > 0.1) {
-        const CGFloat *comp = CGColorGetComponents(bg.CGColor);
-        size_t n = CGColorGetNumberOfComponents(bg.CGColor);
-        if (n >= 3 && comp[0] < 0.15 && comp[1] < 0.15 && comp[2] < 0.15) {
-            view.backgroundColor = [UIColor clearColor];
-        }
-    }
-    // 干掉底部渐变遮罩
-    if ([view.layer isKindOfClass:[CAGradientLayer class]]) {
-        CAGradientLayer *gl = (CAGradientLayer *)view.layer;
-        if (gl.colors.count > 0) {
-            view.hidden = YES;
-        }
-    }
-    // 递归清理子视图
-    for (UIView *sub in view.subviews) {
-        DYYYKillBlackAndBlur(sub);
-    }
-}
-
 static BOOL DYYYBottomInsetActive(void) {
     return DYYYGetBool(@"DYYYEnableFullScreen");
 }
@@ -19139,22 +19110,22 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 }
 
 
-// v585: 终极清理低栏黑底/毛玻璃
-%hook AWEPlayInteractionViewController
-- (void)viewDidLayoutSubviews {
+
+// v588: 专门狙击详情页里铺满全屏的毛玻璃遮罩
+%hook UIVisualEffectView
+
+- (void)layoutSubviews {
     %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && self.view) {
-        // 清理自己
-        DYYYKillBlackAndBlur(self.view);
-        // 清理父视图（也就是 Cell 的 ContentView）
-        UIView *sv = self.view.superview;
-        if (sv) {
-            DYYYKillBlackAndBlur(sv);
-            // 再往上清理一层
-            if (sv.superview) {
-                DYYYKillBlackAndBlur(sv.superview);
-            }
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        // 获取当前所在的控制器
+        UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
+        
+        // 仅当它在详情页控制器里才干掉，避免影响其他页面的毛玻璃
+        if (vc && [vc isKindOfClass:NSClassFromString(@"AWEAwemeDetailTableViewController")]) {
+            self.effect = nil;
+            self.backgroundColor = [UIColor clearColor];
         }
     }
 }
+
 %end
