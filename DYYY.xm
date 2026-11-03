@@ -19068,54 +19068,29 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 // v597: 解决我的主页滑动/返回后底栏出现玻璃框
-%group DYYYMainTabBarGroup
 
-%hook AWENormalModeTabBarBlurView
-- (void)layoutSubviews {
+// v600: 利用原生开关和内部遍历，彻底清理详情页毛玻璃
+%group DYYYDetailBlurFix
+
+%hook AWEAwemeDetailTableViewController
+
+- (void)viewDidLayoutSubviews {
     %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        UIView *v = (UIView *)self;
-        v.alpha = 0.0;
-        v.hidden = YES;
-        // 顺手把它内部的毛玻璃也废了
-        for (UIView *sub in v.subviews) {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && self.view) {
+        self.disableBlurView = YES;
+        for (UIView *sub in self.view.subviews) {
             if ([sub isKindOfClass:[UIVisualEffectView class]]) {
-                ((UIVisualEffectView *)sub).effect = nil;
+                sub.hidden = YES;
+                sub.alpha = 0;
             }
         }
     }
 }
-- (void)didMoveToSuperview {
-    %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        UIView *v = (UIView *)self;
-        v.alpha = 0.0;
-        v.hidden = YES;
-    }
-}
-%end
 
-%hook AWETabBarSkinView
-- (void)layoutSubviews {
-    %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        UIView *v = (UIView *)self;
-        v.alpha = 0.0;
-        v.hidden = YES;
-    }
-}
-- (void)didMoveToSuperview {
-    %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        UIView *v = (UIView *)self;
-        v.alpha = 0.0;
-        v.hidden = YES;
-    }
-}
 %end
 
 %end
 
 %ctor {
-    %init(DYYYMainTabBarGroup);
+    %init(DYYYDetailBlurFix);
 }
