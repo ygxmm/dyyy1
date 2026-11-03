@@ -18219,15 +18219,37 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 %end
 
 %hook AFDViewedBottomView
+
 - (void)layoutSubviews {
     %orig;
-
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
         self.backgroundColor = [UIColor clearColor];
-
-        self.effectView.hidden = YES;
+        
+        // 干掉所有内部毛玻璃（实测这就是返回主页时出现的玻璃框）
+        for (UIView *sub in self.subviews) {
+            if ([sub isKindOfClass:[UIVisualEffectView class]]) {
+                ((UIVisualEffectView *)sub).effect = nil;
+                sub.hidden = YES;
+                sub.alpha = 0;
+            }
+        }
     }
 }
+
+- (void)didMoveToSuperview {
+    %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        self.backgroundColor = [UIColor clearColor];
+        for (UIView *sub in self.subviews) {
+            if ([sub isKindOfClass:[UIVisualEffectView class]]) {
+                ((UIVisualEffectView *)sub).effect = nil;
+                sub.hidden = YES;
+                sub.alpha = 0;
+            }
+        }
+    }
+}
+
 %end
 
 // 极速版红包激励挂件容器视图类组（移除逻辑）
@@ -19068,29 +19090,3 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
-// v602: 探针 - 抓取底部毛玻璃的真身
-%group DYYYGlassProbe
-
-%hook UIVisualEffectView
-
-- (void)didMoveToWindow {
-    %orig;
-    if (self.window && DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        CGRect frame = self.frame;
-        // 只抓底部或者高度很小的毛玻璃，防止日志爆炸
-        if (frame.origin.y > 500 || frame.size.height < 150) {
-            DYYYRefLog(@"=== 探针发现毛玻璃 === class=%@ super=%@ frame=%@", 
-                       NSStringFromClass([self class]), 
-                       NSStringFromClass([self.superview class]), 
-                       NSStringFromCGRect(frame));
-        }
-    }
-}
-
-%end
-
-%end
-
-%ctor {
-    %init(DYYYGlassProbe);
-}
