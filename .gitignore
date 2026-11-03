@@ -1,16 +1,14 @@
-.theos
-packages
-.DS_Store
+# Theos 编译产物
+.theos/
+packages/
+Makefile.bak
+*.deb
 
-# 忽略备份/临时文件
-*.bak
+# 本地备份和探针文件
 *.bak.*
-*.backup
-*.backup.*
-DYYY-current.xm
-DYYY.xm.before_*
+*.bak
+*.orig
+*.rej
 
-# 一次性脚本
-disable_transform_test.py
-fix_home_fullscreen.py
-fix_home_fullscreen.sh
+# 系统文件
+.DS_Store
