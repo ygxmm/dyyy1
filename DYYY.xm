@@ -19064,29 +19064,50 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
-// v594: 使用 %group 隔离，避免与文件内已有的 %hook 产生符号冲突
-%group DYYYBlurFixGroup
 
-%hook AWEAwemeDetailTableViewController
+// v595: 彻底透明化主页底部一级 TabBar 及毛玻璃
+%group DYYYMainTabBarGroup
 
+%hook AWENormalModeTabBarController
 - (void)viewDidLayoutSubviews {
     %orig;
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        self.disableBlurView = YES;
+        if (self.tabBar) {
+            self.tabBar.backgroundColor = [UIColor clearColor];
+            self.tabBar.backgroundImage = [UIImage new];
+            if (@available(iOS 13.0, *)) {
+                UITabBarAppearance *appearance = [UITabBarAppearance new];
+                [appearance configureWithTransparentBackground];
+                self.tabBar.standardAppearance = appearance;
+                self.tabBar.scrollEdgeAppearance = appearance;
+            }
+        }
     }
 }
+%end
 
-- (void)addBlurView {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        return;
-    }
+%hook AWENormalModeTabBarBlurView
+- (void)layoutSubviews {
     %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        self.hidden = YES;
+        self.effect = nil;
+    }
 }
+%end
 
+%hook AWETabBarSkinView
+- (void)layoutSubviews {
+    %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        self.hidden = YES;
+        self.backgroundColor = [UIColor clearColor];
+    }
+}
 %end
 
 %end
 
 %ctor {
-    %init(DYYYBlurFixGroup);
+    %init(DYYYMainTabBarGroup);
 }
