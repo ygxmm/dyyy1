@@ -17868,8 +17868,7 @@ static char kDYYYV29DoneKey; // v439
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
-    // DYYY修复：不改高度，避免污染分页算法
-    %orig(frame);
+        %orig(frame);
 }
 
 - (void)layoutSubviews {
