@@ -19065,43 +19065,46 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
-// v595: 彻底透明化主页底部一级 TabBar 及毛玻璃
+
+// v596: 解决我的主页滑动/返回后底栏出现玻璃框的问题
 %group DYYYMainTabBarGroup
 
-%hook AWENormalModeTabBarController
-- (void)viewDidLayoutSubviews {
-    %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        if (self.tabBar) {
-            self.tabBar.backgroundColor = [UIColor clearColor];
-            self.tabBar.backgroundImage = [UIImage new];
-            if (@available(iOS 13.0, *)) {
-                UITabBarAppearance *appearance = [UITabBarAppearance new];
-                [appearance configureWithTransparentBackground];
-                self.tabBar.standardAppearance = appearance;
-                self.tabBar.scrollEdgeAppearance = appearance;
-            }
-        }
-    }
-}
-%end
-
+// 干掉动态冒出来的底栏毛玻璃
 %hook AWENormalModeTabBarBlurView
+- (void)didMoveToSuperview {
+    %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        UIView *v = (UIView *)self;
+        v.hidden = YES;
+        v.backgroundColor = [UIColor clearColor];
+    }
+}
 - (void)layoutSubviews {
     %orig;
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        self.hidden = YES;
-        self.effect = nil;
+        UIView *v = (UIView *)self;
+        v.hidden = YES;
+        v.backgroundColor = [UIColor clearColor];
     }
 }
 %end
 
+// 干掉底栏皮肤层
 %hook AWETabBarSkinView
+- (void)didMoveToSuperview {
+    %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        UIView *v = (UIView *)self;
+        v.hidden = YES;
+        v.backgroundColor = [UIColor clearColor];
+    }
+}
 - (void)layoutSubviews {
     %orig;
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        self.hidden = YES;
-        self.backgroundColor = [UIColor clearColor];
+        UIView *v = (UIView *)self;
+        v.hidden = YES;
+        v.backgroundColor = [UIColor clearColor];
     }
 }
 %end
