@@ -19066,45 +19066,50 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
-// v596: 解决我的主页滑动/返回后底栏出现玻璃框的问题
+
+// v597: 解决我的主页滑动/返回后底栏出现玻璃框
 %group DYYYMainTabBarGroup
 
-// 干掉动态冒出来的底栏毛玻璃
 %hook AWENormalModeTabBarBlurView
-- (void)didMoveToSuperview {
-    %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        UIView *v = (UIView *)self;
-        v.hidden = YES;
-        v.backgroundColor = [UIColor clearColor];
-    }
-}
 - (void)layoutSubviews {
     %orig;
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
         UIView *v = (UIView *)self;
+        v.alpha = 0.0;
         v.hidden = YES;
-        v.backgroundColor = [UIColor clearColor];
+        // 顺手把它内部的毛玻璃也废了
+        for (UIView *sub in v.subviews) {
+            if ([sub isKindOfClass:[UIVisualEffectView class]]) {
+                ((UIVisualEffectView *)sub).effect = nil;
+            }
+        }
+    }
+}
+- (void)didMoveToSuperview {
+    %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        UIView *v = (UIView *)self;
+        v.alpha = 0.0;
+        v.hidden = YES;
     }
 }
 %end
 
-// 干掉底栏皮肤层
 %hook AWETabBarSkinView
-- (void)didMoveToSuperview {
-    %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        UIView *v = (UIView *)self;
-        v.hidden = YES;
-        v.backgroundColor = [UIColor clearColor];
-    }
-}
 - (void)layoutSubviews {
     %orig;
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
         UIView *v = (UIView *)self;
+        v.alpha = 0.0;
         v.hidden = YES;
-        v.backgroundColor = [UIColor clearColor];
+    }
+}
+- (void)didMoveToSuperview {
+    %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        UIView *v = (UIView *)self;
+        v.alpha = 0.0;
+        v.hidden = YES;
     }
 }
 %end
