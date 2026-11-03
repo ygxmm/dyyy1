@@ -19067,22 +19067,22 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
-// v597: 解决我的主页滑动/返回后底栏出现玻璃框
 
-// v600: 利用原生开关和内部遍历，彻底清理详情页毛玻璃
-%group DYYYDetailBlurFix
+// v602: 探针 - 抓取底部毛玻璃的真身
+%group DYYYGlassProbe
 
-%hook AWEAwemeDetailTableViewController
+%hook UIVisualEffectView
 
-- (void)viewDidLayoutSubviews {
+- (void)didMoveToWindow {
     %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && self.view) {
-        self.disableBlurView = YES;
-        for (UIView *sub in self.view.subviews) {
-            if ([sub isKindOfClass:[UIVisualEffectView class]]) {
-                sub.hidden = YES;
-                sub.alpha = 0;
-            }
+    if (self.window && DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        CGRect frame = self.frame;
+        // 只抓底部或者高度很小的毛玻璃，防止日志爆炸
+        if (frame.origin.y > 500 || frame.size.height < 150) {
+            DYYYRefLog(@"=== 探针发现毛玻璃 === class=%@ super=%@ frame=%@", 
+                       NSStringFromClass([self class]), 
+                       NSStringFromClass([self.superview class]), 
+                       NSStringFromCGRect(frame));
         }
     }
 }
@@ -19092,5 +19092,5 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 %end
 
 %ctor {
-    %init(DYYYDetailBlurFix);
+    %init(DYYYGlassProbe);
 }
