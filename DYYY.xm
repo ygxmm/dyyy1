@@ -19235,6 +19235,36 @@ static void DYYYProbeV2InstallLayout(NSString *clsName) {
     method_setImplementation(m, probe);
 }
 
+static void DYYYProbeV3InstallSetFrame(NSString *clsName) {
+    Class cls = NSClassFromString(clsName);
+    if (!cls) return;
+    SEL sel = @selector(setFrame:);
+    Method m = class_getInstanceMethod(cls, sel);
+    if (!m) return;
+    IMP orig = method_getImplementation(m);
+    IMP probe = imp_implementationWithBlock(^void(id self, CGRect frame) {
+        ((void(*)(id,SEL,CGRect))orig)(self, sel, frame);
+        if (!DYYYProbeV2Armed()) return;
+        DYYYProbeV2RecordFrame(clsName, self, frame, "setFrame");
+    });
+    method_setImplementation(m, probe);
+}
+
+static void DYYYProbeV3InstallDisappear(NSString *clsName, NSString *selName) {
+    Class cls = NSClassFromString(clsName);
+    if (!cls) return;
+    SEL sel = NSSelectorFromString(selName);
+    Method m = class_getInstanceMethod(cls, sel);
+    if (!m) return;
+    IMP orig = method_getImplementation(m);
+    IMP probe = imp_implementationWithBlock(^void(id self, BOOL animated) {
+        DYYYProbeV2Log(@"[%@] %@", clsName, selName);
+        DYYYProbeV2Arm([selName UTF8String]);
+        ((void(*)(id,SEL,BOOL))orig)(self, sel, animated);
+    });
+    method_setImplementation(m, probe);
+}
+
 static void DYYYProbeV2Install(void) {
     DYYYProbeV2Log(@"========== ProbeV2 start (sandbox) ==========");
     DYYYProbeV2InstallVCLifecycle(@"AWEAwemeDetailTableViewController", @"viewWillDisappear:", "detailWillDisappear");
@@ -19247,7 +19277,15 @@ static void DYYYProbeV2Install(void) {
     DYYYProbeV2InstallLayout(@"AWEPlayVideoViewController");
     DYYYProbeV2InstallLayout(@"AWEPlayInteractionViewController");
     DYYYProbeV2InstallLayout(@"AWEFeedCellViewController");
-    DYYYProbeV2Log(@"========== ProbeV2 installed ==========");
+    // v3: setFrame 追踪（仅 armed 窗口内，避免刷屏）
+    DYYYProbeV3InstallSetFrame(@"AWEDPlayerViewController_Merge");
+    DYYYProbeV3InstallSetFrame(@"AWEPlayVideoViewController");
+    DYYYProbeV3InstallSetFrame(@"AWEPlayInteractionViewController");
+    DYYYProbeV3InstallSetFrame(@"AWEFeedCellViewController");
+    // v3: 横屏播放器消失时机
+    DYYYProbeV3InstallDisappear(@"AWEDPlayerViewController_Merge", @"viewWillDisappear:");
+    DYYYProbeV3InstallDisappear(@"AWEDPlayerViewController_Merge", @"viewDidDisappear:");
+    DYYYProbeV2Log(@"========== ProbeV3 installed ==========");
 }
 
 %ctor {
