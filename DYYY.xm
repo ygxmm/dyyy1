@@ -58,17 +58,6 @@ static BOOL DYYYBottomInsetActive(void) {
     return DYYYGetBool(@"DYYYEnableFullScreen");
 }
 
-// v458: feed 页 interaction 不收 792，避免 video(852)/interaction(792) 错位
-static BOOL DYYYIsFeedPageInteraction(AWEPlayInteractionViewController *ic) {
-    if (!ic) return NO;
-    UIView *sv = ic.view.superview;
-    while (sv) {
-        if ([sv.nextResponder isKindOfClass:NSClassFromString(@"AWEFeedCellViewController")]) return YES;
-        sv = sv.superview;
-    }
-    return NO;
-}
-
 #import "DYYYLivePreStreamLayoutCoordinator.h"
 
 #import "DYYYPrivacyRecordUploadGuard.h"
@@ -15987,7 +15976,7 @@ static Class tabBarButtonClass = nil;
     }
 
     // v580.4: 全局拦截 Interaction，只要试图超过 792 就砍下来，防止漏网之鱼
-    if (enableFS && !([self.nextResponder isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")] && DYYYIsFeedPageInteraction((AWEPlayInteractionViewController *)self.nextResponder))) {
+    if (enableFS) {
         UIResponder *owner = self.nextResponder;
         if ([owner isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")]) {
             AWEPlayInteractionViewController *ic = (AWEPlayInteractionViewController *)owner;
@@ -16256,7 +16245,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     // v535: 全屏时把交互层高度从 852 收到 792（屏幕高 - 60），
     // 底部锚定的内容随之上移 60。只改高度，不动 origin。
     // v580.4: 安全兜底，防止某些情况下 setFrame 未拦截到
-    if (DYYYBottomInsetActive() && !DYYYIsFeedPageInteraction(self) && self.view) {
+    if (DYYYBottomInsetActive() && self.view) {
         CGFloat targetH = CGRectGetHeight([UIScreen mainScreen].bounds) - 60.0;
         if (self.view.frame.size.height > targetH + 0.5) {
             NSString *refer = self.referString;
