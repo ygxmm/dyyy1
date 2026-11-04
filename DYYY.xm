@@ -16245,21 +16245,33 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     // v535: 全屏时把交互层高度从 852 收到 792（屏幕高 - 60），
     // 底部锚定的内容随之上移 60。只改高度，不动 origin。
     // v580.4: 安全兜底，防止某些情况下 setFrame 未拦截到
+    // v462: feed 页 interaction 过高/过矮都钉回 792；
+    //       detail 页放行（v457），横屏放行（抖音自己处理）
+    //       横屏返回时抖音会把 interaction 设成 459/399，之前只处理过高导致错位
     if (DYYYBottomInsetActive() && self.view) {
-        CGFloat targetH = CGRectGetHeight([UIScreen mainScreen].bounds) - 60.0;
-        if (self.view.frame.size.height > targetH + 0.5) {
-            NSString *refer = self.referString;
-            BOOL isSearchVideo = [refer isKindOfClass:[NSString class]] && [refer isEqualToString:@"general_search"];
-            AWEAwemeModel *aweme = (AWEAwemeModel *)self.model;
-            BOOL isImageText = (aweme && [aweme respondsToSelector:@selector(awemeType)] && aweme.awemeType == 68) || DYYYInteractionUsesRichContent(self);
-            
-            if (!isSearchVideo || isImageText) {
-                CGRect f = self.view.frame;
-                f.size.height = targetH;
-                // 禁止动画，防止 KVO 死循环
-                [UIView performWithoutAnimation:^{
-                    self.view.frame = f;
-                }];
+        CGSize dyyyScr = [UIScreen mainScreen].bounds.size;
+        BOOL dyyyLandscape = dyyyScr.width > dyyyScr.height;
+        BOOL dyyyInDetail = NO;
+        if ([self respondsToSelector:@selector(isInDetailFeed)]) {
+            dyyyInDetail = self.isInDetailFeed;
+        }
+        if (!dyyyLandscape && !dyyyInDetail) {
+            CGFloat targetH = dyyyScr.height - 60.0;
+            CGFloat curH = self.view.frame.size.height;
+            BOOL tooTall = curH > targetH + 0.5;
+            BOOL tooShort = curH > 100.0 && curH < targetH - 0.5;
+            if (tooTall || tooShort) {
+                NSString *refer = self.referString;
+                BOOL isSearchVideo = [refer isKindOfClass:[NSString class]] && [refer isEqualToString:@"general_search"];
+                AWEAwemeModel *aweme = (AWEAwemeModel *)self.model;
+                BOOL isImageText = (aweme && [aweme respondsToSelector:@selector(awemeType)] && aweme.awemeType == 68) || DYYYInteractionUsesRichContent(self);
+                if (!isSearchVideo || isImageText) {
+                    CGRect f = self.view.frame;
+                    f.size.height = targetH;
+                    [UIView performWithoutAnimation:^{
+                        self.view.frame = f;
+                    }];
+                }
             }
         }
     }
