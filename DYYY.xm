@@ -19089,3 +19089,49 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
+
+
+// ==================== v457: 作品详情页高度统一 852 ====================
+%group DYYYDetailHeightHook
+
+%hook AWEAwemeDetailTableViewController
+
+- (double)cellHeightAtIndex:(long long)index {
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        UIWindow *win = [DYYYUtils getActiveWindow];
+        if (win && win.bounds.size.height > 0) return win.bounds.size.height;
+    }
+    return %orig;
+}
+
+- (double)fixedCellHeight {
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        UIWindow *win = [DYYYUtils getActiveWindow];
+        if (win && win.bounds.size.height > 0) return win.bounds.size.height;
+    }
+    return %orig;
+}
+
+- (double)cellHeight {
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        UIWindow *win = [DYYYUtils getActiveWindow];
+        if (win && win.bounds.size.height > 0) return win.bounds.size.height;
+    }
+    return %orig;
+}
+
+- (double)contentOffsetYForCellAtIndex:(long long)index {
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        UIWindow *win = [DYYYUtils getActiveWindow];
+        if (win && win.bounds.size.height > 0) return (double)index * win.bounds.size.height;
+    }
+    return %orig;
+}
+
+%end
+
+%end
+
+%ctor {
+    %init(DYYYDetailHeightHook);
+}
