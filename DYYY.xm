@@ -16246,7 +16246,18 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     // 底部锚定的内容随之上移 60。只改高度，不动 origin。
     // v580.4: 安全兜底，防止某些情况下 setFrame 未拦截到
     if (DYYYBottomInsetActive() && self.view) {
-        CGFloat targetH = CGRectGetHeight([UIScreen mainScreen].bounds) - 60.0;
+        // v460: 横竖屏过渡期不钉死，避免和抖音自身 layout 收敛打架
+        // （日志确认横屏返回时多实例在 393/333/792/852 之间反复抖动）
+        UIWindow *dyyyWin = [DYYYUtils getActiveWindow];
+        if (!dyyyWin) return;
+        CGRect dyyyWinB = dyyyWin.bounds;
+        if (dyyyWinB.size.width > dyyyWinB.size.height) return; // 横屏，让抖音自己来
+        if (self.view.frame.size.width < 100 || self.view.frame.size.height < 100) return; // 未初始化
+        CGFloat dyyySuperH = self.view.superview.bounds.size.height;
+        CGFloat dyyyScreenH = CGRectGetHeight([UIScreen mainScreen].bounds);
+        if (fabs(dyyySuperH - dyyyScreenH) > 60.5) return; // 父层不是竖屏 852 左右
+
+        CGFloat targetH = dyyyScreenH - 60.0;
         if (self.view.frame.size.height > targetH + 0.5) {
             NSString *refer = self.referString;
             BOOL isSearchVideo = [refer isKindOfClass:[NSString class]] && [refer isEqualToString:@"general_search"];
