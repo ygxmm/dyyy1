@@ -19146,3 +19146,112 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 %ctor {
     %init(DYYYDetailHeightHook);
 }
+
+
+// ==================== v458 探针：首页全屏 frame 诊断（定位后删） ====================
+static NSString *DYYYFSProbePath(void) {
+    NSString *doc = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    if (!doc) return nil;
+    return [doc stringByAppendingPathComponent:@"dyyy_fs_probe.log"];
+}
+
+static void DYYYFSProbeLog(NSString *fmt, ...) {
+    va_list ap; va_start(ap, fmt);
+    NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
+    va_end(ap);
+    static NSDateFormatter *df = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        df = [NSDateFormatter new];
+        df.dateFormat = @"HH:mm:ss.SSS";
+    });
+    NSString *line = [NSString stringWithFormat:@"[%@] %@\n", [df stringFromDate:[NSDate date]], msg];
+    NSString *path = DYYYFSProbePath();
+    if (!path) return;
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+    if (!fh) {
+        [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil];
+        fh = [NSFileHandle fileHandleForWritingAtPath:path];
+    }
+    if (!fh) return;
+    @try {
+        [fh seekToEndOfFile];
+        [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+        [fh closeFile];
+    } @catch (__unused NSException *e) {}
+}
+
+static NSMutableDictionary *gDYYYFSProbeLast = nil;
+
+static NSString *DYYYFSProbeStack(void) {
+    NSArray *frames = [NSThread callStackSymbols];
+    NSMutableArray *out = [NSMutableArray array];
+    for (NSUInteger i = 2; i < frames.count && out.count < 4; i++) {
+        [out addObject:frames[i]];
+    }
+    return [out componentsJoinedByString:@" | "];
+}
+
+static void DYYYFSProbeRecord(NSString *clsName, NSString *tag, CGRect f) {
+    if (!gDYYYFSProbeLast) gDYYYFSProbeLast = [NSMutableDictionary new];
+    NSString *key = [NSString stringWithFormat:@"%@.%@", clsName, tag];
+    NSString *val = [NSString stringWithFormat:@"%.1f,%.1f %.1fx%.1f", f.origin.x, f.origin.y, f.size.width, f.size.height];
+    @synchronized(gDYYYFSProbeLast) {
+        if ([gDYYYFSProbeLast[key] isEqualToString:val]) return;
+        gDYYYFSProbeLast[key] = val;
+    }
+    DYYYFSProbeLog(@"[%@] %@ -> %@ FS=%d | %@", clsName, tag, val, DYYYGetBool(@"DYYYEnableFullScreen") ? 1 : 0, DYYYFSProbeStack());
+}
+
+static void DYYYFSProbeInstallVC(NSString *clsName) {
+    Class cls = NSClassFromString(clsName);
+    if (!cls) { DYYYFSProbeLog(@"探针: %@ 不存在", clsName); return; }
+    SEL sel = @selector(viewDidLayoutSubviews);
+    Method m = class_getInstanceMethod(cls, sel);
+    if (!m) { DYYYFSProbeLog(@"探针: %@ 无 viewDidLayoutSubviews", clsName); return; }
+    IMP orig = method_getImplementation(m);
+    IMP probe = imp_implementationWithBlock(^void(id self) {
+        ((void(*)(id,SEL))orig)(self, sel);
+        UIViewController *vc = (UIViewController *)self;
+        UIView *v = vc.viewIfLoaded;
+        if (!v) return;
+        DYYYFSProbeRecord(clsName, [NSString stringWithFormat:@"view(%@)", NSStringFromClass(v.class)], v.frame);
+        for (UIView *sub in v.subviews) {
+            DYYYFSProbeRecord(clsName, [NSString stringWithFormat:@"sub(%@)", NSStringFromClass(sub.class)], sub.frame);
+        }
+    });
+    method_setImplementation(m, probe);
+}
+
+static void DYYYFSProbeInstallView(NSString *clsName) {
+    Class cls = NSClassFromString(clsName);
+    if (!cls) { DYYYFSProbeLog(@"探针: %@ 不存在", clsName); return; }
+    SEL sel = @selector(setFrame:);
+    Method m = class_getInstanceMethod(cls, sel);
+    if (!m) return;
+    IMP orig = method_getImplementation(m);
+    IMP probe = imp_implementationWithBlock(^void(id self, CGRect frame) {
+        ((void(*)(id,SEL,CGRect))orig)(self, sel, frame);
+        DYYYFSProbeRecord(clsName, @"setFrame", frame);
+    });
+    method_setImplementation(m, probe);
+}
+
+static void DYYYFSProbeInstall(void) {
+    NSArray *vcs = @[
+        @"AWEFeedCellViewController",
+        @"AWEDPlayerViewController_Merge",
+        @"AWEPlayVideoViewController",
+        @"AWEPlayInteractionViewController",
+        @"AWEFeedTableViewController",
+        @"AWEAwemeDetailTableViewController",
+    ];
+    for (NSString *c in vcs) DYYYFSProbeInstallVC(c);
+    NSArray *views = @[ @"TTMetalViewVP", @"AWEGradientView" ];
+    for (NSString *c in views) DYYYFSProbeInstallView(c);
+    DYYYFSProbeLog(@"========== 探针安装完成 ==========");
+}
+
+%ctor {
+    DYYYFSProbeInstall();
+}
