@@ -19136,3 +19136,109 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     %init(DYYYDetailHeightHook);
 }
 
+
+
+// ==================== 全屏返回诊断探针 v2（返回后保留，定位完删） ====================
+// 日志：/var/mobile/Library/Preferences/dyyy_fsprobe2.log
+// 清理：rm /var/mobile/Library/Preferences/dyyy_fsprobe2.log
+// 策略：生命周期全记；layout 仅在 armed 2 秒窗口内记；每实例每帧只记变化。
+
+static NSString * const kDYYYProbeV2Path = @"/var/mobile/Library/Preferences/dyyy_fsprobe2.log";
+
+static void DYYYProbeV2Log(NSString *fmt, ...) {
+    va_list ap; va_start(ap, fmt);
+    NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
+    va_end(ap);
+    static NSDateFormatter *df = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ df = [NSDateFormatter new]; df.dateFormat = @"HH:mm:ss.SSS"; });
+    NSString *line = [NSString stringWithFormat:@"[%@] %@\n", [df stringFromDate:[NSDate date]], msg];
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:kDYYYProbeV2Path];
+    if (!fh) {
+        [[NSFileManager defaultManager] createFileAtPath:kDYYYProbeV2Path contents:nil attributes:nil];
+        fh = [NSFileHandle fileHandleForWritingAtPath:kDYYYProbeV2Path];
+    }
+    if (!fh) return;
+    @try {
+        [fh seekToEndOfFile];
+        [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+        [fh closeFile];
+    } @catch (__unused NSException *e) {}
+}
+
+static NSTimeInterval gDYYYProbeV2ArmUntil = 0;
+static void DYYYProbeV2Arm(const char *why) {
+    gDYYYProbeV2ArmUntil = [NSDate timeIntervalSinceReferenceDate] + 2.0;
+    DYYYProbeV2Log(@"=== ARM: %s (2s window) ===", why);
+}
+static BOOL DYYYProbeV2Armed(void) {
+    return [NSDate timeIntervalSinceReferenceDate] < gDYYYProbeV2ArmUntil;
+}
+
+static NSMutableDictionary *gDYYYProbeV2Seen = nil;
+static void DYYYProbeV2RecordFrame(NSString *cls, id obj, CGRect f, const char *why) {
+    if (!gDYYYProbeV2Seen) gDYYYProbeV2Seen = [NSMutableDictionary new];
+    NSString *key = [NSString stringWithFormat:@"%@|%s|%p", cls, why, obj];
+    NSString *val = [NSString stringWithFormat:@"%.1f,%.1f %.1fx%.1f", f.origin.x, f.origin.y, f.size.width, f.size.height];
+    @synchronized(gDYYYProbeV2Seen) {
+        if ([gDYYYProbeV2Seen[key] isEqualToString:val]) return;
+        gDYYYProbeV2Seen[key] = val;
+    }
+    DYYYProbeV2Log(@"[%@] %s %p -> %@", cls, why, obj, val);
+}
+
+static void DYYYProbeV2InstallVCLifecycle(NSString *clsName, NSString *selName, const char *label) {
+    Class cls = NSClassFromString(clsName);
+    if (!cls) { DYYYProbeV2Log(@"探针v2: %@ 不存在", clsName); return; }
+    SEL sel = NSSelectorFromString(selName);
+    Method m = class_getInstanceMethod(cls, sel);
+    if (!m) { DYYYProbeV2Log(@"探针v2: %@ %@ 不存在", clsName, selName); return; }
+    IMP orig = method_getImplementation(m);
+    BOOL armPoint = ([selName isEqualToString:@"viewWillDisappear:"] && [clsName containsString:@"Detail"]) ||
+                    ([selName isEqualToString:@"viewWillAppear:"] && [clsName containsString:@"Feed"]);
+    IMP probe = imp_implementationWithBlock(^void(id self, BOOL animated) {
+        DYYYProbeV2Log(@"[%@] %s begin", clsName, label);
+        if (armPoint) DYYYProbeV2Arm(label);
+        ((void(*)(id,SEL,BOOL))orig)(self, sel, animated);
+        UIViewController *vc = (UIViewController *)self;
+        UIView *v = vc.viewIfLoaded;
+        if (v) DYYYProbeV2RecordFrame(clsName, self, v.frame, label);
+    });
+    method_setImplementation(m, probe);
+}
+
+static void DYYYProbeV2InstallLayout(NSString *clsName) {
+    Class cls = NSClassFromString(clsName);
+    if (!cls) return;
+    SEL sel = @selector(viewDidLayoutSubviews);
+    Method m = class_getInstanceMethod(cls, sel);
+    if (!m) return;
+    IMP orig = method_getImplementation(m);
+    IMP probe = imp_implementationWithBlock(^void(id self) {
+        ((void(*)(id,SEL))orig)(self, sel);
+        if (!DYYYProbeV2Armed()) return;
+        UIViewController *vc = (UIViewController *)self;
+        UIView *v = vc.viewIfLoaded;
+        if (v) DYYYProbeV2RecordFrame(clsName, self, v.frame, "viewDidLayout");
+    });
+    method_setImplementation(m, probe);
+}
+
+static void DYYYProbeV2Install(void) {
+    DYYYProbeV2Log(@"========== ProbeV2 start ==========");
+    DYYYProbeV2InstallVCLifecycle(@"AWEAwemeDetailTableViewController", @"viewWillDisappear:", "detailWillDisappear");
+    DYYYProbeV2InstallVCLifecycle(@"AWEAwemeDetailTableViewController", @"viewDidDisappear:",  "detailDidDisappear");
+    DYYYProbeV2InstallVCLifecycle(@"AWEFeedCellViewController", @"viewWillAppear:", "feedCellWillAppear");
+    DYYYProbeV2InstallVCLifecycle(@"AWEFeedCellViewController", @"viewDidAppear:",  "feedCellDidAppear");
+    DYYYProbeV2InstallVCLifecycle(@"AWEFeedTableViewController", @"viewWillAppear:", "feedWillAppear");
+    DYYYProbeV2InstallVCLifecycle(@"AWEFeedTableViewController", @"viewDidAppear:",  "feedDidAppear");
+    DYYYProbeV2InstallLayout(@"AWEDPlayerViewController_Merge");
+    DYYYProbeV2InstallLayout(@"AWEPlayVideoViewController");
+    DYYYProbeV2InstallLayout(@"AWEPlayInteractionViewController");
+    DYYYProbeV2InstallLayout(@"AWEFeedCellViewController");
+    DYYYProbeV2Log(@"========== ProbeV2 installed ==========");
+}
+
+%ctor {
+    DYYYProbeV2Install();
+}
