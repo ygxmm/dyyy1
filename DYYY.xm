@@ -16953,7 +16953,16 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         return;
     }
     CGFloat superH = sv.bounds.size.height;
-    if (superH > 100 && fabs(vw.frame.size.height - superH) > 0.5) {
+    // v464: v484 仅为了修详情页（Merge 被压），在首页 feed 不需要，且会干扰横竖屏恢复
+    BOOL dyyyIsFeed = NO;
+    UIView *p = sv;
+    while (p) {
+        if ([p.nextResponder isKindOfClass:NSClassFromString(@"AWEFeedCellViewController")]) {
+            dyyyIsFeed = YES; break;
+        }
+        p = p.superview;
+    }
+    if (!dyyyIsFeed && superH > 100 && fabs(vw.frame.size.height - superH) > 0.5) {
         CGRect f = vw.frame;
         f.origin.y = 0;
         f.size.height = superH;
@@ -17150,23 +17159,19 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     DYYYHandleCommittedSpeedAwemeChanged([self currentAweme]);
 }
 
-// v354: 让抖音的"账本"也用 852 —— 修改 row 高
+// v354: 让抖音的"账本"也用 852 —— 修改 row 高 (v464 重写: 避免过渡态拿到393)
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIWindow *win = [DYYYUtils getActiveWindow];
-        if (win) {
-            return win.bounds.size.height;
-        }
+        CGSize sz = [UIScreen mainScreen].bounds.size;
+        return sz.width > sz.height ? sz.width : sz.height;
     }
     return %orig;
 }
 
 - (double)cellHeight {
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIWindow *win = [DYYYUtils getActiveWindow];
-        if (win) {
-            return win.bounds.size.height;
-        }
+        CGSize sz = [UIScreen mainScreen].bounds.size;
+        return sz.width > sz.height ? sz.width : sz.height;
     }
     return %orig;
 }
