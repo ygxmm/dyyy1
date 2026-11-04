@@ -15976,20 +15976,43 @@ static Class tabBarButtonClass = nil;
     }
 
     // v580.4: 全局拦截 Interaction，只要试图超过 792 就砍下来，防止漏网之鱼
+    // v580.4 & v466: 全局拦截，在入参处直接改 frame，钉死高度（不触发死循环）
     if (enableFS) {
         UIResponder *owner = self.nextResponder;
-        if ([owner isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")]) {
-            AWEPlayInteractionViewController *ic = (AWEPlayInteractionViewController *)owner;
-            CGFloat targetH = CGRectGetHeight([UIScreen mainScreen].bounds) - 60.0;
-            // 放宽条件：只要高度大于目标高度+0.5，就拦截
-            if (CGRectGetHeight(frame) > targetH + 0.5) {
-                NSString *refer = ic.referString;
-                BOOL isSearchVideo = [refer isKindOfClass:[NSString class]] && [refer isEqualToString:@"general_search"];
-                AWEAwemeModel *aweme = (AWEAwemeModel *)ic.model;
-                BOOL isImageText = (aweme && [aweme respondsToSelector:@selector(awemeType)] && aweme.awemeType == 68) || DYYYInteractionUsesRichContent(ic);
-                
-                if (!isSearchVideo || isImageText) {
-                    frame.size.height = targetH;
+        if ([owner isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")] ||
+            [owner isKindOfClass:NSClassFromString(@"AWEDPlayerViewController_Merge")]) {
+            
+            UIView *v = (UIView *)self;
+            UIView *sv = v.superview;
+            BOOL isFeed = NO;
+            while (sv) {
+                if ([sv.nextResponder isKindOfClass:NSClassFromString(@"AWEFeedCellViewController")]) {
+                    isFeed = YES; break;
+                }
+                sv = sv.superview;
+            }
+
+            CGSize sz = [UIScreen mainScreen].bounds.size;
+            BOOL isPortrait = sz.height > sz.width;
+
+            if (isFeed && isPortrait) {
+                if ([owner isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")]) {
+                    // 1. UI 层钉死 792
+                    CGFloat targetH = sz.height - 60.0;
+                    if (fabs(CGRectGetHeight(frame) - targetH) > 0.5 && CGRectGetHeight(frame) > 100.0) {
+                        NSString *refer = ((AWEPlayInteractionViewController *)owner).referString;
+                        BOOL isSearchVideo = [refer isKindOfClass:[NSString class]] && [refer isEqualToString:@"general_search"];
+                        if (!isSearchVideo) {
+                            frame.size.height = targetH;
+                        }
+                    }
+                } else {
+                    // 2. 视频层（Merge）钉死 852
+                    CGFloat targetH = sz.height;
+                    if (fabs(CGRectGetHeight(frame) - targetH) > 0.5 && CGRectGetHeight(frame) > 100.0) {
+                        frame.size.height = targetH;
+                        frame.origin.y = 0;
+                    }
                 }
             }
         }
