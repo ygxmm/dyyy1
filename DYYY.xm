@@ -16953,21 +16953,10 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         return;
     }
     CGFloat superH = sv.bounds.size.height;
-    // v459: feed 页 video 和 interaction 都钉 792（屏高-60），修复全屏返回错位；
-    //       detail 页保持跟随父层（v457 的 852），原钉死 UI 设计不变。
-    BOOL dyyyFeedPage = NO;
-    UIView *dyyyP = vw.superview;
-    while (dyyyP) {
-        if ([dyyyP.nextResponder isKindOfClass:NSClassFromString(@"AWEFeedCellViewController")]) {
-            dyyyFeedPage = YES; break;
-        }
-        dyyyP = dyyyP.superview;
-    }
-    CGFloat dyyyTargetH = dyyyFeedPage ? (CGRectGetHeight([UIScreen mainScreen].bounds) - 60.0) : superH;
-    if (dyyyTargetH > 100 && fabs(vw.frame.size.height - dyyyTargetH) > 0.5) {
+    if (superH > 100 && fabs(vw.frame.size.height - superH) > 0.5) {
         CGRect f = vw.frame;
         f.origin.y = 0;
-        f.size.height = dyyyTargetH;
+        f.size.height = superH;
         vw.frame = f;
     }
     vw.clipsToBounds = NO;
