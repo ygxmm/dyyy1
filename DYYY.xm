@@ -19138,14 +19138,25 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
-// ==================== 全屏返回诊断探针 v2（返回后保留，定位完删） ====================
-// 日志：/var/mobile/Library/Preferences/dyyy_fsprobe2.log
-// 清理：rm /var/mobile/Library/Preferences/dyyy_fsprobe2.log
+
+// ==================== 全屏返回诊断探针 v2（沙盒版，定位完删） ====================
+// 日志：<抖音沙盒>/Documents/dyyy_fsprobe2.log
+// 查找：find /var/mobile/Containers/Data/Application -name 'dyyy_fsprobe2.log'
 // 策略：生命周期全记；layout 仅在 armed 2 秒窗口内记；每实例每帧只记变化。
 
-static NSString * const kDYYYProbeV2Path = @"/var/mobile/Library/Preferences/dyyy_fsprobe2.log";
+static NSString *DYYYProbeV2Path(void) {
+    static NSString *p = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSString *doc = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+        if (doc) p = [doc stringByAppendingPathComponent:@"dyyy_fsprobe2.log"];
+    });
+    return p;
+}
 
 static void DYYYProbeV2Log(NSString *fmt, ...) {
+    NSString *path = DYYYProbeV2Path();
+    if (!path) return;
     va_list ap; va_start(ap, fmt);
     NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
     va_end(ap);
@@ -19153,10 +19164,10 @@ static void DYYYProbeV2Log(NSString *fmt, ...) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{ df = [NSDateFormatter new]; df.dateFormat = @"HH:mm:ss.SSS"; });
     NSString *line = [NSString stringWithFormat:@"[%@] %@\n", [df stringFromDate:[NSDate date]], msg];
-    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:kDYYYProbeV2Path];
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
     if (!fh) {
-        [[NSFileManager defaultManager] createFileAtPath:kDYYYProbeV2Path contents:nil attributes:nil];
-        fh = [NSFileHandle fileHandleForWritingAtPath:kDYYYProbeV2Path];
+        [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil];
+        fh = [NSFileHandle fileHandleForWritingAtPath:path];
     }
     if (!fh) return;
     @try {
@@ -19225,7 +19236,7 @@ static void DYYYProbeV2InstallLayout(NSString *clsName) {
 }
 
 static void DYYYProbeV2Install(void) {
-    DYYYProbeV2Log(@"========== ProbeV2 start ==========");
+    DYYYProbeV2Log(@"========== ProbeV2 start (sandbox) ==========");
     DYYYProbeV2InstallVCLifecycle(@"AWEAwemeDetailTableViewController", @"viewWillDisappear:", "detailWillDisappear");
     DYYYProbeV2InstallVCLifecycle(@"AWEAwemeDetailTableViewController", @"viewDidDisappear:",  "detailDidDisappear");
     DYYYProbeV2InstallVCLifecycle(@"AWEFeedCellViewController", @"viewWillAppear:", "feedCellWillAppear");
