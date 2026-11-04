@@ -16269,20 +16269,29 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     // 底部锚定的内容随之上移 60。只改高度，不动 origin。
     // v580.4: 安全兜底，防止某些情况下 setFrame 未拦截到
     if (DYYYBottomInsetActive() && self.view) {
-        CGFloat targetH = CGRectGetHeight([UIScreen mainScreen].bounds) - 60.0;
-        if (self.view.frame.size.height > targetH + 0.5) {
-            NSString *refer = self.referString;
-            BOOL isSearchVideo = [refer isKindOfClass:[NSString class]] && [refer isEqualToString:@"general_search"];
-            AWEAwemeModel *aweme = (AWEAwemeModel *)self.model;
-            BOOL isImageText = (aweme && [aweme respondsToSelector:@selector(awemeType)] && aweme.awemeType == 68) || DYYYInteractionUsesRichContent(self);
-            
-            if (!isSearchVideo || isImageText) {
-                CGRect f = self.view.frame;
-                f.size.height = targetH;
-                // 禁止动画，防止 KVO 死循环
-                [UIView performWithoutAnimation:^{
-                    self.view.frame = f;
-                }];
+        CGSize sz = [UIScreen mainScreen].bounds.size;
+        BOOL dyyyIsLandscape = sz.width > sz.height;
+        BOOL dyyyInDetail = NO;
+        if ([self respondsToSelector:@selector(isInDetailFeed)]) {
+            dyyyInDetail = [[self valueForKey:@"isInDetailFeed"] boolValue];
+        }
+        if (!dyyyIsLandscape && !dyyyInDetail) {
+            CGFloat targetH = sz.height - 60.0;
+            if (fabs(self.view.frame.size.height - targetH) > 0.5) {
+                NSString *refer = self.referString;
+                BOOL isSearchVideo = [refer isKindOfClass:[NSString class]] && [refer isEqualToString:@"general_search"];
+                AWEAwemeModel *aweme = (AWEAwemeModel *)self.model;
+                BOOL isImageText = (aweme && [aweme respondsToSelector:@selector(awemeType)] && aweme.awemeType == 68) || DYYYInteractionUsesRichContent(self);
+                if (!isSearchVideo || isImageText) {
+                    // 异步执行，打破 layoutSubviews 死循环
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        CGRect f = self.view.frame;
+                        f.origin.y = 0;
+                        f.size.height = targetH;
+                        self.view.frame = f;
+                        self.view.transform = CGAffineTransformIdentity;
+                    });
+                }
             }
         }
     }
@@ -16976,16 +16985,37 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         return;
     }
     CGFloat superH = sv.bounds.size.height;
-    // v464: v484 仅为了修详情页（Merge 被压），在首页 feed 不需要，且会干扰横竖屏恢复
     BOOL dyyyIsFeed = NO;
-    UIView *p = sv;
-    while (p) {
-        if ([p.nextResponder isKindOfClass:NSClassFromString(@"AWEFeedCellViewController")]) {
+    UIView *dyyyP = sv;
+    while (dyyyP) {
+        if ([dyyyP.nextResponder isKindOfClass:NSClassFromString(@"AWEFeedCellViewController")]) {
             dyyyIsFeed = YES; break;
         }
-        p = p.superview;
+        dyyyP = dyyyP.superview;
     }
-    if (!dyyyIsFeed && superH > 100 && fabs(vw.frame.size.height - superH) > 0.5) {
+    if (dyyyIsFeed && DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        CGSize sz = [UIScreen mainScreen].bounds.size;
+        if (sz.height > sz.width) { // 竖屏
+            superH = sz.height;
+            if (fabs(sv.frame.size.height - sz.height) > 0.5 || fabs(vw.frame.size.height - sz.height) > 0.5) {
+                // 异步执行，打破 layoutSubviews 死循环
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    CGRect sf = sv.frame;
+                    sf.origin.y = 0;
+                    sf.size.height = sz.height;
+                    sv.frame = sf;
+                    sv.transform = CGAffineTransformIdentity;
+
+                    CGRect f = vw.frame;
+                    f.origin.y = 0;
+                    f.size.height = sz.height;
+                    vw.frame = f;
+                    vw.transform = CGAffineTransformIdentity;
+                });
+            }
+        }
+    }
+    if (superH > 100 && fabs(vw.frame.size.height - superH) > 0.5) {
         CGRect f = vw.frame;
         f.origin.y = 0;
         f.size.height = superH;
