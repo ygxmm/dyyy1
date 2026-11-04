@@ -2409,7 +2409,6 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property (nonatomic, weak) id videoDelegate;
 @property (nonatomic, copy) NSString *referString;
 @property (nonatomic, assign) BOOL isCommentVCShowing;
-@property (nonatomic, assign) BOOL isInDetailFeed;  // v462: classdump 补声明
 - (id)controllerByProtocol:(id)protocol;
 - (void)viewDidLayoutSubviews;
 - (void)speedButtonTapped:(id)sender;
