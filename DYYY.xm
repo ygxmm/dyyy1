@@ -17153,18 +17153,20 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 // v354: 让抖音的"账本"也用 852 —— 修改 row 高
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        // v463: 始终返回屏幕长边（竖屏852），避免横屏返回时拿到393
-        CGSize dyyySz = [UIScreen mainScreen].bounds.size;
-        return MAX(dyyySz.width, dyyySz.height);
+        UIWindow *win = [DYYYUtils getActiveWindow];
+        if (win) {
+            return win.bounds.size.height;
+        }
     }
     return %orig;
 }
 
 - (double)cellHeight {
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        // v463: 同 heightForRow，始终返回长边
-        CGSize dyyySz = [UIScreen mainScreen].bounds.size;
-        return MAX(dyyySz.width, dyyySz.height);
+        UIWindow *win = [DYYYUtils getActiveWindow];
+        if (win) {
+            return win.bounds.size.height;
+        }
     }
     return %orig;
 }
