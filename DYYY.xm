@@ -148,6 +148,50 @@ static void DYYYAsyncSetFullscreenFrame(UIView *view, CGRect target) {
 // 旋转期间 layout 被全部跳过，而 gDYYYInRotation 要等转场结束 0.3s 才复位；
 // 这里补一次复位后的 setNeedsLayout，让上面的异步归位重新跑起来。
 
+// v595: 页面边界判定。
+// 只有「视频详情」页（含搜索完点开的视频）允许做全屏几何；
+// 图文（RichContent 容器 / awemeType == 68）和首页 feed 一律不动。
+static BOOL DYYYIsRichContentController(UIViewController *vc) {
+    UIViewController *p = vc;
+    int depth = 0;
+    while (p && depth < 6) {
+        if ([NSStringFromClass([p class]) containsString:@"RichContent"]) return YES;
+        p = p.parentViewController;
+        depth++;
+    }
+    return NO;
+}
+
+static BOOL DYYYIsImagePostController(UIViewController *vc) {
+    id model = nil;
+    @try {
+        model = [vc valueForKey:@"model"];
+    } @catch (NSException *e) {
+        model = nil;
+    }
+    if (!model) return NO;
+    @try {
+        if ([model respondsToSelector:@selector(awemeType)] && [model awemeType] == 68) return YES;
+    } @catch (NSException *e) {}
+    return NO;
+}
+
+static BOOL DYYYIsVideoDetailPage(UIViewController *vc) {
+    if (!vc) return NO;
+    if (DYYYIsRichContentController(vc)) return NO;
+    if (DYYYIsImagePostController(vc)) return NO;
+
+    UIViewController *p = vc.parentViewController;
+    int depth = 0;
+    while (p && depth < 5) {
+        NSString *cls = NSStringFromClass([p class]);
+        if ([cls containsString:@"DetailCell"] || [cls containsString:@"DetailTable"]) return YES;
+        p = p.parentViewController;
+        depth++;
+    }
+    return NO;
+}
+
 static Class DYYYMergePlayerClass(void) {
     static Class cls;
     static dispatch_once_t once;
@@ -16043,7 +16087,8 @@ static Class tabBarButtonClass = nil;
     // 画中画/横屏/小卡片一律放行。
     // v593: 先用纯数值挡住 99% 的 label/button 写入，再去问 nextResponder。
     if (enableFS && !gDYYYInRotation && CGRectGetHeight(frame) > 400.0 &&
-        [self.nextResponder isKindOfClass:DYYYMergePlayerClass()]) {
+        [self.nextResponder isKindOfClass:DYYYMergePlayerClass()] &&
+        DYYYIsVideoDetailPage((UIViewController *)self.nextResponder)) {
         UIWindow *ownerWindow = self.window;
         UIView *parent = self.superview;
         if ((!ownerWindow || ownerWindow.windowLevel == UIWindowLevelNormal) && parent) {
@@ -16339,7 +16384,9 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
         UIView *v = self.viewIfLoaded;
         CGSize sz = [UIScreen mainScreen].bounds.size;
-        if (v && sz.height > sz.width) { // 竖屏
+        // v595: 图文页保持原生高度（852），不参与交互层 792 的钉死
+        BOOL isRichContent = DYYYIsRichContentController(self) || DYYYIsImagePostController(self);
+        if (v && sz.height > sz.width && !isRichContent) { // 竖屏
             if (gDYYYInRotation) {
                 DYYYRetryLayoutAfterRotation(v);
             } else {
@@ -16942,6 +16989,9 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
     if (vw.clipsToBounds) vw.clipsToBounds = NO;
 
+    // v595: 只动视频详情页
+    if (!DYYYIsVideoDetailPage(self)) return;
+
     CGSize screenSize = [UIScreen mainScreen].bounds.size;
     if (!DYYYShouldApplyFullscreenPlayerFix(vw, screenSize)) return;
 
@@ -16995,6 +17045,9 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
     // v459: 只解除裁剪,不改 frame。TTMetalViewVP 自身 clips=0 会溢出到 852。
     if (vw.clipsToBounds) vw.clipsToBounds = NO;
+
+    // v595: 首页 feed 不参与全屏几何，保持原样
+    if (!DYYYIsVideoDetailPage(self)) return;
 
     CGSize screenSize = [UIScreen mainScreen].bounds.size;
     if (!DYYYShouldApplyFullscreenPlayerFix(vw, screenSize)) return;
@@ -17074,6 +17127,9 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
     // v590: 这里只解裁剪，绝不“同步”改 frame
     if (vw.clipsToBounds) vw.clipsToBounds = NO;
+
+    // v595: 只有视频详情页做全屏几何；图文/首页 feed 不动
+    if (!DYYYIsVideoDetailPage(self)) return;
 
     // 只处理真正上屏的 Merge；详情页里可能同时存在多个 cell 的 Merge，
     // 离屏的一律不动，避免多路 852 渲染把 GPU 打满。
