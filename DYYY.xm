@@ -12427,8 +12427,6 @@ static void DYYYHideProfilePostGuideView(UIView *view) {
 // 隐藏搜同款
 static BOOL DYYYIsSearchVideoStickerView(UIView *view);
 
-%hook ACCStickerContainerView
-
 // v627: 真正的排版入口在父类 ACCPlayerAdaptionContainer。
 %hook ACCPlayerAdaptionContainer
 
@@ -12441,6 +12439,8 @@ static BOOL DYYYIsSearchVideoStickerView(UIView *view);
 }
 
 %end
+
+%hook ACCStickerContainerView
 
 // v625: 贴纸内容按 playerFrame 排版，容器 frame/约束都不算数。
 // 在搜索视频页把传入的 playerFrame 下移 28，所有贴纸一起动。
