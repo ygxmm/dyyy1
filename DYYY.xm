@@ -19025,6 +19025,7 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 %hook AWEAwemeDetailTableViewController
 
+// ---- 原版逻辑 (不动) + 探针 ----
 - (double)cellHeightAtIndex:(long long)index {
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
     UIWindow *win = [DYYYUtils getActiveWindow];
@@ -19047,15 +19048,13 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     double orig = %orig;
     double ret = orig;
     UITableView *table = (UITableView *)a0;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        // 优先用 table 自己的 window，防止 getActiveWindow 拿到错误或空 window
-        UIWindow *win = table.window;
-        if (!win) win = [DYYYUtils getActiveWindow];
-        if (win && win.bounds.size.height > 0) {
-            ret = win.bounds.size.height;
-        }
+    
+    // 原版逻辑：返回 table.bounds
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && [table isKindOfClass:[UITableView class]] && table.bounds.size.height > 0) {
+        ret = table.bounds.size.height;
     }
-    // 安全探针：只读属性，不触发 UIKit 重入
+    
+    // 纯读取探针 (不触发递归)
     DYYYProbe(@"rowH", @"idx=%@ ret=%.1f orig=%.1f tblH=%.1f winH=%.1f off=%.1f csz=%.1f", 
               a1, ret, orig, table.bounds.size.height, 
               table.window ? table.window.bounds.size.height : -1,
@@ -19068,6 +19067,26 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
 }
 
+// ---- 生命周期探针 (抓进入和退出) ----
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    UITableView *t = [self tableView];
+    DYYYProbe(@"Detail.Enter", @"count=%ld tableFrame=%@ winH=%.1f off=%.1f csz=%.1f", 
+              (long)[t numberOfRowsInSection:0], NSStringFromCGRect(t.frame), 
+              t.window ? t.window.bounds.size.height : -1,
+              t.contentOffset.y, t.contentSize.height);
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    UITableView *t = [self tableView];
+    DYYYProbe(@"Detail.Leave", @"count=%ld tableFrame=%@ winH=%.1f off=%.1f csz=%.1f", 
+              (long)[t numberOfRowsInSection:0], NSStringFromCGRect(t.frame), 
+              t.window ? t.window.bounds.size.height : -1,
+              t.contentOffset.y, t.contentSize.height);
+    %orig;
+}
+
+// ---- 翻页探针 ----
 - (void)updateTableViewLayoutForTargetPageIndex:(NSInteger)index {
     UITableView *t = [self tableView];
     DYYYProbe(@"updPage.BEFORE", @"idx=%ld off=%.1f csz=%.1f tblH=%.1f winH=%.1f", 
@@ -19082,15 +19101,7 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 %end
 
-
-
-
-
-%hook AWEAwemePlayVideoViewController
-
-%end
-
-
 %ctor {
+    DYYYProbe(@"BOOT", @"DYYY loaded, probe active");
     %init(DYYYDetailHeightHook);
 }
