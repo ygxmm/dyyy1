@@ -15976,33 +15976,40 @@ static Class tabBarButtonClass = nil;
     }
 
     // v580.4: 全局拦截 Interaction，只要试图超过 792 就砍下来，防止漏网之鱼
-    // v580.4 & v466: 全局拦截，在入参处直接改 frame，钉死高度（不触发死循环）
+    // v471: 终极重构。全局 setFrame 拦截，原点归零，彻底杜绝错位和抖动
     if (enableFS) {
         UIResponder *owner = self.nextResponder;
-        if ([owner isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")] ||
-            [owner isKindOfClass:NSClassFromString(@"AWEDPlayerViewController_Merge")]) {
-            
-            CGSize sz = [UIScreen mainScreen].bounds.size;
-            BOOL isPortrait = sz.height > sz.width;
+        CGSize screenSz = [UIScreen mainScreen].bounds.size;
+        BOOL isPortrait = screenSz.height > screenSz.width;
 
-            if (isPortrait) {
-                if ([owner isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")]) {
-                    // 1. UI 层钉死 792
-                    CGFloat targetH = sz.height - 60.0;
-                    if (fabs(CGRectGetHeight(frame) - targetH) > 0.5 && CGRectGetHeight(frame) > 100.0) {
-                        NSString *refer = ((AWEPlayInteractionViewController *)owner).referString;
-                        BOOL isSearchVideo = [refer isKindOfClass:[NSString class]] && [refer isEqualToString:@"general_search"];
-                        if (!isSearchVideo) {
-                            frame.size.height = targetH;
+        if (isPortrait) {
+            // 1. 视频层 Merge：原点锁零，高度拉满
+            if ([owner isKindOfClass:NSClassFromString(@"AWEDPlayerViewController_Merge")]) {
+                BOOL canCover = YES;
+                if ([owner respondsToSelector:@selector(model)]) {
+                    id model = [(id)owner model];
+                    if (model && [model respondsToSelector:@selector(awemeType)] && [model awemeType] == 68) canCover = NO; // 图文
+                    if (model && [model respondsToSelector:@selector(video)]) {
+                        id video = [model video];
+                        if (video && [video respondsToSelector:@selector(width)] && [video respondsToSelector:@selector(height)]) {
+                            double w = [[video width] doubleValue];
+                            double h = [[video height] doubleValue];
+                            if (w > 0 && h > 0 && (h / w) < 1.70) canCover = NO; // 横屏比例
                         }
                     }
-                } else {
-                    // 2. 视频层（Merge）钉死 852
-                    CGFloat targetH = sz.height;
-                    if (fabs(CGRectGetHeight(frame) - targetH) > 0.5 && CGRectGetHeight(frame) > 100.0) {
-                        frame.size.height = targetH;
-                        frame.origin.y = 0;
-                    }
+                }
+                frame.origin = CGPointZero;
+                if (canCover) {
+                    frame.size.height = screenSz.height;
+                }
+            }
+            // 2. UI 层 Interaction：原点锁零，高度钉死 792
+            else if ([owner isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")]) {
+                NSString *refer = [(id)owner referString];
+                BOOL isSearchVideo = [refer isKindOfClass:[NSString class]] && [refer isEqualToString:@"general_search"];
+                if (!isSearchVideo) {
+                    frame.origin = CGPointZero;
+                    frame.size.height = screenSz.height - 60.0;
                 }
             }
         }
@@ -16258,33 +16265,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     // v535: 全屏时把交互层高度从 852 收到 792（屏幕高 - 60），
     // 底部锚定的内容随之上移 60。只改高度，不动 origin。
     // v580.4: 安全兜底，防止某些情况下 setFrame 未拦截到
-    if (DYYYBottomInsetActive() && self.view) {
-        CGSize sz = [UIScreen mainScreen].bounds.size;
-        BOOL dyyyIsLandscape = sz.width > sz.height;
-        BOOL dyyyInDetail = NO;
-        if ([self respondsToSelector:@selector(isInDetailFeed)]) {
-            dyyyInDetail = [[self valueForKey:@"isInDetailFeed"] boolValue];
-        }
-        if (!dyyyIsLandscape && !dyyyInDetail) {
-            CGFloat targetH = sz.height - 60.0;
-            if (fabs(self.view.frame.size.height - targetH) > 0.5) {
-                NSString *refer = self.referString;
-                BOOL isSearchVideo = [refer isKindOfClass:[NSString class]] && [refer isEqualToString:@"general_search"];
-                AWEAwemeModel *aweme = (AWEAwemeModel *)self.model;
-                BOOL isImageText = (aweme && [aweme respondsToSelector:@selector(awemeType)] && aweme.awemeType == 68) || DYYYInteractionUsesRichContent(self);
-                if (!isSearchVideo || isImageText) {
-                    // 异步执行，打破 layoutSubviews 死循环
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        CGRect f = self.view.frame;
-                        f.origin.y = 0;
-                        f.size.height = targetH;
-                        self.view.frame = f;
-                        self.view.transform = CGAffineTransformIdentity;
-                    });
-                }
-            }
-        }
-    }
     DYYYApplySearchShiftIfNeeded(self);
     // v483: 搜索页详情 interaction 视觉 y=120，底部溢出 120px，屏幕底部 792-852
     // 区域露出 interaction 内部黑色元素（输入框背景/渐变）→ 闪黑。
@@ -16973,43 +16953,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     } else {
         vw.clipsToBounds = NO;
         return;
-    }
-    CGFloat superH = sv.bounds.size.height;
-    BOOL dyyyIsFeed = NO;
-    UIView *dyyyP = sv;
-    while (dyyyP) {
-        if ([dyyyP.nextResponder isKindOfClass:NSClassFromString(@"AWEFeedCellViewController")]) {
-            dyyyIsFeed = YES; break;
-        }
-        dyyyP = dyyyP.superview;
-    }
-    if (dyyyIsFeed && DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        CGSize sz = [UIScreen mainScreen].bounds.size;
-        if (sz.height > sz.width) { // 竖屏
-            superH = sz.height;
-            if (fabs(sv.frame.size.height - sz.height) > 0.5 || fabs(vw.frame.size.height - sz.height) > 0.5) {
-                // 异步执行，打破 layoutSubviews 死循环
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    CGRect sf = sv.frame;
-                    sf.origin.y = 0;
-                    sf.size.height = sz.height;
-                    sv.frame = sf;
-                    sv.transform = CGAffineTransformIdentity;
-
-                    CGRect f = vw.frame;
-                    f.origin.y = 0;
-                    f.size.height = sz.height;
-                    vw.frame = f;
-                    vw.transform = CGAffineTransformIdentity;
-                });
-            }
-        }
-    }
-    if (superH > 100 && fabs(vw.frame.size.height - superH) > 0.5) {
-        CGRect f = vw.frame;
-        f.origin.y = 0;
-        f.size.height = superH;
-        vw.frame = f;
     }
     vw.clipsToBounds = NO;
 }
