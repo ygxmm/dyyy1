@@ -1620,11 +1620,16 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property (nonatomic) long long currentIndex;
 @end
 @interface AWEAwemeDetailTableViewController (DYYYFullscreen)
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath;
 - (double)baseTableViewBottomInset;
 - (UITableView *)tableView;
 - (unsigned long long)currentVisibleCellIndex;
 - (void)updateTableViewLayoutForTargetPageIndex:(long long)index;
 - (UIView *)activeBottomBar;
+@end
+
+@interface AWEPlayVideoViewController (DYYYFullscreen)
+- (CGSize)getPlayerVideoSize;
 @end
 
 @interface AWEMixVideoPanelDetailTableViewController : AWEAwemeDetailTableViewController
