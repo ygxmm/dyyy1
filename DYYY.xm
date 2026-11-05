@@ -16226,6 +16226,21 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     %orig;
     // v535: 全屏时把交互层高度从 852 收到 792（屏幕高 - 60），
     // 底部锚定的内容随之上移 60。只改高度，不动 origin。
+    // v484: 恢复 Interaction 钉死逻辑（只在竖屏全屏生效）
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        CGSize sz = [UIScreen mainScreen].bounds.size;
+        if (sz.height > sz.width) { // 竖屏
+            UIView *v = self.viewIfLoaded;
+            if (v) {
+                CGFloat targetH = sz.height - 60.0;
+                // 一旦发现高度不对或者原点漂移，直接强制归位
+                if (fabs(v.frame.origin.y) > 0.5 || fabs(v.frame.size.height - targetH) > 0.5) {
+                    v.frame = CGRectMake(0, 0, sz.width, targetH);
+                }
+            }
+        }
+    }
+
     // v580.4: 安全兜底，防止某些情况下 setFrame 未拦截到
     DYYYApplySearchShiftIfNeeded(self);
     // v483: 搜索页详情 interaction 视觉 y=120，底部溢出 120px，屏幕底部 792-852
