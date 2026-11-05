@@ -16511,6 +16511,21 @@ static BOOL DYYYIsSearchVideoStickerView(UIView *view) {
                      self.view.window ? self.view.window.safeAreaInsets.bottom : -1);
     }
 
+    // v624: top 约束改了不生效（容器走 frame），在父层直接写子视图 frame。
+    // 只对搜索视频页：AWEFeedStickerContainerView 整体下移 28；其他页面不动。
+    if (DYYYIsSearchVideoStickerView(self.view)) {
+        for (UIView *sub in self.view.subviews) {
+            if (![sub isKindOfClass:NSClassFromString(@"AWEFeedStickerContainerView")]) continue;
+            CGRect stickerFrame = sub.frame;
+            if (fabs(stickerFrame.origin.y - 28.0) > 0.5) {
+                stickerFrame.origin.y = 28.0;
+                sub.frame = stickerFrame;
+                DYYYProbeLog(@"STICKER frame y=28");
+            }
+            break;
+        }
+    }
+
     // v616: 恢复「打开评论区上方黑条」清理（之前随全屏逻辑一起删掉了）
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen") || DYYYGetBoolCached(@"DYYYEnableCommentBlur")) {
         CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
