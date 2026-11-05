@@ -91,6 +91,8 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 
 @interface AWEVideoModel : NSObject
+@property (nonatomic, strong) NSNumber *width;
+@property (nonatomic, strong) NSNumber *height;
 @property(nonatomic, strong) AWEURLModel *playLowBitURL;
 @property(retain, nonatomic) AWEURLModel *playURL;
 @property(copy, nonatomic) NSArray *manualBitrateModels;
@@ -177,7 +179,6 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property(nonatomic, strong, readwrite) NSNumber *createTime;
 @property(nonatomic, strong, readwrite) NSNumber *recommendShareRate; // 推荐视频专有属性
 @property(nonatomic, assign, readwrite) CGFloat videoDuration;
-@property(nonatomic, strong) AWEVideoModel *video;
 @property(nonatomic, strong) AWEMusicModel *music;
 @property(nonatomic, strong) NSArray<AWEImageAlbumImageModel *> *albumImages;
 @property(nonatomic, assign) NSInteger currentImageIndex;
