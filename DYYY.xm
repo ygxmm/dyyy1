@@ -16427,7 +16427,38 @@ static void DYYYFixStickerTopConstraint(UIView *view) {
 
 - (void)layoutSubviews {
     %orig;
-    DYYYFixStickerTopConstraint((UIView *)self);
+
+    UIView *selfView = (UIView *)self;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+
+    // v620: 只对「搜索完点开的视频」：
+    // 外层容器保持 0..792，内层 ACCStickerContainerView 整体下移 28。
+    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:selfView];
+    NSString *refer = nil;
+    @try {
+        refer = [vc valueForKey:@"referString"];
+    } @catch (NSException *e) {
+        refer = nil;
+    }
+    BOOL isSearchVideo = [refer isKindOfClass:[NSString class]] && [refer containsString:@"search"] &&
+                         DYYYDetailPagerForController(vc) != nil &&
+                         !DYYYCurrentDetailPageIsImage(vc);
+    if (!isSearchVideo) {
+        DYYYFixStickerTopConstraint(selfView);
+        return;
+    }
+
+    UIView *inner = nil;
+    for (UIView *sub in selfView.subviews) {
+        if ([sub isKindOfClass:NSClassFromString(@"ACCStickerContainerView")]) {
+            inner = sub;
+            break;
+        }
+    }
+    if (inner && fabs(inner.transform.ty - 28.0) > 0.5) {
+        inner.transform = CGAffineTransformMakeTranslation(0, 28.0);
+        DYYYProbeLog(@"STICKER inner translate 28 refer=%@", refer);
+    }
 }
 
 %end
