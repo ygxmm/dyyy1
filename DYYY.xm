@@ -16429,14 +16429,34 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     }
 
     {
+    // v616: 恢复「打开评论区上方黑条」清理（之前随全屏逻辑一起删掉了）
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") || DYYYGetBoolCached(@"DYYYEnableCommentBlur")) {
+        CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
+        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+        CGFloat safeTop = 0;
+        if (@available(iOS 11.0, *)) {
+            safeTop = self.view.safeAreaInsets.top;
+        }
+        if (safeTop <= 0.5) safeTop = 47.0;
+        DYYYClearBlackEdgeBars(self.view, screenW, screenH, safeTop, 0);
+    }
+
     // v615: 交互层带 FlexibleHeight，cell 每次布局都会把它拉回 803/769；
     // 先去掉高度自适应，再同步钉死 792（幂等），避免异步写入和原生布局互相拉锯。
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-        UIWindow *window = self.view.window;
-        if (window) {
+        // v616: 预加载 cell 的 window 还是 nil，但 superview 已经是 852；
+        // 用 superview 高度算，保证进 window 前就是 792，翻页不再跳。
+        UIView *container = self.view.superview;
+        CGFloat viewportH = 0;
+        if (container && container.bounds.size.height > 0) {
+            viewportH = container.bounds.size.height;
+        } else if (self.view.window) {
+            viewportH = self.view.window.bounds.size.height;
+        }
+        if (viewportH > 100) {
             CGRect f = self.view.frame;
-            CGFloat targetH = window.bounds.size.height - 60.0;
+            CGFloat targetH = viewportH - 60.0;
             if (fabs(f.size.height - targetH) > 0.5) {
                 f.size.height = targetH;
                 self.view.frame = f;
