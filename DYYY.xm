@@ -16907,6 +16907,12 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %end
 
+- (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        return;
+    }
+    %orig;
+}
 %hook AWEDPlayerViewController_Merge
 
 - (BOOL)enableHDR {
@@ -19125,16 +19131,13 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
-// v480: 直接打七寸。全屏开启时，直接掐断缩放方法。
-%hook AWEDPlayerViewController_Merge
+
 - (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        return; 
+        return;
     }
     %orig;
 }
-%end
-
 %hook AWEAwemePlayVideoViewController
 - (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
