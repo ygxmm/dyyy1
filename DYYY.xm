@@ -178,23 +178,6 @@ static BOOL DYYYCurrentDetailPageIsImage(UIViewController *vc) {
     return [aweme respondsToSelector:@selector(awemeType)] && [aweme awemeType] == 68;
 }
 
-// v630: 搜索结果页整页白名单：不参与任何全屏 hook。
-// 判定：父链含 SearchResult / GeneralSearchCachalot / SearchMiddleFeed / SearchSliding，
-// 且没有详情分页器（搜索详情不算）。
-static BOOL DYYYIsSearchResultsPage(UIViewController *vc) {
-    if (!vc) return NO;
-    if (DYYYDetailPagerForController(vc)) return NO;
-    for (UIViewController *p = vc; p; p = p.parentViewController) {
-        NSString *cls = NSStringFromClass([p class]);
-        if ([cls containsString:@"AWESearchResultViewController"] ||
-            [cls containsString:@"AWESearchMiddleFeedViewController"] ||
-            [cls containsString:@"AWEGeneralSearchCachalotViewController"] ||
-            [cls containsString:@"AWESearchSlidingViewController"]) {
-            return YES;
-        }
-    }
-    return NO;
-}
 
 static BOOL DYYYShouldApplyPageGeometry(UIViewController *vc) {
     if (!vc) return NO;
@@ -16420,9 +16403,8 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         DYYYClearBlackEdgeBars(self.view, screenW, screenH, safeTop, 0);
     }
 
-    // v631: 全屏几何统一交给 DYYYFullscreenCoordinator（参考 Wtrwx/DYYY）。
-    // 搜索结果页整页跳过，避免卡片被撑高。
-    if (!DYYYIsSearchResultsPage(self)) {
+    // v633: 全屏几何完全照搬参考的 Coordinator 入口。
+    {
         if ([DYYYFullscreenCoordinator layoutNativeInteraction:self]) return;
 
         if ([DYYYFullscreenCoordinator usesRecommendedLayoutForController:self]) {
@@ -17055,7 +17037,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    if (DYYYIsSearchResultsPage(self)) return;
     [DYYYFullscreenCoordinator layoutPlayerContainer:self];
 }
 
@@ -17117,7 +17098,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    if (DYYYIsSearchResultsPage(self)) return;
     [DYYYFullscreenCoordinator layoutPlayerContainer:self];
 }
 
@@ -17910,11 +17890,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 %end
 
-%hook TTMetalViewVP
-- (void)layoutSubviews {
-    %orig;
-}
-%end
+
 
 // 隐藏图片滑条
 %hook AWEStoryProgressContainerView
