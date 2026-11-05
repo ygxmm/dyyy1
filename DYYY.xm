@@ -112,7 +112,7 @@ static char kDYYYAsyncFramePendingKey;
 static char kDYYYAsyncFrameTimeKey;
 static char kDYYYRotationRetryKey;
 
-static void DYYYAsyncSetFullscreenFrame(UIView *view, CGRect target) {
+static void __attribute__((unused)) DYYYAsyncSetFullscreenFrame(UIView *view, CGRect target) {
     if (!view) return;
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
     if (gDYYYInRotation) return;
@@ -16083,27 +16083,8 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
-    // v592: Merge 视频容器写入时归位。抖音在搜索详情/评论区会把 Merge.view 写成
-    // 792（父层 852），事后纠正永远慢半拍；这里按写入方身份直接改目标值。
-    // 只认主窗口、竖屏、父层接近满屏、来意高度 >= 父层 80% 的写入，
-    // 画中画/横屏/小卡片一律放行。
-    // v593: 先用纯数值挡住 99% 的 label/button 写入，再去问 nextResponder。
-    if (enableFS && !gDYYYInRotation && CGRectGetHeight(frame) > 400.0 &&
-        [self.nextResponder isKindOfClass:DYYYMergePlayerClass()] &&
-        DYYYShouldApplyPageGeometry((UIViewController *)self.nextResponder)) {
-        UIWindow *ownerWindow = self.window;
-        UIView *parent = self.superview;
-        if ((!ownerWindow || ownerWindow.windowLevel == UIWindowLevelNormal) && parent) {
-            CGRect pb = parent.bounds;
-            CGFloat pw = CGRectGetWidth(pb);
-            CGFloat ph = CGRectGetHeight(pb);
-            CGSize screenSize = [UIScreen mainScreen].bounds.size;
-            BOOL fullScreenContainer = (ph > pw) && (pw >= screenSize.width - 1.0) && (ph >= screenSize.height * 0.9);
-            if (fullScreenContainer && CGRectGetHeight(frame) >= ph * 0.8) {
-                frame = CGRectMake(0, 0, pw, ph);
-            }
-        }
-    }
+    // v605: 不再在 setFrame 里撑 Merge 容器（会把 cell/交互层一起带大）。
+
     // v382: 卡帧优化 —— 最便宜的 isMemberOfClass 放最前面
     // 99% 的 setFrame 调用来自 UILabel/UIButton/UIImageView 等子类，
     // 一行判定立即跳过，完全不碰关联对象（objc_getAssociatedObject 有全局锁，最贵）。
@@ -16966,7 +16947,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
     // v591: 搜索详情等页面原生会把播放器压到 792（852 - 60），
     // 底部留 60pt 黑边；这里异步拉回全屏。
-    DYYYAsyncSetFullscreenFrame(vw, CGRectMake(0, 0, screenSize.width, screenSize.height));
+    // v605: 容器不撑，画面交给 TTMetalViewVP
 }
 
 - (void)setIsAutoPlay:(BOOL)arg0 {
@@ -17019,7 +17000,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     if (!DYYYShouldApplyFullscreenPlayerFix(vw, screenSize)) return;
 
     // v591: 首页/搜索全屏 feed 的播放器同样要归位（含 160x852 的宽度残留）
-    DYYYAsyncSetFullscreenFrame(vw, CGRectMake(0, 0, screenSize.width, screenSize.height));
+    // v605: 容器不撑，画面交给 TTMetalViewVP
 }
 
 - (void)setIsAutoPlay:(BOOL)arg0 {
@@ -17111,7 +17092,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     if (sv && sv.bounds.size.width > 1.0 && sv.bounds.size.width < screenSize.width - 1.0) return;
 
     // 宽、高、原点一起归位到全屏；真正的赋值在异步块里做
-    DYYYAsyncSetFullscreenFrame(vw, CGRectMake(0, 0, screenSize.width, screenSize.height));
+    // v605: 容器不撑，画面交给 TTMetalViewVP
 }
 
 - (void)setIsAutoPlay:(BOOL)arg0 {
@@ -17901,27 +17882,36 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 %end
 
 %hook TTMetalViewVP
-- (void)setCenter:(CGPoint)center {
-    if (gDYYYInRotation) { %orig(center); return; }
-    BOOL shouldAdjust = NO;
-    UIView *view = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat viewWidth = CGRectGetWidth(view.bounds);
-        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-        if (viewWidth + 0.5f >= screenWidth) {
-            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
-            Class playClass = %c(AWEPlayVideoViewController);
-            if (playClass && [vc isKindOfClass:playClass]) {
-                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
-                AWEAwemeModel *model = playVC.model;
-                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
-                    shouldAdjust = YES;
-                }
+// v605: 只撑渲染层，容器（Merge/cell/交互）保持原生 769。
+- (void)setBounds:(CGRect)bounds {
+    UIView *metalView = (UIView *)self;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && !gDYYYInRotation && metalView.window) {
+        CGSize screenSize = [UIScreen mainScreen].bounds.size;
+        if (screenSize.height > screenSize.width &&
+            fabs(bounds.size.width - screenSize.width) <= 1.0 &&
+            bounds.size.height > screenSize.height * 0.5) {
+            bounds = CGRectMake(0, 0, screenSize.width, screenSize.height);
+            UIView *container = metalView.superview;
+            int depth = 0;
+            while (container && depth < 5) {
+                container.clipsToBounds = NO;
+                container = container.superview;
+                depth++;
             }
         }
     }
+    %orig(bounds);
+}
 
-    // v323: 删除 center 上移 30pt（40.7.0 上 isShowLandscapeEntryView 恒 YES 导致误判）
+- (void)setCenter:(CGPoint)center {
+    if (gDYYYInRotation) { %orig(center); return; }
+    UIView *metalView = (UIView *)self;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && metalView.window) {
+        CGSize screenSize = [UIScreen mainScreen].bounds.size;
+        if (screenSize.height > screenSize.width) {
+            center = CGPointMake(screenSize.width * 0.5, screenSize.height * 0.5);
+        }
+    }
     %orig(center);
 }
 
