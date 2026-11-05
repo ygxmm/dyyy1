@@ -19028,6 +19028,49 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
 }
 
+// 行高已统一为窗口高，但 UIKit 可能仍按旧行高（792）建立 contentSize。
+// contentSize 与「行数×行高」不符时，在布局稳定后让 UIKit 全量重算一次，
+// 使 contentSize = 行数 × 行高，分页 offset 与真实行对齐。
+- (void)viewDidLayoutSubviews {
+    %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    UITableView *table = [self tableView];
+    if (!table.window) return;
+    CGFloat H = table.bounds.size.height;
+    if (H <= 0) return;
+    NSInteger count = [table numberOfRowsInSection:0];
+    if (count <= 0) return;
+    if (fabs(count * H - table.contentSize.height) < H * 0.5) return;
+    static void *kReloading = &kReloading;
+    if (objc_getAssociatedObject(self, kReloading)) return;
+    objc_setAssociatedObject(self, kReloading, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @try {
+            UITableView *t = [self tableView];
+            if (!t.window) return;
+            CGFloat h = t.bounds.size.height;
+            NSInteger n = [t numberOfRowsInSection:0];
+            if (n <= 0 || h <= 0) return;
+            if (fabs(n * h - t.contentSize.height) < h * 0.5) return;
+            NSInteger idx = (NSInteger)[self currentVisibleCellIndex];
+            if (idx < 0 || idx >= n) {
+                idx = (NSInteger)llround(t.contentOffset.y / MAX(h, 1));
+                if (idx < 0) idx = 0;
+                if (idx >= n) idx = n - 1;
+            }
+            [UIView performWithoutAnimation:^{
+                [t beginUpdates];
+                [t endUpdates];
+                [t layoutIfNeeded];
+                NSIndexPath *ip = [NSIndexPath indexPathForRow:idx inSection:0];
+                [t scrollToRowAtIndexPath:ip atScrollPosition:UITableViewScrollPositionTop animated:NO];
+            }];
+        } @finally {
+            objc_setAssociatedObject(self, kReloading, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    });
+}
+
 
 
 
