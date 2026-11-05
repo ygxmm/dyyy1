@@ -57,9 +57,6 @@
 static __thread int gDYYYSetFrameDepth = 0;
 static void DYYYSetFrameDepthDec(int *p) { (void)p; gDYYYSetFrameDepth--; }
 
-static BOOL DYYYBottomInsetActive(void) {
-    return DYYYGetBool(@"DYYYEnableFullScreen");
-}
 
 #import "DYYYLivePreStreamLayoutCoordinator.h"
 
@@ -115,38 +112,6 @@ static char kDYYYAsyncFramePendingKey;
 static char kDYYYAsyncFrameTimeKey;
 static char kDYYYRotationRetryKey;
 
-static void __attribute__((unused)) DYYYAsyncSetFullscreenFrame(UIView *view, CGRect target) {
-    if (!view) return;
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    if (gDYYYInRotation) return;
-    if (CGRectEqualToRect(view.frame, target)) return;
-
-    // 0.5s 限流：即使抖音的 layout 反复把 frame 改回去，也不会高频拉锯
-    NSTimeInterval now = CACurrentMediaTime();
-    NSNumber *last = objc_getAssociatedObject(view, &kDYYYAsyncFrameTimeKey);
-    if (last && now - last.doubleValue < 0.5) return;
-    if (objc_getAssociatedObject(view, &kDYYYAsyncFramePendingKey)) return;
-
-    objc_setAssociatedObject(view, &kDYYYAsyncFramePendingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(view, &kDYYYAsyncFrameTimeKey, @(now), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
-    __weak UIView *weakView = view;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UIView *strongView = weakView;
-        if (!strongView) return;
-        objc_setAssociatedObject(strongView, &kDYYYAsyncFramePendingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
-        // 异步块执行时状态可能已经变了，逐项复核
-        if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-        if (gDYYYInRotation) return;
-        if (!strongView.window) return;
-        if (CGRectEqualToRect(strongView.frame, target)) return;
-
-        [UIView performWithoutAnimation:^{
-            strongView.frame = target;
-        }];
-    });
-}
 
 // 旋转期间 layout 被全部跳过，而 gDYYYInRotation 要等转场结束 0.3s 才复位；
 // 这里补一次复位后的 setNeedsLayout，让上面的异步归位重新跑起来。
@@ -165,73 +130,13 @@ static UIViewController *DYYYDetailPagerForController(UIViewController *vc) {
     return nil;
 }
 
-static BOOL DYYYCurrentDetailPageIsImage(UIViewController *vc) {
-    UIViewController *pager = DYYYDetailPagerForController(vc);
-    if (!pager) return NO;
-    id aweme = nil;
-    @try {
-        aweme = [pager valueForKey:@"currentDisplayingAweme"];
-    } @catch (NSException *e) {
-        aweme = nil;
-    }
-    if (!aweme) return NO;
-    return [aweme respondsToSelector:@selector(awemeType)] && [aweme awemeType] == 68;
-}
 
 
-static BOOL DYYYShouldApplyPageGeometry(UIViewController *vc) {
-    if (!vc) return NO;
-    UIViewController *pager = DYYYDetailPagerForController(vc);
-    if (!pager) return YES; // 非详情页（首页 / 附近 / 关注等）：维持原有逻辑
 
-    id aweme = nil;
-    @try {
-        aweme = [pager valueForKey:@"currentDisplayingAweme"];
-    } @catch (NSException *e) {
-        aweme = nil;
-    }
-    if (!aweme) return YES; // 还没绑定时先按原逻辑走，下一次 layout 再判
-
-    if ([aweme respondsToSelector:@selector(awemeType)] && [aweme awemeType] == 68) {
-        return NO; // 当前页是图文：不参与全屏几何
-    }
-    return YES;
-}
-
-static Class DYYYMergePlayerClass(void) {
-    static Class cls;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ cls = NSClassFromString(@"AWEDPlayerViewController_Merge"); });
-    return cls;
-}
 
 // 只处理“详情页 / 全屏 feed”的大画面：全宽且高度 >= 屏高 70%。
 // 搜索列表里的小卡片不满足，直接放行，避免被误拉满。
-static BOOL DYYYShouldApplyFullscreenPlayerFix(UIView *view, CGSize screenSize) {
-    if (!view || !view.window) return NO;
-    if (screenSize.width < 1.0 || screenSize.height < 1.0) return NO;
-    if (view.frame.size.width < screenSize.width - 1.0) return NO;
-    if (view.frame.size.height < screenSize.height * 0.7) return NO;
-    CGRect visible = [view convertRect:view.bounds toView:view.window];
-    if (!CGRectIntersectsRect(visible, view.window.bounds)) return NO;
-    return YES;
-}
 
-static void DYYYRetryLayoutAfterRotation(UIView *view) {
-    if (!view) return;
-    if (objc_getAssociatedObject(view, &kDYYYRotationRetryKey)) return;
-    objc_setAssociatedObject(view, &kDYYYRotationRetryKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
-    __weak UIView *weakView = view;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        UIView *strongView = weakView;
-        if (!strongView) return;
-        objc_setAssociatedObject(strongView, &kDYYYRotationRetryKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-        if (gDYYYInRotation) return;
-        [strongView setNeedsLayout];
-    });
-}
 static NSString *const kDYYYGlobalTransparencyKey = @"DYYYGlobalTransparency";
 static NSString *const kDYYYGlobalTransparencyDidChangeNotification = @"DYYYGlobalTransparencyDidChangeNotification";
 static NSString *const kDYYYEnableLoginBypassKey = @"DYYYEnableLoginBypass";
@@ -7909,23 +7814,6 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
 @property (nonatomic, copy) NSString * previousPage;
 @end
 
-static void DYYYRefLog(NSString *fmt, ...) {
-    va_list ap; va_start(ap, fmt);
-    NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
-    va_end(ap);
-    NSString *dir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-    if (!dir) return;
-    NSString *path = [dir stringByAppendingPathComponent:@"dyyy_ref.log"];
-    NSString *line = [NSString stringWithFormat:@"%@ %@\n", [NSDate date], msg];
-    if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
-        [@"" writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
-    }
-    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
-    if (!fh) return;
-    [fh seekToEndOfFile];
-    [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
-    [fh closeFile];
-}
 
 
 
@@ -14751,39 +14639,6 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 // ============================================================
 static char kDYYYSearchHitKey;
 static char kDYYYOrigTransformKey;
-static void DYYYApplySearchShiftIfNeeded(id vc) {
-    if (!vc) return;
-
-    @try {
-        UIView *v = [vc valueForKey:@"view"];
-        if (!v) return;
-
-        // 1) referString 只读一次
-        NSNumber *isSearch = objc_getAssociatedObject(vc, &kDYYYSearchHitKey);
-        if (!isSearch) {
-            NSString *refer = [vc valueForKey:@"referString"];
-            if (![refer isKindOfClass:[NSString class]] || refer.length == 0) return;
-            BOOL hit = [refer containsString:@"search"];
-            objc_setAssociatedObject(vc, &kDYYYSearchHitKey, @(hit), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            isSearch = @(hit);
-        }
-        if (!isSearch.boolValue) return;
-
-        // 2) 缓存首次 transform
-        NSValue *origVal = objc_getAssociatedObject(vc, &kDYYYOrigTransformKey);
-        if (!origVal) {
-            origVal = [NSValue valueWithCGAffineTransform:v.transform];
-            objc_setAssociatedObject(vc, &kDYYYOrigTransformKey, origVal, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        CGAffineTransform orig = origVal.CGAffineTransformValue;
-        // v540: 取消搜索详情页的 +60 下移。
-        // 底部位置现在由「交互层高度 852→792」控制，再叠一个 +60 会把 UI 压到底栏上。
-        if (!CGAffineTransformEqualToTransform(v.transform, CGAffineTransformIdentity)) {
-            v.transform = CGAffineTransformIdentity;
-        }
-        return;
-    } @catch (NSException *e) {}
-}
 
 
 static void DYYYUpdateManagedPrivacyHalfScreenAppearance(AFDPrivacyHalfScreenViewController *viewController) {
@@ -19177,37 +19032,9 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
 }
 
-- (double)cellHeightAtIndex:(long long)index {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIWindow *win = [DYYYUtils getActiveWindow];
-        if (win && win.bounds.size.height > 0) return win.bounds.size.height;
-    }
-    return %orig;
-}
 
-- (double)fixedCellHeight {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIWindow *win = [DYYYUtils getActiveWindow];
-        if (win && win.bounds.size.height > 0) return win.bounds.size.height;
-    }
-    return %orig;
-}
 
-- (double)cellHeight {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIWindow *win = [DYYYUtils getActiveWindow];
-        if (win && win.bounds.size.height > 0) return win.bounds.size.height;
-    }
-    return %orig;
-}
 
-- (double)contentOffsetYForCellAtIndex:(long long)index {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIWindow *win = [DYYYUtils getActiveWindow];
-        if (win && win.bounds.size.height > 0) return (double)index * win.bounds.size.height;
-    }
-    return %orig;
-}
 
 // v632: 参考的详情分页校正，原样接回（不动 UI 高度）
 - (void)viewDidLayoutSubviews {
