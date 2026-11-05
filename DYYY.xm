@@ -19002,6 +19002,26 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 %hook AWEAwemeDetailTableViewController
 
 
+// v642: 详情表的行高有多条来源（cellHeight / fixedCellHeight / cellHeightAtIndex），
+// 只改 heightForRow 会让预加载行保留原生 792，最后几项一高一低。这里统一到窗口高度。
+- (double)cellHeightAtIndex:(long long)index {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    return win ? win.bounds.size.height : %orig;
+}
+
+- (double)fixedCellHeight {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    return win ? win.bounds.size.height : %orig;
+}
+
+- (double)cellHeight {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    return win ? win.bounds.size.height : %orig;
+}
+
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
     double height = %orig;
     UITableView *table = (UITableView *)a0;
