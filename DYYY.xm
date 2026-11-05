@@ -19123,6 +19123,28 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 %end
 
+
+
+// v480: 直接打七寸。全屏开启时，直接掐断缩放方法。
+%hook AWEDPlayerViewController_Merge
+- (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        return; 
+    }
+    %orig;
+}
+%end
+
+%hook AWEAwemePlayVideoViewController
+- (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        return;
+    }
+    %orig;
+}
+%end
+
+
 %ctor {
     %init(DYYYDetailHeightHook);
 }
