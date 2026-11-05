@@ -16886,6 +16886,26 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 
 %hook AWEDPlayerViewController_Merge
+
+// v486: 异步兜底，防止视频层被莫名其妙压到 792 或 393
+- (void)viewDidLayoutSubviews {
+    %orig;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        CGSize sz = [UIScreen mainScreen].bounds.size;
+        if (sz.height > sz.width) { // 仅在竖屏全屏时生效
+            UIView *v = self.viewIfLoaded;
+            if (v) {
+                // 只要高度不等于屏幕高，或者原点不是 0，就强制拉回 852 全屏
+                if (fabs(v.frame.size.height - sz.height) > 0.5 || fabs(v.frame.size.width - sz.width) > 0.5 || fabs(v.frame.origin.y) > 0.5) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        v.frame = CGRectMake(0, 0, sz.width, sz.height);
+                    });
+                }
+            }
+        }
+    }
+}
+
 - (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         return;
