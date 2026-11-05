@@ -38,6 +38,7 @@
 // 项目核心
 // ============================================================
 #import "AwemeHeaders.h"
+#import "DYYYFullscreenCoordinator.h"
 #import "DYYYConstants.h"
 #import "DYYYUtils.h"
 #import "AWMSafeDispatchTimer.h"
@@ -16069,6 +16070,24 @@ static Class tabBarButtonClass = nil;
     %orig(backgroundColor);
 }
 
+- (void)setBounds:(CGRect)bounds {
+    if (![NSThread isMainThread]) {
+        __weak UIView *weakView = self;
+        dispatch_async(dispatch_get_main_queue(), ^{ weakView.bounds = bounds; });
+        return;
+    }
+    %orig([DYYYFullscreenCoordinator boundsForMediaHost:self proposed:bounds]);
+}
+
+- (void)setCenter:(CGPoint)center {
+    if (![NSThread isMainThread]) {
+        __weak UIView *weakView = self;
+        dispatch_async(dispatch_get_main_queue(), ^{ weakView.center = center; });
+        return;
+    }
+    %orig([DYYYFullscreenCoordinator centerForMediaHost:self proposed:center]);
+}
+
 - (void)setFrame:(CGRect)frame {
     if (gDYYYSetFrameDepth > 0) {
         %orig(frame);
@@ -16082,6 +16101,8 @@ static Class tabBarButtonClass = nil;
         %orig(frame);
         return;
     }
+    frame = [DYYYFullscreenCoordinator frameForInteractionView:self proposed:frame];
+
 
     // v605: 不再在 setFrame 里撑 Merge 容器（会把 cell/交互层一起带大）。
 
@@ -16359,59 +16380,57 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         if (!CGRectIntersectsRect(earlyRect, earlyView.window.bounds)) return;
     }
 
-    // v606: 全屏时 tabBar 被隐藏，原生交互层会自己扩到 852；
-    // 这里把它钉回原生 769（屏高 - 49 - 底部安全区），UI 不再到底。
-    // 只改高度、保留 origin/宽度。
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        UIView *v = self.viewIfLoaded;
-        CGSize sz = [UIScreen mainScreen].bounds.size;
-        if (v && sz.height > sz.width) { // 竖屏
-            if (gDYYYInRotation) {
-                DYYYRetryLayoutAfterRotation(v);
-            } else {
-                UIView *parent = v.superview;
-                if (parent) {
-                    CGFloat safeBottom = 0;
-                    if (@available(iOS 11.0, *)) {
-                        safeBottom = v.window.safeAreaInsets.bottom;
-                    }
-                    CGFloat tabHeight = 49.0 + safeBottom;
-                    CGFloat bottom = CGRectGetMaxY(parent.bounds) - tabHeight;
+    // v608: 全屏统一交给 DYYYFullscreenCoordinator。
+    if ([DYYYFullscreenCoordinator layoutNativeInteraction:self]) return;
 
-                    // v607: 移植 DYYYFullscreenCoordinator.layoutNativeInteraction：
-                    // 详情页优先贴 activeBottomBar 顶边；取不到就用上面的 769 兜底。
-                    UIViewController *pager = DYYYDetailPagerForController(self);
-                    if (pager) {
-                        UIView *bar = nil;
-                        @try {
-                            bar = [pager valueForKey:@"activeBottomBar"];
-                        } @catch (NSException *e) {
-                            bar = nil;
-                        }
-                        if ([bar isKindOfClass:[UIView class]] && bar.window == v.window &&
-                            !bar.hidden && bar.bounds.size.height > 0.5) {
-                            UIView *root = pager.viewIfLoaded;
-                            if (root) {
-                                CGRect barWin = [bar convertRect:bar.bounds toView:v.window];
-                                CGRect rootWin = [root convertRect:root.bounds toView:v.window];
-                                if (fabs(barWin.size.width - rootWin.size.width) <= 1.0 &&
-                                    fabs(CGRectGetMaxY(barWin) - CGRectGetMaxY(rootWin)) <= 1.0) {
-                                    CGRect barParent = [bar convertRect:bar.bounds toView:parent];
-                                    bottom = CGRectGetMinY(barParent);
-                                }
-                            }
-                        }
-                    }
+    UIView *selfView = self.viewIfLoaded;
+    if ([DYYYFullscreenCoordinator usesRecommendedLayoutForController:self]) {
+        [DYYYFullscreenCoordinator layoutInteraction:self];
+        if (![DYYYFullscreenCoordinator isImageContentController:self]) return;
+        if ([DYYYFullscreenCoordinator hasCommentInWindow:selfView.window]) return;
+    }
 
-                    CGRect f = v.frame;
-                    CGFloat height = bottom - f.origin.y;
-                    if (height > 100) {
-                        DYYYAsyncSetFullscreenFrame(v, CGRectMake(f.origin.x, f.origin.y, f.size.width, height));
-                    }
-                }
+    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (!self.view.superview) return;
+
+    CGRect frame = self.view.frame;
+    UIView *container = self.view.superview;
+    CGFloat superviewHeight = MAX(0, CGRectGetMaxY(container.bounds) - frame.origin.y);
+    if (fabs(frame.size.width - container.bounds.size.width) > 1 || superviewHeight <= 0) return;
+
+    NSString *currentReferString = self.referString;
+    BOOL useFullHeight = [currentReferString isEqualToString:@"general_search"] || [currentReferString isEqualToString:@"search_result"] || [currentReferString isEqualToString:@"search_ecommerce"] ||
+                         [currentReferString isEqualToString:@"close_friends_moment"] || [currentReferString isEqualToString:@"offline_mode"] || [currentReferString isEqualToString:@"challenge"] ||
+                         [currentReferString isEqualToString:@"general_search_scan"] || currentReferString == nil;
+
+    if (!useFullHeight && [currentReferString isEqualToString:@"co_play_watch"]) {
+        Class richContentVCClass = NSClassFromString(@"AWEFriendsImpl.RichContentNewListViewController");
+        for (UIViewController *parent = self.parentViewController; parent; parent = parent.parentViewController) {
+            if (richContentVCClass && [parent isKindOfClass:richContentVCClass]) {
+                useFullHeight = YES;
+                break;
             }
         }
     }
+
+    if (useFullHeight) {
+        frame.size.height = superviewHeight;
+    } else {
+        CGFloat occupied = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:self.view];
+        if (occupied <= 0.5) {
+            CGFloat safeBottom = 0;
+            if (@available(iOS 11.0, *)) {
+                safeBottom = self.view.window.safeAreaInsets.bottom;
+            }
+            occupied = 49.0 + safeBottom;
+        }
+        frame.size.height = MAX(0, superviewHeight - occupied);
+    }
+
+    if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
+        self.view.frame = frame;
+    }
+    [DYYYFullscreenCoordinator rememberInteractionGuide:self];
 
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
         DYYYHideVideoAIParseBar(self.view);
@@ -16977,30 +16996,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %hook AWEAwemePlayVideoViewController
 
-- (void)viewDidLayoutSubviews {
-    %orig;
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-
-    UIView *vw = self.view;
-    if (!vw) return;
-
-    if (gDYYYInRotation) {
-        DYYYRetryLayoutAfterRotation(vw);
-        return;
-    }
-
-    if (vw.clipsToBounds) vw.clipsToBounds = NO;
-
-    // v596: 详情页只看分页器当前页；图文页不参与
-    if (!DYYYShouldApplyPageGeometry(self)) return;
-
-    CGSize screenSize = [UIScreen mainScreen].bounds.size;
-    if (!DYYYShouldApplyFullscreenPlayerFix(vw, screenSize)) return;
-
-    // v591: 搜索详情等页面原生会把播放器压到 792（852 - 60），
-    // 底部留 60pt 黑边；这里异步拉回全屏。
-    // v605: 容器不撑，画面交给 TTMetalViewVP
-}
 
 - (void)setIsAutoPlay:(BOOL)arg0 {
     %orig(arg0);
@@ -17035,24 +17030,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-
-    UIView *vw = self.view;
-    if (!vw) return;
-
-    if (gDYYYInRotation) {
-        DYYYRetryLayoutAfterRotation(vw);
-        return;
-    }
-
-    // v459: 只解除裁剪,不改 frame。TTMetalViewVP 自身 clips=0 会溢出到 852。
-    if (vw.clipsToBounds) vw.clipsToBounds = NO;
-
-    CGSize screenSize = [UIScreen mainScreen].bounds.size;
-    if (!DYYYShouldApplyFullscreenPlayerFix(vw, screenSize)) return;
-
-    // v591: 首页/搜索全屏 feed 的播放器同样要归位（含 160x852 的宽度残留）
-    // v605: 容器不撑，画面交给 TTMetalViewVP
+    [DYYYFullscreenCoordinator layoutPlayerContainer:self];
 }
 
 - (void)setIsAutoPlay:(BOOL)arg0 {
@@ -17113,38 +17091,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-
-    UIView *vw = self.view;
-    if (!vw) return;
-
-    if (gDYYYInRotation) {
-        // 旋转中不碰 frame，只挂一个转场结束后的布局重试
-        DYYYRetryLayoutAfterRotation(vw);
-        return;
-    }
-
-    // v590: 这里只解裁剪，绝不“同步”改 frame
-    if (vw.clipsToBounds) vw.clipsToBounds = NO;
-
-    // v596: 详情页只看分页器当前页；图文页不参与
-    if (!DYYYShouldApplyPageGeometry(self)) return;
-
-    // 只处理真正上屏的 Merge；详情页里可能同时存在多个 cell 的 Merge，
-    // 离屏的一律不动，避免多路 852 渲染把 GPU 打满。
-    if (!vw.window) return;
-    CGRect visibleRect = [vw convertRect:vw.bounds toView:vw.window];
-    if (!CGRectIntersectsRect(visibleRect, vw.window.bounds)) return;
-
-    CGSize screenSize = [UIScreen mainScreen].bounds.size;
-    if (screenSize.width < 1.0 || screenSize.height < 1.0) return;
-
-    // 放行非全宽容器：搜索页卡片、小窗、内嵌播放器不应该被拉满
-    UIView *sv = vw.superview;
-    if (sv && sv.bounds.size.width > 1.0 && sv.bounds.size.width < screenSize.width - 1.0) return;
-
-    // 宽、高、原点一起归位到全屏；真正的赋值在异步块里做
-    // v605: 容器不撑，画面交给 TTMetalViewVP
+    [DYYYFullscreenCoordinator layoutPlayerContainer:self];
 }
 
 - (void)setIsAutoPlay:(BOOL)arg0 {
@@ -17934,39 +17881,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 %end
 
 %hook TTMetalViewVP
-// v605: 只撑渲染层，容器（Merge/cell/交互）保持原生 769。
-- (void)setBounds:(CGRect)bounds {
-    UIView *metalView = (UIView *)self;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && !gDYYYInRotation && metalView.window) {
-        CGSize screenSize = [UIScreen mainScreen].bounds.size;
-        if (screenSize.height > screenSize.width &&
-            fabs(bounds.size.width - screenSize.width) <= 1.0 &&
-            bounds.size.height > screenSize.height * 0.5) {
-            bounds = CGRectMake(0, 0, screenSize.width, screenSize.height);
-            UIView *container = metalView.superview;
-            int depth = 0;
-            while (container && depth < 5) {
-                container.clipsToBounds = NO;
-                container = container.superview;
-                depth++;
-            }
-        }
-    }
-    %orig(bounds);
-}
-
-- (void)setCenter:(CGPoint)center {
-    if (gDYYYInRotation) { %orig(center); return; }
-    UIView *metalView = (UIView *)self;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && metalView.window) {
-        CGSize screenSize = [UIScreen mainScreen].bounds.size;
-        if (screenSize.height > screenSize.width) {
-            center = CGPointMake(screenSize.width * 0.5, screenSize.height * 0.5);
-        }
-    }
-    %orig(center);
-}
-
 - (void)layoutSubviews {
     %orig;
 }
@@ -18459,45 +18373,11 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 - (void)layoutSubviews {
     %orig;
-    // 这个 Swift 类没进头文件，Logos 把 self 推成 id，需要显式转 UIView
-    UIView *imageView = (UIView *)self;
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    if (gDYYYInRotation) return;
-    if (!imageView.window) return;
-
-    static char kDYYYImageFillApplyingKey;
-    if (objc_getAssociatedObject(imageView, &kDYYYImageFillApplyingKey)) return;
-
-    UIViewController *owner = [DYYYUtils firstAvailableViewControllerFromView:imageView];
-    if (!DYYYCurrentDetailPageIsImage(owner)) return;
-
-    CGSize screenSize = [UIScreen mainScreen].bounds.size;
-    if (screenSize.height <= screenSize.width) return;
-
-    UIView *superview = imageView.superview;
-    if (!superview) return;
-    if (fabs(imageView.bounds.size.width - screenSize.width) > 1.0) return;
-
-    CGFloat nativeHeight = imageView.bounds.size.height;
-    if (nativeHeight < 100) return;
-    CGFloat scale = screenSize.height / nativeHeight;
-    if (scale < 1.02) return;
-
-    CGAffineTransform target = CGAffineTransformMakeScale(scale, scale);
-    CGPoint center = CGPointMake(CGRectGetMidX(superview.bounds), CGRectGetMidY(superview.bounds));
-    if (CGAffineTransformEqualToTransform(imageView.transform, target) && CGPointEqualToPoint(imageView.center, center)) return;
-
-    objc_setAssociatedObject(imageView, &kDYYYImageFillApplyingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    imageView.transform = target;
-    imageView.center = center;
-    objc_setAssociatedObject(imageView, &kDYYYImageFillApplyingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [DYYYFullscreenCoordinator layoutImageView:(UIView *)self];
 }
 
 - (void)setTransform:(CGAffineTransform)transform {
-    if (DYYYGetBool(@"DYYYEnableCommentBlur")) {
-        return;
-    }
-    %orig(transform);
+    %orig([DYYYFullscreenCoordinator transformForImageView:(UIView *)self proposed:transform]);
 }
 
 %end
