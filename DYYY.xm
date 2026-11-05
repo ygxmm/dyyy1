@@ -16319,8 +16319,26 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         if (!CGRectIntersectsRect(earlyRect, earlyView.window.bounds)) return;
     }
 
-    // v598: 交互层的高度/位移干预已全部移除，保持原生布局。
-    // 目的是先看清 UI 原生到底在哪，再决定是否要动、动多少。
+    // v599: 详情页原生就有 60pt 底栏，UI 已经在理想位置，保持原生不动；
+    // 搜索页/首页/关注没有这个底栏，原生铺到 852，这里把底边收到 792。
+    // 只改高度、保留 origin/宽度，避免再出现“一上一下”。
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        UIView *v = self.viewIfLoaded;
+        CGSize sz = [UIScreen mainScreen].bounds.size;
+        if (v && sz.height > sz.width) { // 竖屏
+            if (gDYYYInRotation) {
+                DYYYRetryLayoutAfterRotation(v);
+            } else if (!DYYYDetailPagerForController(self)) {
+                CGRect f = v.frame;
+                UIView *parent = v.superview;
+                CGFloat bottom = parent ? CGRectGetMaxY(parent.bounds) - 60.0 : sz.height - 60.0;
+                CGFloat height = bottom - f.origin.y;
+                if (height > 100) {
+                    DYYYAsyncSetFullscreenFrame(v, CGRectMake(f.origin.x, f.origin.y, f.size.width, height));
+                }
+            }
+        }
+    }
 
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
         DYYYHideVideoAIParseBar(self.view);
