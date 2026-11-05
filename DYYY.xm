@@ -16989,6 +16989,27 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 // v250: 只对单个 cell 里的 player VC 拉高。
 
 
+%hook AWEFeedTableView
+- (void)layoutSubviews {
+    %orig;
+
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        CGRect frame = self.frame;
+        frame.size.height = self.superview.frame.size.height;
+        self.frame = frame;
+    } else if (gCurrentTabBarHeight > 0) {
+        UIWindow *keyWindow = [DYYYUtils getActiveWindow];
+        if (keyWindow && keyWindow.safeAreaInsets.bottom == 0) {
+            return;
+        }
+
+        CGRect frame = self.frame;
+        frame.size.height = self.superview.frame.size.height - gCurrentTabBarHeight;
+        self.frame = frame;
+    }
+}
+%end
+
 %hook AWEFeedTableViewCell
 - (void)prepareForReuse {
     if (hideButton && hideButton.isElementsHidden) {
