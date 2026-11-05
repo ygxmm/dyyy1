@@ -12431,7 +12431,7 @@ static BOOL DYYYIsSearchVideoStickerView(UIView *view);
 %hook ACCPlayerAdaptionContainer
 
 - (void)updateContainerFrame:(CGRect)container playerFrame:(CGRect)playerFrame allowMask:(BOOL)allowMask {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYIsSearchVideoStickerView(self)) {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYIsSearchVideoStickerView((UIView *)self)) {
         playerFrame.origin.y += 28.0;
         DYYYProbeLog(@"STICKER updateContainer playerFrame +28");
     }
