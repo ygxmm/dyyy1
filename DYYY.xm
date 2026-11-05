@@ -16381,30 +16381,17 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     }
 
     {
-    // v612: 稳定版——高度跟随分页器视口，同步 + 幂等，不再异步节流。
-    // 分页器每页高度 = table 视口；交互层 = 视口 - 60；两者同一基准，翻页不漂。
-    if (self.view.superview && DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat viewportH = 0;
-        UIViewController *pager = DYYYDetailPagerForController(self);
-        if (pager) {
-            @try {
-                UITableView *table = [pager valueForKey:@"tableView"];
-                if ([table isKindOfClass:[UITableView class]] && table.bounds.size.height > 0) {
-                    viewportH = table.bounds.size.height;
-                }
-            } @catch (NSException *e) {}
-        }
-        if (viewportH <= 0) {
-            UIWindow *window = self.view.window;
-            if (window) viewportH = window.bounds.size.height;
-        }
-        if (viewportH > 100) {
-            CGRect f = self.view.frame;
-            CGFloat targetH = viewportH - 60.0;
-            if (fabs(f.size.height - targetH) > 0.5) {
-                f.size.height = targetH;
-                self.view.frame = f;
-            }
+    // v611: 所有页面统一——UI 固定在屏幕底往上 60（852 - 60 = 792）。
+    // 媒体层仍由 DYYYFullscreenCoordinator 处理，这里只统一交互层高度。
+    UIWindow *window = self.view.window;
+    UIView *superview = self.view.superview;
+    if (window && superview) {
+        CGRect f = self.view.frame;
+        CGRect inWindow = [superview convertRect:f toView:window];
+        CGFloat bottom = CGRectGetHeight(window.bounds) - 60.0;
+        CGFloat height = bottom - CGRectGetMinY(inWindow);
+        if (height > 100) {
+            DYYYAsyncSetFullscreenFrame(self.view, CGRectMake(f.origin.x, f.origin.y, f.size.width, height));
             return;
         }
     }
@@ -19206,25 +19193,6 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 %group DYYYDetailHeightHook
 
 %hook AWEAwemeDetailTableViewController
-
-// v612: 分页器每行高度 = table 视口，和交互层同一基准。
-- (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
-    double height = %orig;
-    UITableView *table = (UITableView *)a0;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && [table isKindOfClass:[UITableView class]] && table.bounds.size.height > 0) {
-        return table.bounds.size.height;
-    }
-    return height;
-}
-
-// v612: 详情表底部 inset 归零，视口 = 屏幕全高（852），行高/交互层都以它为准。
-- (double)baseTableViewBottomInset {
-    double inset = %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
-    }
-    return inset;
-}
 
 - (double)cellHeightAtIndex:(long long)index {
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
