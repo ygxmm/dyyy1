@@ -14722,52 +14722,6 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 }
 %end
 
-// ============================================================
-// DYYY v141: 搜索页 UI 下移 60pt（幂等 transform 方案）
-// 原理：抖音自己用 transform 做布局，我们在其基础上再 +60pt
-// 幂等：transform 已达标则跳过，不触发重排 → 不卡帧
-// ============================================================
-
-// ============================================================
-// DYYY v141: 搜索页 UI 下移 60pt（幂等 transform，静态函数版）
-// ============================================================
-static char kDYYYSearchHitKey;
-static char kDYYYOrigTransformKey;
-static void DYYYApplySearchShiftIfNeeded(id vc) {
-    if (!vc) return;
-
-    @try {
-        UIView *v = [vc valueForKey:@"view"];
-        if (!v) return;
-
-        // 1) referString 只读一次
-        NSNumber *isSearch = objc_getAssociatedObject(vc, &kDYYYSearchHitKey);
-        if (!isSearch) {
-            NSString *refer = [vc valueForKey:@"referString"];
-            if (![refer isKindOfClass:[NSString class]] || refer.length == 0) return;
-            BOOL hit = [refer containsString:@"search"];
-            objc_setAssociatedObject(vc, &kDYYYSearchHitKey, @(hit), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            isSearch = @(hit);
-        }
-        if (!isSearch.boolValue) return;
-
-        // 2) 缓存首次 transform
-        NSValue *origVal = objc_getAssociatedObject(vc, &kDYYYOrigTransformKey);
-        if (!origVal) {
-            origVal = [NSValue valueWithCGAffineTransform:v.transform];
-            objc_setAssociatedObject(vc, &kDYYYOrigTransformKey, origVal, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        CGAffineTransform orig = origVal.CGAffineTransformValue;
-        // v540: 取消搜索详情页的 +60 下移。
-        // 底部位置现在由「交互层高度 852→792」控制，再叠一个 +60 会把 UI 压到底栏上。
-        if (!CGAffineTransformEqualToTransform(v.transform, CGAffineTransformIdentity)) {
-            v.transform = CGAffineTransformIdentity;
-        }
-        return;
-    } @catch (NSException *e) {}
-}
-
-
 static void DYYYUpdateManagedPrivacyHalfScreenAppearance(AFDPrivacyHalfScreenViewController *viewController) {
     BOOL isDarkMode = [DYYYUtils isDarkMode];
 
@@ -16365,73 +16319,9 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         if (!CGRectIntersectsRect(earlyRect, earlyView.window.bounds)) return;
     }
 
-    // v535: 全屏时把交互层高度从 852 收到 792（屏幕高 - 60），
-    // 底部锚定的内容随之上移 60。只改高度，不动 origin。
-    // v590: 交互层高度归位改为异步。同步在这里改 frame 会触发自身重排，
-    // 再次进入 viewDidLayoutSubviews，形成死循环（0x8BADF00D）。
-    // v594: 搜索详情不再单独放 852 —— 交互层统一 792，视频层 852 补住底部。
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        UIView *v = self.viewIfLoaded;
-        CGSize sz = [UIScreen mainScreen].bounds.size;
-        // v596: 分页器当前页是图文时，保持原生高度，不钉 792
-        BOOL pageIsVideo = DYYYShouldApplyPageGeometry(self);
-        if (v && sz.height > sz.width && pageIsVideo) { // 竖屏
-            if (gDYYYInRotation) {
-                DYYYRetryLayoutAfterRotation(v);
-            } else {
-                // v597: 对齐参考实现 DYYYFullscreenCoordinator 的 layoutNativeInteraction：
-                // 不重置 origin、不改宽度，只把高度收到“底边”为止；
-                // 底边优先取真实底栏 AWEAwemeDetailTableViewController.activeBottomBar 的顶边，
-                // 没有底栏时才退回“屏幕底部往上 60”。这样搜索页和详情页不会一上一下。
-                CGRect f = v.frame;
-                UIView *parent = v.superview;
-                CGFloat bottom = parent ? CGRectGetMaxY(parent.bounds) - 60.0 : sz.height - 60.0;
+    // v598: 交互层的高度/位移干预已全部移除，保持原生布局。
+    // 目的是先看清 UI 原生到底在哪，再决定是否要动、动多少。
 
-                UIViewController *pager = DYYYDetailPagerForController(self);
-                if (pager) {
-                    UIView *bar = nil;
-                    @try {
-                        bar = [pager valueForKey:@"activeBottomBar"];
-                    } @catch (NSException *e) {
-                        bar = nil;
-                    }
-                    if ([bar isKindOfClass:[UIView class]] && bar.window == v.window &&
-                        !bar.hidden && bar.bounds.size.height > 0.5) {
-                        UIView *root = pager.viewIfLoaded;
-                        if (root && parent) {
-                            CGRect barWin = [bar convertRect:bar.bounds toView:v.window];
-                            CGRect rootWin = [root convertRect:root.bounds toView:v.window];
-                            if (fabs(barWin.size.width - rootWin.size.width) <= 1.0 &&
-                                fabs(CGRectGetMaxY(barWin) - CGRectGetMaxY(rootWin)) <= 1.0) {
-                                CGRect barParent = [bar convertRect:bar.bounds toView:parent];
-                                bottom = CGRectGetMinY(barParent);
-                            }
-                        }
-                    }
-                }
-
-                CGFloat height = bottom - f.origin.y;
-                if (height > 100) {
-                    DYYYAsyncSetFullscreenFrame(v, CGRectMake(f.origin.x, f.origin.y, f.size.width, height));
-                }
-            }
-        }
-    }
-
-    // v580.4: 安全兜底，防止某些情况下 setFrame 未拦截到
-    DYYYApplySearchShiftIfNeeded(self);
-    // v483: 搜索页详情 interaction 视觉 y=120，底部溢出 120px，屏幕底部 792-852
-    // 区域露出 interaction 内部黑色元素（输入框背景/渐变）→ 闪黑。
-    // clipsToBounds=YES 让溢出部分不渲染，底部露出视频层。transform/frame 不动，
-    // 原“UI 下移 60”功能保持不变。
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && self.view) {
-        self.view.clipsToBounds = YES;
-    }
-    
-
-    
-
-    
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
         DYYYHideVideoAIParseBar(self.view);
     }
