@@ -16319,19 +16319,44 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         if (!CGRectIntersectsRect(earlyRect, earlyView.window.bounds)) return;
     }
 
-    // v599: 详情页原生就有 60pt 底栏，UI 已经在理想位置，保持原生不动；
-    // 搜索页/首页/关注没有这个底栏，原生铺到 852，这里把底边收到 792。
-    // 只改高度、保留 origin/宽度，避免再出现“一上一下”。
+    // v600: 首页/详情统一同一套分页视口后，交互层也统一：
+    // 详情页锚到真实底栏 activeBottomBar 的顶边；没有底栏的页面收到“屏底 - 60”。
+    // 只改高度、保留 origin/宽度。
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
         UIView *v = self.viewIfLoaded;
         CGSize sz = [UIScreen mainScreen].bounds.size;
-        if (v && sz.height > sz.width) { // 竖屏
+        BOOL pageIsVideo = DYYYShouldApplyPageGeometry(self);
+        if (v && sz.height > sz.width && pageIsVideo) { // 竖屏、非图文
             if (gDYYYInRotation) {
                 DYYYRetryLayoutAfterRotation(v);
-            } else if (!DYYYDetailPagerForController(self)) {
+            } else {
                 CGRect f = v.frame;
                 UIView *parent = v.superview;
                 CGFloat bottom = parent ? CGRectGetMaxY(parent.bounds) - 60.0 : sz.height - 60.0;
+
+                UIViewController *pager = DYYYDetailPagerForController(self);
+                if (pager) {
+                    UIView *bar = nil;
+                    @try {
+                        bar = [pager valueForKey:@"activeBottomBar"];
+                    } @catch (NSException *e) {
+                        bar = nil;
+                    }
+                    if ([bar isKindOfClass:[UIView class]] && bar.window == v.window &&
+                        !bar.hidden && bar.bounds.size.height > 0.5) {
+                        UIView *root = pager.viewIfLoaded;
+                        if (root && parent) {
+                            CGRect barWin = [bar convertRect:bar.bounds toView:v.window];
+                            CGRect rootWin = [root convertRect:root.bounds toView:v.window];
+                            if (fabs(barWin.size.width - rootWin.size.width) <= 1.0 &&
+                                fabs(CGRectGetMaxY(barWin) - CGRectGetMaxY(rootWin)) <= 1.0) {
+                                CGRect barParent = [bar convertRect:bar.bounds toView:parent];
+                                bottom = CGRectGetMinY(barParent);
+                            }
+                        }
+                    }
+                }
+
                 CGFloat height = bottom - f.origin.y;
                 if (height > 100) {
                     DYYYAsyncSetFullscreenFrame(v, CGRectMake(f.origin.x, f.origin.y, f.size.width, height));
@@ -19234,6 +19259,21 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
         if (win && win.bounds.size.height > 0) return (double)index * win.bounds.size.height;
     }
     return %orig;
+}
+
+// v600: 详情表还留着 60pt 的 bottomInset，视口是 792，而行高被我们改成了 852；
+// 首页是视口 852 + 行高 852。两套分页逻辑不一致，UI 永远对不齐。
+// 这里把详情表的 inset 也归零，和首页统一成同一套视口。
+- (double)baseTableViewBottomInset {
+    double inset = %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && inset > 0) return 0;
+    return inset;
+}
+
+- (double)tableViewBottomInsetForAllPlatform {
+    double inset = %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && inset > 0) return 0;
+    return inset;
 }
 
 %end
