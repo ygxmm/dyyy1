@@ -162,6 +162,19 @@ static UIViewController *DYYYDetailPagerForController(UIViewController *vc) {
     return nil;
 }
 
+static BOOL DYYYCurrentDetailPageIsImage(UIViewController *vc) {
+    UIViewController *pager = DYYYDetailPagerForController(vc);
+    if (!pager) return NO;
+    id aweme = nil;
+    @try {
+        aweme = [pager valueForKey:@"currentDisplayingAweme"];
+    } @catch (NSException *e) {
+        aweme = nil;
+    }
+    if (!aweme) return NO;
+    return [aweme respondsToSelector:@selector(awemeType)] && [aweme awemeType] == 68;
+}
+
 static BOOL DYYYShouldApplyPageGeometry(UIViewController *vc) {
     if (!vc) return NO;
     UIViewController *pager = DYYYDetailPagerForController(vc);
@@ -16365,72 +16378,8 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         if (!CGRectIntersectsRect(earlyRect, earlyView.window.bounds)) return;
     }
 
-    // v535: 全屏时把交互层高度从 852 收到 792（屏幕高 - 60），
-    // 底部锚定的内容随之上移 60。只改高度，不动 origin。
-    // v590: 交互层高度归位改为异步。同步在这里改 frame 会触发自身重排，
-    // 再次进入 viewDidLayoutSubviews，形成死循环（0x8BADF00D）。
-    // v594: 搜索详情不再单独放 852 —— 交互层统一 792，视频层 852 补住底部。
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        UIView *v = self.viewIfLoaded;
-        CGSize sz = [UIScreen mainScreen].bounds.size;
-        // v602: 图文页也走同一套高度逻辑（v597 里被 pageIsVideo 跳过，导致它贴底）
-        if (v && sz.height > sz.width) { // 竖屏
-            if (gDYYYInRotation) {
-                DYYYRetryLayoutAfterRotation(v);
-            } else {
-                // v597: 对齐参考实现 DYYYFullscreenCoordinator 的 layoutNativeInteraction：
-                // 不重置 origin、不改宽度，只把高度收到“底边”为止；
-                // 底边优先取真实底栏 AWEAwemeDetailTableViewController.activeBottomBar 的顶边，
-                // 没有底栏时才退回“屏幕底部往上 60”。这样搜索页和详情页不会一上一下。
-                CGRect f = v.frame;
-                UIView *parent = v.superview;
-                CGFloat bottom = parent ? CGRectGetMaxY(parent.bounds) - 60.0 : sz.height - 60.0;
+    // v603: 不再 hook 交互/表格容器，UI 保持原生；只撑媒体层。
 
-                UIViewController *pager = DYYYDetailPagerForController(self);
-                if (pager) {
-                    UIView *bar = nil;
-                    @try {
-                        bar = [pager valueForKey:@"activeBottomBar"];
-                    } @catch (NSException *e) {
-                        bar = nil;
-                    }
-                    if ([bar isKindOfClass:[UIView class]] && bar.window == v.window &&
-                        !bar.hidden && bar.bounds.size.height > 0.5) {
-                        UIView *root = pager.viewIfLoaded;
-                        if (root && parent) {
-                            CGRect barWin = [bar convertRect:bar.bounds toView:v.window];
-                            CGRect rootWin = [root convertRect:root.bounds toView:v.window];
-                            if (fabs(barWin.size.width - rootWin.size.width) <= 1.0 &&
-                                fabs(CGRectGetMaxY(barWin) - CGRectGetMaxY(rootWin)) <= 1.0) {
-                                CGRect barParent = [bar convertRect:bar.bounds toView:parent];
-                                bottom = CGRectGetMinY(barParent);
-                            }
-                        }
-                    }
-                }
-
-                CGFloat height = bottom - f.origin.y;
-                if (height > 100) {
-                    DYYYAsyncSetFullscreenFrame(v, CGRectMake(f.origin.x, f.origin.y, f.size.width, height));
-                }
-            }
-        }
-    }
-
-    // v580.4: 安全兜底，防止某些情况下 setFrame 未拦截到
-    DYYYApplySearchShiftIfNeeded(self);
-    // v483: 搜索页详情 interaction 视觉 y=120，底部溢出 120px，屏幕底部 792-852
-    // 区域露出 interaction 内部黑色元素（输入框背景/渐变）→ 闪黑。
-    // clipsToBounds=YES 让溢出部分不渲染，底部露出视频层。transform/frame 不动，
-    // 原“UI 下移 60”功能保持不变。
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && self.view) {
-        self.view.clipsToBounds = YES;
-    }
-    
-
-    
-
-    
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
         DYYYHideVideoAIParseBar(self.view);
     }
@@ -18465,6 +18414,40 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 // View scaling fix when comment blur is enabled
 %group BDMultiContentImageViewGroup
 %hook BDMultiContentContainer_ImageContentView
+
+- (void)layoutSubviews {
+    %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    if (gDYYYInRotation) return;
+    if (!self.window) return;
+
+    static char kDYYYImageFillApplyingKey;
+    if (objc_getAssociatedObject(self, &kDYYYImageFillApplyingKey)) return;
+
+    UIViewController *owner = [DYYYUtils firstAvailableViewControllerFromView:self];
+    if (!DYYYCurrentDetailPageIsImage(owner)) return;
+
+    CGSize screenSize = [UIScreen mainScreen].bounds.size;
+    if (screenSize.height <= screenSize.width) return;
+
+    UIView *superview = self.superview;
+    if (!superview) return;
+    if (fabs(self.bounds.size.width - screenSize.width) > 1.0) return;
+
+    CGFloat nativeHeight = self.bounds.size.height;
+    if (nativeHeight < 100) return;
+    CGFloat scale = screenSize.height / nativeHeight;
+    if (scale < 1.02) return;
+
+    CGAffineTransform target = CGAffineTransformMakeScale(scale, scale);
+    CGPoint center = CGPointMake(CGRectGetMidX(superview.bounds), CGRectGetMidY(superview.bounds));
+    if (CGAffineTransformEqualToTransform(self.transform, target) && CGPointEqualToPoint(self.center, center)) return;
+
+    objc_setAssociatedObject(self, &kDYYYImageFillApplyingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    self.transform = target;
+    self.center = center;
+    objc_setAssociatedObject(self, &kDYYYImageFillApplyingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
 
 - (void)setTransform:(CGAffineTransform)transform {
     if (DYYYGetBool(@"DYYYEnableCommentBlur")) {
