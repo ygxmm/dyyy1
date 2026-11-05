@@ -16377,6 +16377,32 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
                     }
                     CGFloat tabHeight = 49.0 + safeBottom;
                     CGFloat bottom = CGRectGetMaxY(parent.bounds) - tabHeight;
+
+                    // v607: 移植 DYYYFullscreenCoordinator.layoutNativeInteraction：
+                    // 详情页优先贴 activeBottomBar 顶边；取不到就用上面的 769 兜底。
+                    UIViewController *pager = DYYYDetailPagerForController(self);
+                    if (pager) {
+                        UIView *bar = nil;
+                        @try {
+                            bar = [pager valueForKey:@"activeBottomBar"];
+                        } @catch (NSException *e) {
+                            bar = nil;
+                        }
+                        if ([bar isKindOfClass:[UIView class]] && bar.window == v.window &&
+                            !bar.hidden && bar.bounds.size.height > 0.5) {
+                            UIView *root = pager.viewIfLoaded;
+                            if (root) {
+                                CGRect barWin = [bar convertRect:bar.bounds toView:v.window];
+                                CGRect rootWin = [root convertRect:root.bounds toView:v.window];
+                                if (fabs(barWin.size.width - rootWin.size.width) <= 1.0 &&
+                                    fabs(CGRectGetMaxY(barWin) - CGRectGetMaxY(rootWin)) <= 1.0) {
+                                    CGRect barParent = [bar convertRect:bar.bounds toView:parent];
+                                    bottom = CGRectGetMinY(barParent);
+                                }
+                            }
+                        }
+                    }
+
                     CGRect f = v.frame;
                     CGFloat height = bottom - f.origin.y;
                     if (height > 100) {
