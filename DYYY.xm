@@ -16887,25 +16887,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %hook AWEDPlayerViewController_Merge
 
-// v486: 异步兜底，防止视频层被莫名其妙压到 792 或 393
-- (void)viewDidLayoutSubviews {
-    %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGSize sz = [UIScreen mainScreen].bounds.size;
-        if (sz.height > sz.width) { // 仅在竖屏全屏时生效
-            UIView *v = self.viewIfLoaded;
-            if (v) {
-                // 只要高度不等于屏幕高，或者原点不是 0，就强制拉回 852 全屏
-                if (fabs(v.frame.size.height - sz.height) > 0.5 || fabs(v.frame.size.width - sz.width) > 0.5 || fabs(v.frame.origin.y) > 0.5) {
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        v.frame = CGRectMake(0, 0, sz.width, sz.height);
-                    });
-                }
-            }
-        }
-    }
-}
-
 - (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         return;
@@ -16958,6 +16939,28 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         vw.clipsToBounds = NO;
         return;
     }
+    CGFloat superH = sv.bounds.size.height;
+    
+    // v486: 异步兜底，防止视频层被莫名其妙压到 792 或 393
+    CGSize sz = [UIScreen mainScreen].bounds.size;
+    BOOL isPortrait = sz.height > sz.width;
+    if (isPortrait) {
+        if (fabs(vw.frame.size.height - sz.height) > 0.5 || fabs(vw.frame.size.width - sz.width) > 0.5 || fabs(vw.frame.origin.y) > 0.5) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                vw.frame = CGRectMake(0, 0, sz.width, sz.height);
+            });
+            return; // 交给异步处理，直接返回
+        }
+    }
+    
+    // 原有的跟随父层高度逻辑
+    if (superH > 100 && fabs(vw.frame.size.height - superH) > 0.5) {
+        CGRect f = vw.frame;
+        f.origin.y = 0;
+        f.size.height = superH;
+        vw.frame = f;
+    }
+    
     vw.clipsToBounds = NO;
 }
 
