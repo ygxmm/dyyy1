@@ -16472,6 +16472,22 @@ static void DYYYFixStickerTopConstraint(UIView *view) {
     }
 
     {
+    // v614 probe: 交互层现场
+    {
+        UIViewController *pager = DYYYDetailPagerForController(self);
+        UIView *sv = self.view.superview;
+        long long pageIndex = -1;
+        if (pager) {
+            @try { pageIndex = [[pager valueForKey:@"currentIndex"] longLongValue]; } @catch (NSException *e) {}
+        }
+        DYYYProbeLog(@"INT refer=%@ pager=%d idx=%lld sup=%@ frame=%@ win=%@ safe=%.1f",
+                     self.referString, pager != nil, pageIndex,
+                     sv ? NSStringFromCGRect(sv.bounds) : @"nil",
+                     NSStringFromCGRect(self.view.frame),
+                     self.view.window ? NSStringFromCGRect(self.view.window.bounds) : @"nil",
+                     self.view.window ? self.view.window.safeAreaInsets.bottom : -1);
+    }
+
     // v616: 恢复「打开评论区上方黑条」清理（之前随全屏逻辑一起删掉了）
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen") || DYYYGetBoolCached(@"DYYYEnableCommentBlur")) {
         CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
@@ -16506,22 +16522,6 @@ static void DYYYFixStickerTopConstraint(UIView *view) {
             }
             return;
         }
-    }
-
-    // v614 probe: 交互层现场
-    {
-        UIViewController *pager = DYYYDetailPagerForController(self);
-        UIView *sv = self.view.superview;
-        long long pageIndex = -1;
-        if (pager) {
-            @try { pageIndex = [[pager valueForKey:@"currentIndex"] longLongValue]; } @catch (NSException *e) {}
-        }
-        DYYYProbeLog(@"INT refer=%@ pager=%d idx=%lld sup=%@ frame=%@ win=%@ safe=%.1f",
-                     self.referString, pager != nil, pageIndex,
-                     sv ? NSStringFromCGRect(sv.bounds) : @"nil",
-                     NSStringFromCGRect(self.view.frame),
-                     self.view.window ? NSStringFromCGRect(self.view.window.bounds) : @"nil",
-                     self.view.window ? self.view.window.safeAreaInsets.bottom : -1);
     }
 
     // v608: 全屏统一交给 DYYYFullscreenCoordinator。
@@ -18003,8 +18003,40 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 %end
 
 %hook TTMetalViewVP
+// v619: Merge 容器会被原生在 852/792/707 之间拉，渲染层必须单独钉住。
+- (void)setBounds:(CGRect)bounds {
+    UIView *view = (UIView *)self;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && !gDYYYInRotation && view.window) {
+        CGSize screen = [UIScreen mainScreen].bounds.size;
+        if (screen.height > screen.width &&
+            fabs(bounds.size.width - screen.width) <= 1.0 &&
+            bounds.size.height > screen.height * 0.5) {
+            bounds.size.height = screen.height;
+        }
+    }
+    %orig(bounds);
+}
+
+- (void)setCenter:(CGPoint)center {
+    UIView *view = (UIView *)self;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && !gDYYYInRotation && view.window) {
+        CGSize screen = [UIScreen mainScreen].bounds.size;
+        if (screen.height > screen.width) {
+            center = CGPointMake(screen.width * 0.5, screen.height * 0.5);
+        }
+    }
+    %orig(center);
+}
+
 - (void)layoutSubviews {
     %orig;
+    UIView *view = (UIView *)self;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen") || gDYYYInRotation || !view.window) return;
+    UIView *v = view.superview;
+    for (int i = 0; i < 5 && v; i++) {
+        if (v.clipsToBounds) v.clipsToBounds = NO;
+        v = v.superview;
+    }
 }
 
 %end
