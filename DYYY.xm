@@ -16223,7 +16223,9 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         if ([parent isKindOfClass:%c(AFDPlayRemoteFeedTableViewController)]) return;
     }
 
-    if ([DYYYFullscreenCoordinator layoutNativeInteraction:self]) return;
+    // v641: 视频页交互层跟视频同高（852），只有图文页让出底栏（792）。
+    BOOL isImagePage = [DYYYFullscreenCoordinator isImageContentController:self];
+    if (isImagePage && [DYYYFullscreenCoordinator layoutNativeInteraction:self]) return;
 
     if ([DYYYFullscreenCoordinator usesRecommendedLayoutForController:self]) {
         [DYYYFullscreenCoordinator layoutInteraction:self];
@@ -16246,15 +16248,19 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         return;
     }
 
-    CGFloat occupied = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:self.view];
-    if (occupied <= 0.5) {
-        CGFloat safeBottom = 0;
-        if (@available(iOS 11.0, *)) {
-            safeBottom = self.view.window.safeAreaInsets.bottom;
+    if (isImagePage) {
+        CGFloat occupied = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:self.view];
+        if (occupied <= 0.5) {
+            CGFloat safeBottom = 0;
+            if (@available(iOS 11.0, *)) {
+                safeBottom = self.view.window.safeAreaInsets.bottom;
+            }
+            occupied = 49.0 + safeBottom;
         }
-        occupied = 49.0 + safeBottom;
+        frame.size.height = MAX(0, superviewHeight - occupied);
+    } else {
+        frame.size.height = superviewHeight;
     }
-    frame.size.height = MAX(0, superviewHeight - occupied);
 
     if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
         self.view.frame = frame;
