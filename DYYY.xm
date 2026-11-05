@@ -19102,12 +19102,11 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
         [table isKindOfClass:[UITableView class]] && table.bounds.size.height > 0) {
         ret = table.bounds.size.height;
     }
-    DYYYProbe(@"rowH", @"idx=%@ ret=%.1f orig=%.1f tblH=%.1f winH=%.1f insB=%.1f off=%.1f csz=%.1f cnt=%ld",
+    DYYYProbe(@"rowH", @"idx=%@ ret=%.1f orig=%.1f tblH=%.1f winH=%.1f insB=%.1f off=%.1f csz=%.1f",
               a1, ret, orig, table.bounds.size.height,
               table.window ? table.window.bounds.size.height : -1,
               table.contentInset.bottom, table.contentOffset.y,
-              table.contentSize.height,
-              table.numberOfSections > 0 ? (long)[table numberOfRowsInSection:0] : -1);
+              table.contentSize.height);
     return ret;
 }
 
@@ -19115,11 +19114,10 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     double orig = %orig;
     double ret = [DYYYFullscreenCoordinator bottomInsetForDetail:orig controller:self];
     UITableView *t = [self tableView];
-    DYYYProbe(@"baseInset", @"orig=%.1f ret=%.1f tblH=%.1f winH=%.1f off=%.1f csz=%.1f insB=%.1f cnt=%ld",
+    DYYYProbe(@"baseInset", @"orig=%.1f ret=%.1f tblH=%.1f winH=%.1f off=%.1f csz=%.1f insB=%.1f",
               orig, ret, t.bounds.size.height,
               t.window ? t.window.bounds.size.height : -1,
-              t.contentOffset.y, t.contentSize.height, t.contentInset.bottom,
-              t.numberOfSections > 0 ? (long)[t numberOfRowsInSection:0] : -1);
+              t.contentOffset.y, t.contentSize.height, t.contentInset.bottom);
     return ret;
 }
 
