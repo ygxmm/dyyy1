@@ -16384,13 +16384,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     // v608: 全屏统一交给 DYYYFullscreenCoordinator。
     if ([DYYYFullscreenCoordinator layoutNativeInteraction:self]) return;
 
-    UIView *selfView = self.viewIfLoaded;
-    if ([DYYYFullscreenCoordinator usesRecommendedLayoutForController:self]) {
-        [DYYYFullscreenCoordinator layoutInteraction:self];
-        if (![DYYYFullscreenCoordinator isImageContentController:self]) return;
-        if ([DYYYFullscreenCoordinator hasCommentInWindow:selfView.window]) return;
-    }
-
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
     if (!self.view.superview) return;
 
@@ -16399,34 +16392,15 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     CGFloat superviewHeight = MAX(0, CGRectGetMaxY(container.bounds) - frame.origin.y);
     if (fabs(frame.size.width - container.bounds.size.width) > 1 || superviewHeight <= 0) return;
 
-    NSString *currentReferString = self.referString;
-    BOOL useFullHeight = [currentReferString isEqualToString:@"general_search"] || [currentReferString isEqualToString:@"search_result"] || [currentReferString isEqualToString:@"search_ecommerce"] ||
-                         [currentReferString isEqualToString:@"close_friends_moment"] || [currentReferString isEqualToString:@"offline_mode"] || [currentReferString isEqualToString:@"challenge"] ||
-                         [currentReferString isEqualToString:@"general_search_scan"] || currentReferString == nil;
-
-    if (!useFullHeight && [currentReferString isEqualToString:@"co_play_watch"]) {
-        Class richContentVCClass = NSClassFromString(@"AWEFriendsImpl.RichContentNewListViewController");
-        for (UIViewController *parent = self.parentViewController; parent; parent = parent.parentViewController) {
-            if (richContentVCClass && [parent isKindOfClass:richContentVCClass]) {
-                useFullHeight = YES;
-                break;
-            }
+    CGFloat occupied = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:self.view];
+    if (occupied <= 0.5) {
+        CGFloat safeBottom = 0;
+        if (@available(iOS 11.0, *)) {
+            safeBottom = self.view.window.safeAreaInsets.bottom;
         }
+        occupied = 49.0 + safeBottom;
     }
-
-    if (useFullHeight) {
-        frame.size.height = superviewHeight;
-    } else {
-        CGFloat occupied = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:self.view];
-        if (occupied <= 0.5) {
-            CGFloat safeBottom = 0;
-            if (@available(iOS 11.0, *)) {
-                safeBottom = self.view.window.safeAreaInsets.bottom;
-            }
-            occupied = 49.0 + safeBottom;
-        }
-        frame.size.height = MAX(0, superviewHeight - occupied);
-    }
+    frame.size.height = MAX(0, superviewHeight - occupied);
 
     if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
         self.view.frame = frame;
