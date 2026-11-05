@@ -15201,10 +15201,12 @@ static Class tabBarButtonClass = nil;
     if (self.window) {
         [self initializeOriginalTabBarHeight];
     }
+    [DYYYFullscreenCoordinator registerTabBar:self];
 }
 
 - (void)layoutSubviews {
     %orig;
+    [DYYYFullscreenCoordinator registerTabBar:self];
     DYYYRepairTabBarInternalBackground(self);
     // DYYY_FIX_TABBAR_BG_TRANSPARENT
     // 全屏时让底栏背景透明，不改变按钮和视频布局。
@@ -19265,6 +19267,17 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
         if (win && win.bounds.size.height > 0) return (double)index * win.bounds.size.height;
     }
     return %orig;
+}
+
+// v632: 参考的详情分页校正，原样接回（不动 UI 高度）
+- (void)viewDidLayoutSubviews {
+    %orig;
+    [DYYYFullscreenCoordinator reconcileDetailPaging:self];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    [DYYYFullscreenCoordinator reconcileDetailPaging:self];
 }
 
 %end
