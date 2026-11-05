@@ -16907,13 +16907,14 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %end
 
+
+%hook AWEDPlayerViewController_Merge
 - (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         return;
     }
     %orig;
 }
-%hook AWEDPlayerViewController_Merge
 
 - (BOOL)enableHDR {
     if (DYYYShouldDisableAllHDR()) {
@@ -19132,12 +19133,7 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
-- (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        return;
-    }
-    %orig;
-}
+
 %hook AWEAwemePlayVideoViewController
 - (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
@@ -19145,6 +19141,7 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     }
     %orig;
 }
+
 %end
 
 
