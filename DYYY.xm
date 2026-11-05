@@ -16246,26 +16246,15 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         return;
     }
 
-    NSString *currentReferString = self.referString;
-    BOOL useFullHeight = [currentReferString isEqualToString:@"general_search"] || [currentReferString isEqualToString:@"search_result"] || [currentReferString isEqualToString:@"search_ecommerce"] ||
-                         [currentReferString isEqualToString:@"close_friends_moment"] || [currentReferString isEqualToString:@"offline_mode"] || [currentReferString isEqualToString:@"challenge"] ||
-                         [currentReferString isEqualToString:@"general_search_scan"] || currentReferString == nil;
-
-    if (!useFullHeight && [currentReferString isEqualToString:@"co_play_watch"]) {
-        Class richContentVCClass = NSClassFromString(@"AWEFriendsImpl.RichContentNewListViewController");
-        for (UIViewController *parent = directParentVC; parent; parent = parent.parentViewController) {
-            if (richContentVCClass && [parent isKindOfClass:richContentVCClass]) {
-                useFullHeight = YES;
-                break;
-            }
+    CGFloat occupied = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:self.view];
+    if (occupied <= 0.5) {
+        CGFloat safeBottom = 0;
+        if (@available(iOS 11.0, *)) {
+            safeBottom = self.view.window.safeAreaInsets.bottom;
         }
+        occupied = 49.0 + safeBottom;
     }
-
-    if (useFullHeight) {
-        frame.size.height = superviewHeight;
-    } else {
-        frame.size.height = MAX(0, superviewHeight - [DYYYFullscreenCoordinator bottomOccupiedHeightForView:self.view]);
-    }
+    frame.size.height = MAX(0, superviewHeight - occupied);
 
     if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
         self.view.frame = frame;
@@ -19007,6 +18996,15 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 %hook AWEAwemeDetailTableViewController
 
 
+- (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
+    double height = %orig;
+    UITableView *table = (UITableView *)a0;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && [table isKindOfClass:[UITableView class]] && table.bounds.size.height > 0) {
+        return table.bounds.size.height;
+    }
+    return height;
+}
+
 - (double)baseTableViewBottomInset {
     double inset = %orig;
     return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
@@ -19017,15 +19015,9 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 // v632: 参考的详情分页校正，原样接回（不动 UI 高度）
-- (void)viewDidLayoutSubviews {
-    %orig;
-    [DYYYFullscreenCoordinator reconcileDetailPaging:self];
-}
 
-- (void)viewDidAppear:(BOOL)animated {
-    %orig;
-    [DYYYFullscreenCoordinator reconcileDetailPaging:self];
-}
+
+
 
 %end
 

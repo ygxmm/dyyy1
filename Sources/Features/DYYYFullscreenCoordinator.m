@@ -133,8 +133,7 @@
     if (state.applying) return;
     NSInteger count = [table numberOfRowsInSection:0];
     NSUInteger index = [detail currentVisibleCellIndex];
-    if (count <= 0) return;
-    if (index >= (NSUInteger)count) index = (NSUInteger)(count - 1);
+    if (count <= 0 || index >= (NSUInteger)count) return;
     NSIndexPath *firstIndex = [NSIndexPath indexPathForRow:0 inSection:0];
     NSIndexPath *lastIndex = [NSIndexPath indexPathForRow:count - 1 inSection:0];
     CGRect first = [table rectForRowAtIndexPath:firstIndex];
@@ -817,11 +816,6 @@
     UIView *cell = [self cellForPlayer:view owner:owner];
     if (!cell || cell.window != window) return native;
     CGRect viewport = CGRectIntersection([cell convertRect:cell.bounds toView:window], window.bounds);
-    // 图片不要压到底栏：视口先扣掉底栏占用高度（792 而不是 852）。
-    CGFloat bottomOccupied = [self bottomOccupiedHeightForView:view];
-    if (bottomOccupied > 0.5) {
-        viewport.size.height = MAX(0, viewport.size.height - bottomOccupied);
-    }
     CGRect panel = [self panelInWindow:window viewport:viewport];
     if (CGRectIsNull(panel)) {
         return ![self hasCommentInWindow:window] && state.imageAdjusted && state.hasClosedImageTransform ? state.closedImageTransform : native;
