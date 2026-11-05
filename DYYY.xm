@@ -16214,6 +16214,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         DYYYClearBlackEdgeBars(self.view, screenW, screenH, safeTop, 0);
     }
 
+    {
     // v637: 完全照搬参考的交互层全屏逻辑（去掉 DYYYFloatingButtonCoordinator 依赖）。
     if (!self.viewIfLoaded.window) return;
 
@@ -16270,6 +16271,8 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         self.view.frame = frame;
     }
     [DYYYFullscreenCoordinator rememberInteractionGuide:self];
+    }
+
 
 
 
