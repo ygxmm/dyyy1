@@ -40,52 +40,6 @@
 #import "AwemeHeaders.h"
 #import "DYYYFullscreenCoordinator.h"
 
-// ============================================================
-// v614: 探针日志 —— 写入 App 沙盒 Documents/DYYY-probe.log
-// ============================================================
-static NSString *DYYYProbeLogPath(void) {
-    static NSString *path = nil;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        NSString *docs = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-        if (docs.length == 0) docs = NSTemporaryDirectory();
-        path = [docs stringByAppendingPathComponent:@"DYYY-probe.log"];
-    });
-    return path;
-}
-
-static void DYYYProbeLog(NSString *format, ...) {
-    va_list args;
-    va_start(args, format);
-    NSString *message = [[NSString alloc] initWithFormat:format arguments:args];
-    va_end(args);
-    NSString *line = [NSString stringWithFormat:@"%@ %@\n", [NSDate date], message];
-
-    static dispatch_queue_t queue;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ queue = dispatch_queue_create("com.dyyy.probe", DISPATCH_QUEUE_SERIAL); });
-
-    dispatch_async(queue, ^{
-      NSString *path = DYYYProbeLogPath();
-      NSFileManager *fm = [NSFileManager defaultManager];
-      NSDictionary *attrs = [fm attributesOfItemAtPath:path error:nil];
-      if ([attrs fileSize] > 2 * 1024 * 1024) {
-          [fm removeItemAtPath:path error:nil];
-      }
-      NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
-      NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:path];
-      if (!handle) {
-          [data writeToFile:path atomically:YES];
-      } else {
-          @try {
-              [handle seekToEndOfFile];
-              [handle writeData:data];
-              [handle closeFile];
-          } @catch (NSException *e) {
-          }
-      }
-    });
-}
 
 #import "DYYYConstants.h"
 #import "DYYYUtils.h"
@@ -12425,57 +12379,6 @@ static void DYYYHideProfilePostGuideView(UIView *view) {
 %end
 
 // 隐藏搜同款
-static BOOL DYYYIsSearchVideoStickerView(UIView *view);
-
-// v627: 真正的排版入口在父类 ACCPlayerAdaptionContainer。
-%hook ACCPlayerAdaptionContainer
-
-- (void)updateContainerFrame:(CGRect)container playerFrame:(CGRect)playerFrame allowMask:(BOOL)allowMask {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYIsSearchVideoStickerView((UIView *)self)) {
-        playerFrame.origin.y += 28.0;
-        DYYYProbeLog(@"STICKER updateContainer playerFrame +28");
-    }
-    %orig(container, playerFrame, allowMask);
-}
-
-%end
-
-%hook ACCStickerContainerView
-
-// v625: 贴纸内容按 playerFrame 排版，容器 frame/约束都不算数。
-// 在搜索视频页把传入的 playerFrame 下移 28，所有贴纸一起动。
-- (void)configWithPlayerFrame:(CGRect)frame allowMask:(BOOL)allowMask {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYIsSearchVideoStickerView(self)) {
-        frame.origin.y += 28.0;
-        DYYYProbeLog(@"STICKER playerFrame +28 allowMask");
-    }
-    %orig(frame, allowMask);
-}
-
-- (void)configWithPlayerFrame:(CGRect)frame needMask:(BOOL)needMask {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYIsSearchVideoStickerView(self)) {
-        frame.origin.y += 28.0;
-        DYYYProbeLog(@"STICKER playerFrame +28 needMask");
-    }
-    %orig(frame, needMask);
-}
-
-// v626: config 阶段容器还没进窗口，判定不到页面；布局时它会读 playerFrame，
-// 在 getter 里补 28，这时 referString/分页器都已经可用。
-- (NSValue *)playerFrame {
-    NSValue *value = %orig;
-    if (value && DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYIsSearchVideoStickerView(self)) {
-        CGRect frame = CGRectZero;
-        [value getValue:&frame];
-        frame.origin.y += 28.0;
-        DYYYProbeLog(@"STICKER playerFrame getter +28");
-        return [NSValue valueWithCGRect:frame];
-    }
-    return value;
-}
-
-%end
-
 %hook ACCStickerContainerView
 - (void)layoutSubviews {
     %orig;
@@ -16443,66 +16346,8 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 // v617: 搜索完视频页的贴纸容器 top 约束是 -28，导致内部 852 高的
 // ACCStickerContainerView 被整体上移。把它改成 0，并关掉祖先裁剪。
-static BOOL DYYYIsSearchVideoStickerView(UIView *view);
-
-static void DYYYFixStickerTopConstraint(UIView *view) {
-    if (!view || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    if (!view.superview) return;
-
-    // 约束不一定挂在直接父视图上，也不一定 firstItem == view；
-    // 向上找 3 层，两种方向都处理，避免只改到一部分页面。
-    UIView *owner = view.superview;
-    for (int depth = 0; depth < 3 && owner; depth++) {
-        for (NSLayoutConstraint *constraint in owner.constraints) {
-            BOOL topOnView = (constraint.firstItem == view && constraint.firstAttribute == NSLayoutAttributeTop);
-            BOOL topOnSecond = (constraint.secondItem == view && constraint.secondAttribute == NSLayoutAttributeTop);
-            if (!topOnView && !topOnSecond) continue;
-            // v623: 搜索视频页整体下移 28（0 -> 28）；其他页面保持 0。
-            CGFloat target = 0.0;
-            if (fabs(constraint.constant - target) > 0.5) {
-                DYYYProbeLog(@"STICKER top %.1f -> %.1f owner=%@ depth=%d", constraint.constant, target, NSStringFromClass([owner class]), depth);
-                constraint.constant = target;
-            }
-        }
-        owner = owner.superview;
-    }
-
-    UIView *v = view;
-    for (int i = 0; i < 5 && v; i++) {
-        if (v.clipsToBounds) v.clipsToBounds = NO;
-        v = v.superview;
-    }
-}
 
 // v621: 搜索视频页判定（贴纸/内层容器共用）
-static BOOL DYYYIsSearchVideoStickerView(UIView *view) {
-    if (!view) return NO;
-    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
-    NSString *refer = nil;
-    @try {
-        refer = [vc valueForKey:@"referString"];
-    } @catch (NSException *e) {
-        refer = nil;
-    }
-    return [refer isKindOfClass:[NSString class]] && [refer containsString:@"search"] &&
-           DYYYDetailPagerForController(vc) != nil &&
-           !DYYYCurrentDetailPageIsImage(vc);
-}
-
-%hook AWEFeedStickerContainerView
-
-- (void)didMoveToSuperview {
-    %orig;
-    DYYYFixStickerTopConstraint((UIView *)self);
-}
-
-- (void)layoutSubviews {
-    %orig;
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    DYYYFixStickerTopConstraint((UIView *)self);
-}
-
-%end
 
 %hook AWEPlayInteractionViewController
 
@@ -16543,24 +16388,7 @@ static BOOL DYYYIsSearchVideoStickerView(UIView *view) {
         if (!CGRectIntersectsRect(earlyRect, earlyView.window.bounds)) return;
     }
 
-    {
-    // v614 probe: 交互层现场
-    {
-        UIViewController *pager = DYYYDetailPagerForController(self);
-        UIView *sv = self.view.superview;
-        long long pageIndex = -1;
-        if (pager) {
-            @try { pageIndex = [[pager valueForKey:@"currentIndex"] longLongValue]; } @catch (NSException *e) {}
-        }
-        DYYYProbeLog(@"INT refer=%@ pager=%d idx=%lld sup=%@ frame=%@ win=%@ safe=%.1f",
-                     self.referString, pager != nil, pageIndex,
-                     sv ? NSStringFromCGRect(sv.bounds) : @"nil",
-                     NSStringFromCGRect(self.view.frame),
-                     self.view.window ? NSStringFromCGRect(self.view.window.bounds) : @"nil",
-                     self.view.window ? self.view.window.safeAreaInsets.bottom : -1);
-    }
-
-    // v616: 恢复「打开评论区上方黑条」清理（之前随全屏逻辑一起删掉了）
+    // v616: 打开评论区上方黑条清理
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen") || DYYYGetBoolCached(@"DYYYEnableCommentBlur")) {
         CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
         CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
@@ -16572,12 +16400,9 @@ static BOOL DYYYIsSearchVideoStickerView(UIView *view) {
         DYYYClearBlackEdgeBars(self.view, screenW, screenH, safeTop, 0);
     }
 
-    // v615: 交互层带 FlexibleHeight，cell 每次布局都会把它拉回 803/769；
-    // 先去掉高度自适应，再同步钉死 792（幂等），避免异步写入和原生布局互相拉锯。
+    // v628: 高度钉死 792（视口 - 60），不 return，后面的按钮/速度逻辑还要跑。
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-        // v616: 预加载 cell 的 window 还是 nil，但 superview 已经是 852；
-        // 用 superview 高度算，保证进 window 前就是 792，翻页不再跳。
         UIView *container = self.view.superview;
         CGFloat viewportH = 0;
         if (container && container.bounds.size.height > 0) {
@@ -16592,36 +16417,9 @@ static BOOL DYYYIsSearchVideoStickerView(UIView *view) {
                 f.size.height = targetH;
                 self.view.frame = f;
             }
-            return;
         }
     }
 
-    // v608: 全屏统一交给 DYYYFullscreenCoordinator。
-    if ([DYYYFullscreenCoordinator layoutNativeInteraction:self]) return;
-
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-    if (!self.view.superview) return;
-
-    CGRect frame = self.view.frame;
-    UIView *container = self.view.superview;
-    CGFloat superviewHeight = MAX(0, CGRectGetMaxY(container.bounds) - frame.origin.y);
-    if (fabs(frame.size.width - container.bounds.size.width) > 1 || superviewHeight <= 0) return;
-
-    CGFloat occupied = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:self.view];
-    if (occupied <= 0.5) {
-        CGFloat safeBottom = 0;
-        if (@available(iOS 11.0, *)) {
-            safeBottom = self.view.window.safeAreaInsets.bottom;
-        }
-        occupied = 49.0 + safeBottom;
-    }
-    frame.size.height = MAX(0, superviewHeight - occupied);
-
-    if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
-        self.view.frame = frame;
-    }
-    [DYYYFullscreenCoordinator rememberInteractionGuide:self];
-    }
 
 
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
@@ -17221,7 +17019,6 @@ static BOOL DYYYIsSearchVideoStickerView(UIView *view) {
 
 
 - (void)viewDidLayoutSubviews {
-    DYYYProbeLog(@"%@ layout frame=%@ sup=%@ win=%@", @"AWEDPlayerFeedPlayerViewController", NSStringFromCGRect(self.view.frame), self.view.superview ? NSStringFromCGRect(self.view.superview.bounds) : @"nil", self.view.window ? NSStringFromCGRect(self.view.window.bounds) : @"nil");
     %orig;
     [DYYYFullscreenCoordinator layoutPlayerContainer:self];
 }
@@ -17283,7 +17080,6 @@ static BOOL DYYYIsSearchVideoStickerView(UIView *view) {
 }
 
 - (void)viewDidLayoutSubviews {
-    DYYYProbeLog(@"%@ layout frame=%@ sup=%@ win=%@", @"AWEDPlayerViewController_Merge", NSStringFromCGRect(self.view.frame), self.view.superview ? NSStringFromCGRect(self.view.superview.bounds) : @"nil", self.view.window ? NSStringFromCGRect(self.view.window.bounds) : @"nil");
     %orig;
     [DYYYFullscreenCoordinator layoutPlayerContainer:self];
 }
@@ -19428,15 +19224,6 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 %hook AWEAwemeDetailTableViewController
 
-- (void)setCurrentIndex:(long long)index {
-    long long old = self.currentIndex;
-    %orig(index);
-    UITableView *table = nil;
-    @try { table = [self valueForKey:@"tableView"]; } @catch (NSException *e) {}
-    DYYYProbeLog(@"PAGER idx %lld -> %lld table=%@ contentOffset=%@", old, index,
-                 table ? NSStringFromCGRect(table.bounds) : @"nil",
-                 table ? NSStringFromCGPoint(table.contentOffset) : @"nil");
-}
 
 - (double)cellHeightAtIndex:(long long)index {
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
