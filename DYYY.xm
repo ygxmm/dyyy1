@@ -12425,9 +12425,20 @@ static void DYYYHideProfilePostGuideView(UIView *view) {
 %end
 
 // 隐藏搜同款
+static BOOL DYYYIsSearchVideoStickerView(UIView *view);
+
 %hook ACCStickerContainerView
 - (void)layoutSubviews {
     %orig;
+
+    // v622: SDK 直接改 layer，视图 transform 拦不住；在它自己的 layout 之后写 layer。
+    BOOL searchVideo = DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYIsSearchVideoStickerView(self);
+    CATransform3D target = searchVideo ? CATransform3DMakeTranslation(0, 28.0, 0) : CATransform3DIdentity;
+    if (!CATransform3DEqualToTransform(self.layer.transform, target)) {
+        self.layer.transform = target;
+        if (searchVideo) DYYYProbeLog(@"STICKER layer ty=28");
+    }
+
     if (!DYYYGetBool(@"DYYYHideSearchSame")) {
         return;
     }
@@ -16433,18 +16444,6 @@ static BOOL DYYYIsSearchVideoStickerView(UIView *view) {
            !DYYYCurrentDetailPageIsImage(vc);
 }
 
-%hook ACCStickerContainerView
-
-// v621: SDK 每次布局都会重写 transform，这里把 +28 叠回去，保证视觉上一直下移。
-- (void)setTransform:(CGAffineTransform)transform {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYIsSearchVideoStickerView((UIView *)self)) {
-        transform.ty = 28.0;
-    }
-    %orig(transform);
-}
-
-%end
-
 %hook AWEFeedStickerContainerView
 
 - (void)didMoveToSuperview {
@@ -16482,10 +16481,8 @@ static BOOL DYYYIsSearchVideoStickerView(UIView *view) {
             break;
         }
     }
-    if (inner && fabs(inner.transform.ty - 28.0) > 0.5) {
-        // 写 identity，setTransform: hook 会把它变成 ty = 28
-        inner.transform = CGAffineTransformIdentity;
-        DYYYProbeLog(@"STICKER inner translate 28 refer=%@", refer);
+    if (inner) {
+        DYYYProbeLog(@"STICKER inner defer to layer refer=%@", refer);
     }
 }
 
