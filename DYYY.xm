@@ -19043,17 +19043,13 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     return win ? win.bounds.size.height : %orig;
 }
 
-// 修复原版错误：原版这里用了 table.bounds（早期返回 792 覆盖了原生的 852）。
-// 改为和上面三个方法一致，只取 getActiveWindow 的高度。
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
     double orig = %orig;
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return orig;
-    
     UIWindow *win = [DYYYUtils getActiveWindow];
     if (win && win.bounds.size.height > 0) {
         return win.bounds.size.height;
     }
-    // 早期拿不到 window 时，直接放行原生给的 852，绝不用 table.bounds 覆盖
     return orig;
 }
 
@@ -19066,11 +19062,10 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 %end
 
-%ctor {
-    %init(DYYYDetailHeightHook);
-}
+
+
+
 
 %ctor {
-    DYYYProbe(@"BOOT", @"DYYY loaded, final probe active");
     %init(DYYYDetailHeightHook);
 }
