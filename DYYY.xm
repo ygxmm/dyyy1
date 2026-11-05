@@ -3545,26 +3545,6 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
     %orig(lutFilter, DYYYShouldDisableAllHDR() ? nil : HDRLutImage);
 }
 
-// v495: 拦截原生播放器背景图，防止底部黑边
-- (void)updatePlayerBackgroundViewIfNeededWhenLandscape:(BOOL)landscape fromHomepageHot:(BOOL)fromHomepageHot {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    %orig(landscape, fromHomepageHot);
-}
-
-- (id)getPlayerBackgroundView {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return nil;
-    return %orig;
-}
-
-- (void)setPlayerBackgroundView:(id)view {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    %orig(view);
-}
-
-- (BOOL)enableBackgroundViewConfig {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return NO;
-    return %orig;
-}
 
 %end
 
@@ -15986,49 +15966,25 @@ static Class tabBarButtonClass = nil;
 
 
 
-    // v461: 常规改 frame 走三个 VC 的 changePlayerFrameIfNeededWithAnimated: hook。
-    // v462: 评论区/面板打开时抖音内部可能把 player view 压到 769（852-tabBar），
-    //       需要全局兜底拉回 852。用前置数值预判，只有高度差 ≈ tabBarHeight 才溯源响应链，
-    //       稳定状态下高度差=0 直接跳过，性能接近 v461。
-    if (!enableBlur && enableFS) {
-        if (frame.origin.x != 0 && frame.origin.y != 0) {
-            %orig(frame);
-            return;
-        }
-        CGRect superF = self.superview.frame;
-        CGFloat superH = CGRectGetHeight(superF);
-        CGFloat selfH = CGRectGetHeight(frame);
-        if (superH > 0 && selfH > 0 && selfH < superH &&
-            fabs((superH - selfH) - gCurrentTabBarHeight) < 1.0) {
-            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-            Class PlayVCClass1 = %c(AWEAwemePlayVideoViewController);
-            Class PlayVCClass2 = %c(AWEDPlayerFeedPlayerViewController);
-            Class PlayVCClass3 = %c(AWEDPlayerViewController_Merge);
-            BOOL isPlayVC = ((PlayVCClass1 && [vc isKindOfClass:PlayVCClass1]) ||
-                             (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
-                             (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
-            if (isPlayVC) {
-                frame.size.height = superH;
-            }
-        }
+    if (!enableBlur || frame.origin.x == 0) {
         %orig(frame);
         return;
     }
 
-    // v463: 恢复 v461 删掉的评论模糊吞 frame 逻辑。
-    // enableBlur 开时，isPlayVC 下 origin.x != 0 的 setFrame 直接 return（不调 %orig），
-    // 阻止评论区打开时 video 缩小动画把 player view 改小。
-    if (enableBlur) {
-        UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-        Class PlayVCClass1 = %c(AWEAwemePlayVideoViewController);
-        Class PlayVCClass2 = %c(AWEDPlayerFeedPlayerViewController);
-        Class PlayVCClass3 = %c(AWEDPlayerViewController_Merge);
-        BOOL isPlayVC = ((PlayVCClass1 && [vc isKindOfClass:PlayVCClass1]) ||
-                         (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
-                         (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
-        if (isPlayVC && frame.origin.x != 0) {
-            return;
-        }
+    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
+    static Class PlayVCClass1, PlayVCClass2, PlayVCClass3;
+    static dispatch_once_t playClassesOnce;
+    dispatch_once(&playClassesOnce, ^{
+        PlayVCClass1 = NSClassFromString(@"AWEAwemePlayVideoViewController");
+        PlayVCClass2 = NSClassFromString(@"AWEDPlayerFeedPlayerViewController");
+        PlayVCClass3 = NSClassFromString(@"AWEDPlayerViewController_Merge");
+    });
+
+    BOOL isPlayVC = ((PlayVCClass1 && [vc isKindOfClass:PlayVCClass1]) ||
+                     (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
+                     (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
+    if (isPlayVC && frame.origin.x != 0) {
+        return;
     }
     %orig(frame);
 }
@@ -16941,14 +16897,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %hook AWEDPlayerViewController_Merge
 
-- (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
-    // v590: 全屏时砍断抖音自己的缩放；旋转中仍走原生布局，
-    // 避免 UIKit 在半途拿到不完整的几何值，转场结束后由 layout 异步兜底。
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && !gDYYYInRotation) {
-        return;
-    }
-    %orig(animated);
-}
 
 - (BOOL)enableHDR {
     if (DYYYShouldDisableAllHDR()) {
@@ -16958,21 +16906,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 }
 
 
-// v495: 拦截原生播放器背景图生成/更新，防止滑动返回旧视频时底部变黑
-- (void)updatePlayerBackgroundViewIfNeededWhenLandscape:(BOOL)landscape fromHomepageHot:(BOOL)fromHomepageHot {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    %orig(landscape, fromHomepageHot);
-}
-
-- (id)getPlayerBackgroundView {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return nil;
-    return %orig;
-}
-
-- (void)setPlayerBackgroundView:(id)view {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    %orig(view);
-}
 
 - (void)viewDidLayoutSubviews {
     %orig;
