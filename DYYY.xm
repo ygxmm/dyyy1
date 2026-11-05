@@ -16415,12 +16415,12 @@ static void DYYYFixStickerTopConstraint(UIView *view) {
 
 - (void)didMoveToSuperview {
     %orig;
-    DYYYFixStickerTopConstraint(self);
+    DYYYFixStickerTopConstraint((UIView *)self);
 }
 
 - (void)layoutSubviews {
     %orig;
-    DYYYFixStickerTopConstraint(self);
+    DYYYFixStickerTopConstraint((UIView *)self);
 }
 
 %end
