@@ -39,6 +39,54 @@
 // ============================================================
 #import "AwemeHeaders.h"
 #import "DYYYFullscreenCoordinator.h"
+
+// ============================================================
+// v614: 探针日志 —— 写入 App 沙盒 Documents/DYYY-probe.log
+// ============================================================
+static NSString *DYYYProbeLogPath(void) {
+    static NSString *path = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSString *docs = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+        if (docs.length == 0) docs = NSTemporaryDirectory();
+        path = [docs stringByAppendingPathComponent:@"DYYY-probe.log"];
+    });
+    return path;
+}
+
+static void DYYYProbeLog(NSString *format, ...) {
+    va_list args;
+    va_start(args, format);
+    NSString *message = [[NSString alloc] initWithFormat:format arguments:args];
+    va_end(args);
+    NSString *line = [NSString stringWithFormat:@"%@ %@\n", [NSDate date], message];
+
+    static dispatch_queue_t queue;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ queue = dispatch_queue_create("com.dyyy.probe", DISPATCH_QUEUE_SERIAL); });
+
+    dispatch_async(queue, ^{
+      NSString *path = DYYYProbeLogPath();
+      NSFileManager *fm = [NSFileManager defaultManager];
+      NSDictionary *attrs = [fm attributesOfItemAtPath:path error:nil];
+      if ([attrs fileSize] > 2 * 1024 * 1024) {
+          [fm removeItemAtPath:path error:nil];
+      }
+      NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
+      NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:path];
+      if (!handle) {
+          [data writeToFile:path atomically:YES];
+      } else {
+          @try {
+              [handle seekToEndOfFile];
+              [handle writeData:data];
+              [handle closeFile];
+          } @catch (NSException *e) {
+          }
+      }
+    });
+}
+
 #import "DYYYConstants.h"
 #import "DYYYUtils.h"
 #import "AWMSafeDispatchTimer.h"
@@ -16396,6 +16444,18 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         }
     }
 
+    // v614 probe: 交互层现场
+    {
+        UIViewController *pager = DYYYDetailPagerForController(self);
+        UIView *sv = self.view.superview;
+        DYYYProbeLog(@"INT refer=%@ pager=%d idx=%ld sup=%@ frame=%@ win=%@ safe=%.1f",
+                     self.referString, pager != nil, pager ? (long)[pager currentIndex] : -1,
+                     sv ? NSStringFromCGRect(sv.bounds) : @"nil",
+                     NSStringFromCGRect(self.view.frame),
+                     self.view.window ? NSStringFromCGRect(self.view.window.bounds) : @"nil",
+                     self.view.window ? self.view.window.safeAreaInsets.bottom : -1);
+    }
+
     // v608: 全屏统一交给 DYYYFullscreenCoordinator。
     if ([DYYYFullscreenCoordinator layoutNativeInteraction:self]) return;
 
@@ -17021,6 +17081,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 
 - (void)viewDidLayoutSubviews {
+    DYYYProbeLog(@"%@ layout frame=%@ sup=%@ win=%@", @"AWEDPlayerFeedPlayerViewController", NSStringFromCGRect(self.view.frame), self.view.superview ? NSStringFromCGRect(self.view.superview.bounds) : @"nil", self.view.window ? NSStringFromCGRect(self.view.window.bounds) : @"nil");
     %orig;
     [DYYYFullscreenCoordinator layoutPlayerContainer:self];
 }
@@ -17082,6 +17143,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 }
 
 - (void)viewDidLayoutSubviews {
+    DYYYProbeLog(@"%@ layout frame=%@ sup=%@ win=%@", @"AWEDPlayerViewController_Merge", NSStringFromCGRect(self.view.frame), self.view.superview ? NSStringFromCGRect(self.view.superview.bounds) : @"nil", self.view.window ? NSStringFromCGRect(self.view.window.bounds) : @"nil");
     %orig;
     [DYYYFullscreenCoordinator layoutPlayerContainer:self];
 }
@@ -19193,6 +19255,16 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 %group DYYYDetailHeightHook
 
 %hook AWEAwemeDetailTableViewController
+
+- (void)setCurrentIndex:(long long)index {
+    long long old = self.currentIndex;
+    %orig(index);
+    UITableView *table = nil;
+    @try { table = [self valueForKey:@"tableView"]; } @catch (NSException *e) {}
+    DYYYProbeLog(@"PAGER idx %lld -> %lld table=%@ contentOffset=%@", old, index,
+                 table ? NSStringFromCGRect(table.bounds) : @"nil",
+                 table ? NSStringFromCGPoint(table.contentOffset) : @"nil");
+}
 
 - (double)cellHeightAtIndex:(long long)index {
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
