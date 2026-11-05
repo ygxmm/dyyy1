@@ -15975,45 +15975,7 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
-    // v580.4: 全局拦截 Interaction，只要试图超过 792 就砍下来，防止漏网之鱼
-    // v471: 终极重构。全局 setFrame 拦截，原点归零，彻底杜绝错位和抖动
-    if (enableFS) {
-        UIResponder *owner = self.nextResponder;
-        CGSize screenSz = [UIScreen mainScreen].bounds.size;
-        BOOL isPortrait = screenSz.height > screenSz.width;
 
-        if (isPortrait) {
-            // 1. 视频层 Merge：原点锁零，高度拉满
-            if ([owner isKindOfClass:NSClassFromString(@"AWEDPlayerViewController_Merge")]) {
-                BOOL canCover = YES;
-                if ([owner respondsToSelector:@selector(model)]) {
-                    id model = [(id)owner model];
-                    if (model && [model respondsToSelector:@selector(awemeType)] && [model awemeType] == 68) canCover = NO; // 图文
-                    if (model && [model respondsToSelector:@selector(video)]) {
-                        id video = [model video];
-                        if (video && [video respondsToSelector:@selector(width)] && [video respondsToSelector:@selector(height)]) {
-                            double w = [((AWEVideoModel *)video).width doubleValue];
-                            double h = [((AWEVideoModel *)video).height doubleValue];
-                            if (w > 0 && h > 0 && (h / w) < 1.70) canCover = NO; // 横屏比例
-                        }
-                    }
-                }
-                frame.origin = CGPointZero;
-                if (canCover) {
-                    frame.size.height = screenSz.height;
-                }
-            }
-            // 2. UI 层 Interaction：原点锁零，高度钉死 792
-            else if ([owner isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")]) {
-                NSString *refer = [(id)owner referString];
-                BOOL isSearchVideo = [refer isKindOfClass:[NSString class]] && [refer isEqualToString:@"general_search"];
-                if (!isSearchVideo) {
-                    frame.origin = CGPointZero;
-                    frame.size.height = screenSz.height - 60.0;
-                }
-            }
-        }
-    }
 
 
     // v461: 常规改 frame 走三个 VC 的 changePlayerFrameIfNeededWithAnimated: hook。
