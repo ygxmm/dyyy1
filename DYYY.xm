@@ -40,37 +40,6 @@
 #import "AwemeHeaders.h"
 #import "DYYYFullscreenCoordinator.h"
 
-// ===== 临时探针：诊断完整体删除 =====
-static void DYYYProbe(NSString *tag, NSString *fmt, ...) {
-    static NSMutableDictionary *lastMap; static dispatch_once_t once;
-    dispatch_once(&once, ^{ lastMap = [NSMutableDictionary new]; });
-    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-    @synchronized (lastMap) {
-        NSNumber *last = lastMap[tag];
-        if (last && now - last.doubleValue < 0.25) return;
-        lastMap[tag] = @(now);
-    }
-    va_list ap; va_start(ap, fmt);
-    NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
-    va_end(ap);
-    NSString *line = [NSString stringWithFormat:@"%.3f [%@] %@\n", now, tag, msg];
-    static dispatch_queue_t q; static dispatch_once_t once2;
-    dispatch_once(&once2, ^{ q = dispatch_queue_create("dyyy.probe", DISPATCH_QUEUE_SERIAL); });
-    dispatch_async(q, ^{
-        NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/DYYYProbe.log"];
-        NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil];
-        if ([attrs fileSize] > 2 * 1024 * 1024) return;
-        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
-        if (!fh) { [line writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil]; return; }
-        @try { [fh seekToEndOfFile];
-               [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
-               [fh closeFile]; } @catch (...) {}
-    });
-}
-// ===== 探针结束 =====
-
-
-
 #import "DYYYConstants.h"
 #import "DYYYUtils.h"
 #import "AWMSafeDispatchTimer.h"
@@ -19026,99 +18995,37 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 %hook AWEAwemeDetailTableViewController
 
-- (void)updateTableViewLayoutForTargetPageIndex:(NSInteger)index {
-    UITableView *t = [self tableView];
-    DYYYProbe(@"updPage.BEFORE", @"idx=%ld off=%.1f csz=%.1f insT=%.1f insB=%.1f tblH=%.1f winH=%.1f cnt=%ld",
-              (long)index, t.contentOffset.y, t.contentSize.height,
-              t.contentInset.top, t.contentInset.bottom, t.bounds.size.height,
-              t.window ? t.window.bounds.size.height : -1,
-              t.numberOfSections > 0 ? (long)[t numberOfRowsInSection:0] : -1);
-    %orig;
-    DYYYProbe(@"updPage.AFTER", @"idx=%ld off=%.1f csz=%.1f insB=%.1f",
-              (long)index, t.contentOffset.y, t.contentSize.height, t.contentInset.bottom);
-}
-
-- (NSUInteger)currentVisibleCellIndex {
-    NSUInteger idx = %orig;
-    static NSUInteger last = (NSUInteger)-1;
-    if (idx != last) { last = idx; DYYYProbe(@"curIdx", @"idx=%lu", (unsigned long)idx); }
-    return idx;
-}
-
-- (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {
-    DYYYProbe(@"willDisplay", @"row=%ld cellH=%.1f tblH=%.1f off=%.1f csz=%.1f",
-              (long)indexPath.row, cell.frame.size.height,
-              tableView.bounds.size.height, tableView.contentOffset.y,
-              tableView.contentSize.height);
-    %orig;
-}
-
-- (void)viewDidAppear:(BOOL)animated {
-    %orig;
-    UITableView *t = [self tableView];
-    DYYYProbe(@"=====ENTER", @"tblH=%.1f winH=%.1f insB=%.1f cnt=%ld",
-              t.bounds.size.height, t.window ? t.window.bounds.size.height : -1,
-              t.contentInset.bottom,
-              t.numberOfSections > 0 ? (long)[t numberOfRowsInSection:0] : -1);
-}
 
 
 // v642: 详情表的行高有多条来源（cellHeight / fixedCellHeight / cellHeightAtIndex），
 // 只改 heightForRow 会让预加载行保留原生 792，最后几项一高一低。这里统一到窗口高度。
 - (double)cellHeightAtIndex:(long long)index {
-    double orig = %orig; double ret = orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        UIWindow *win = [DYYYUtils getActiveWindow];
-        if (win) ret = win.bounds.size.height;
-    }
-    DYYYProbe(@"cellHAtIndex", @"idx=%lld ret=%.1f orig=%.1f", index, ret, orig);
-    return ret;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    return win ? win.bounds.size.height : %orig;
 }
 
 - (double)fixedCellHeight {
-    double orig = %orig; double ret = orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        UIWindow *win = [DYYYUtils getActiveWindow];
-        if (win) ret = win.bounds.size.height;
-    }
-    DYYYProbe(@"fixedCellH", @"ret=%.1f orig=%.1f", ret, orig);
-    return ret;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    return win ? win.bounds.size.height : %orig;
 }
 
 - (double)cellHeight {
-    double orig = %orig; double ret = orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        UIWindow *win = [DYYYUtils getActiveWindow];
-        if (win) ret = win.bounds.size.height;
-    }
-    DYYYProbe(@"cellH", @"ret=%.1f orig=%.1f", ret, orig);
-    return ret;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    return win ? win.bounds.size.height : %orig;
 }
 
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
-    double orig = %orig; double ret = orig;
-    UITableView *table = (UITableView *)a0;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") &&
-        [table isKindOfClass:[UITableView class]] && table.bounds.size.height > 0) {
-        ret = table.bounds.size.height;
-    }
-    DYYYProbe(@"rowH", @"idx=%@ ret=%.1f orig=%.1f tblH=%.1f winH=%.1f insB=%.1f off=%.1f csz=%.1f",
-              a1, ret, orig, table.bounds.size.height,
-              table.window ? table.window.bounds.size.height : -1,
-              table.contentInset.bottom, table.contentOffset.y,
-              table.contentSize.height);
-    return ret;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    return win ? win.bounds.size.height : %orig;
 }
 
 - (double)baseTableViewBottomInset {
-    double orig = %orig;
-    double ret = [DYYYFullscreenCoordinator bottomInsetForDetail:orig controller:self];
-    UITableView *t = [self tableView];
-    DYYYProbe(@"baseInset", @"orig=%.1f ret=%.1f tblH=%.1f winH=%.1f off=%.1f csz=%.1f insB=%.1f",
-              orig, ret, t.bounds.size.height,
-              t.window ? t.window.bounds.size.height : -1,
-              t.contentOffset.y, t.contentSize.height, t.contentInset.bottom);
-    return ret;
+    double inset = %orig;
+    return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
 }
 
 
