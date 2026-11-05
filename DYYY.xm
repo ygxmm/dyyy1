@@ -16381,6 +16381,29 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     }
 
     {
+    // v610: 搜索完点开的视频：UI 固定在屏幕底往上 60（792），
+    // 不再被 tabBar/activeBottomBar 的 83 预留带走。
+    {
+        UIViewController *pager = DYYYDetailPagerForController(self);
+        NSString *refer = nil;
+        @try { refer = [self valueForKey:@"referString"]; } @catch (NSException *e) {}
+        if (![refer isKindOfClass:[NSString class]] || refer.length == 0) {
+            @try { refer = [pager valueForKey:@"referString"]; } @catch (NSException *e) {}
+        }
+        if (![refer isKindOfClass:[NSString class]] || refer.length == 0) {
+            @try { refer = [pager valueForKey:@"previousPage"]; } @catch (NSException *e) {}
+        }
+        BOOL searchDetail = pager != nil && [refer isKindOfClass:[NSString class]] && [refer containsString:@"search"];
+        if (searchDetail && self.view.superview) {
+            CGRect f = self.view.frame;
+            CGFloat height = CGRectGetMaxY(self.view.superview.bounds) - f.origin.y - 60.0;
+            if (height > 100) {
+                DYYYAsyncSetFullscreenFrame(self.view, CGRectMake(f.origin.x, f.origin.y, f.size.width, height));
+                return;
+            }
+        }
+    }
+
     // v608: 全屏统一交给 DYYYFullscreenCoordinator。
     if ([DYYYFullscreenCoordinator layoutNativeInteraction:self]) return;
 
