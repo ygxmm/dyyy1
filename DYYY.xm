@@ -17133,26 +17133,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 // v250: 只对单个 cell 里的 player VC 拉高。
 
-%hook AWEFeedTableView
-- (void)layoutSubviews {
-    %orig;
-    // 旋转期跳过改 frame：layoutSubviews 里改 self.frame 会触发新一轮 layout，
-    // 旋转时 screenH 仍在变，循环占满主线程导致冻屏。旋转结束后下一帧自动恢复。
-    if (gDYYYInRotation) return;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
-
-    // v336: table 高 852，clipsToBounds=NO，cell 高由 table 高度决定
-    CGFloat screenH = self.superview.bounds.size.height;
-    if (screenH > 100) {
-        CGRect f = self.frame;
-        if (fabs(f.size.height - screenH) > 0.5) {
-            f.size.height = screenH;
-            self.frame = f;
-        }
-    }
-    if (self.clipsToBounds) self.clipsToBounds = NO;
-}
-%end
 
 %hook AWEFeedTableViewCell
 - (void)prepareForReuse {
@@ -17289,22 +17269,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     DYYYHandleCommittedSpeedAwemeChanged([self currentAweme]);
 }
 
-// v354: 让抖音的"账本"也用 852 —— 修改 row 高 (v464 重写: 避免过渡态拿到393)
-- (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGSize sz = [UIScreen mainScreen].bounds.size;
-        return sz.width > sz.height ? sz.width : sz.height;
-    }
-    return %orig;
-}
-
-- (double)cellHeight {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGSize sz = [UIScreen mainScreen].bounds.size;
-        return sz.width > sz.height ? sz.width : sz.height;
-    }
-    return %orig;
-}
 %end
 
 static id dyyyWindowKeyObserverToken = nil;
