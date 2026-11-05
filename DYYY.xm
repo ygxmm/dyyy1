@@ -12427,6 +12427,30 @@ static void DYYYHideProfilePostGuideView(UIView *view) {
 // 隐藏搜同款
 static BOOL DYYYIsSearchVideoStickerView(UIView *view);
 
+static BOOL DYYYIsSearchVideoStickerView(UIView *view);
+
+%hook ACCStickerContainerView
+
+// v625: 贴纸内容按 playerFrame 排版，容器 frame/约束都不算数。
+// 在搜索视频页把传入的 playerFrame 下移 28，所有贴纸一起动。
+- (void)configWithPlayerFrame:(CGRect)frame allowMask:(BOOL)allowMask {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYIsSearchVideoStickerView(self)) {
+        frame.origin.y += 28.0;
+        DYYYProbeLog(@"STICKER playerFrame +28 allowMask");
+    }
+    %orig(frame, allowMask);
+}
+
+- (void)configWithPlayerFrame:(CGRect)frame needMask:(BOOL)needMask {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYIsSearchVideoStickerView(self)) {
+        frame.origin.y += 28.0;
+        DYYYProbeLog(@"STICKER playerFrame +28 needMask");
+    }
+    %orig(frame, needMask);
+}
+
+%end
+
 %hook ACCStickerContainerView
 - (void)layoutSubviews {
     %orig;
@@ -16409,7 +16433,7 @@ static void DYYYFixStickerTopConstraint(UIView *view) {
             BOOL topOnSecond = (constraint.secondItem == view && constraint.secondAttribute == NSLayoutAttributeTop);
             if (!topOnView && !topOnSecond) continue;
             // v623: 搜索视频页整体下移 28（0 -> 28）；其他页面保持 0。
-            CGFloat target = DYYYIsSearchVideoStickerView(view) ? 28.0 : 0.0;
+            CGFloat target = 0.0;
             if (fabs(constraint.constant - target) > 0.5) {
                 DYYYProbeLog(@"STICKER top %.1f -> %.1f owner=%@ depth=%d", constraint.constant, target, NSStringFromClass([owner class]), depth);
                 constraint.constant = target;
@@ -16509,21 +16533,6 @@ static BOOL DYYYIsSearchVideoStickerView(UIView *view) {
                      NSStringFromCGRect(self.view.frame),
                      self.view.window ? NSStringFromCGRect(self.view.window.bounds) : @"nil",
                      self.view.window ? self.view.window.safeAreaInsets.bottom : -1);
-    }
-
-    // v624: top 约束改了不生效（容器走 frame），在父层直接写子视图 frame。
-    // 只对搜索视频页：AWEFeedStickerContainerView 整体下移 28；其他页面不动。
-    if (DYYYIsSearchVideoStickerView(self.view)) {
-        for (UIView *sub in self.view.subviews) {
-            if (![sub isKindOfClass:NSClassFromString(@"AWEFeedStickerContainerView")]) continue;
-            CGRect stickerFrame = sub.frame;
-            if (fabs(stickerFrame.origin.y - 28.0) > 0.5) {
-                stickerFrame.origin.y = 28.0;
-                sub.frame = stickerFrame;
-                DYYYProbeLog(@"STICKER frame y=28");
-            }
-            break;
-        }
     }
 
     // v616: 恢复「打开评论区上方黑条」清理（之前随全屏逻辑一起删掉了）
