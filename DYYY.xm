@@ -16448,8 +16448,12 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     {
         UIViewController *pager = DYYYDetailPagerForController(self);
         UIView *sv = self.view.superview;
-        DYYYProbeLog(@"INT refer=%@ pager=%d idx=%ld sup=%@ frame=%@ win=%@ safe=%.1f",
-                     self.referString, pager != nil, pager ? (long)[pager currentIndex] : -1,
+        long long pageIndex = -1;
+        if (pager) {
+            @try { pageIndex = [[pager valueForKey:@"currentIndex"] longLongValue]; } @catch (NSException *e) {}
+        }
+        DYYYProbeLog(@"INT refer=%@ pager=%d idx=%lld sup=%@ frame=%@ win=%@ safe=%.1f",
+                     self.referString, pager != nil, pageIndex,
                      sv ? NSStringFromCGRect(sv.bounds) : @"nil",
                      NSStringFromCGRect(self.view.frame),
                      self.view.window ? NSStringFromCGRect(self.view.window.bounds) : @"nil",
