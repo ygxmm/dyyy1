@@ -18994,8 +18994,38 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 %group DYYYDetailHeightHook
 
 %hook AWEAwemeDetailTableViewController
-// 已移除所有强行修改行高的补丁，将计算权交还给原生抖音，
-// 修复视频越多错位越大、往前翻越界及首页转场UI错乱的问题。
+
+- (double)cellHeightAtIndex:(long long)index {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    return win ? win.bounds.size.height : %orig;
+}
+
+- (double)fixedCellHeight {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    return win ? win.bounds.size.height : %orig;
+}
+
+- (double)cellHeight {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    return win ? win.bounds.size.height : %orig;
+}
+
+// 原版这里写的是 table.bounds.size.height（早期会拿到792导致越翻越错）。
+// 直接修正为 win.bounds，与上面三个方法一致。
+- (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    return win ? win.bounds.size.height : %orig;
+}
+
+- (double)baseTableViewBottomInset {
+    double inset = %orig;
+    return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
+}
+
 %end
 
 %end
