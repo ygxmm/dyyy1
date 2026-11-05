@@ -16389,6 +16389,42 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 @property (nonatomic, readonly, strong) UIView *bottomContainerView;
 @end
 
+// v617: 搜索完视频页的贴纸容器 top 约束是 -28，导致内部 852 高的
+// ACCStickerContainerView 被整体上移。把它改成 0，并关掉祖先裁剪。
+static void DYYYFixStickerTopConstraint(UIView *view) {
+    if (!view || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    UIView *superview = view.superview;
+    if (!superview) return;
+
+    for (NSLayoutConstraint *constraint in superview.constraints) {
+        if (constraint.firstItem != view) continue;
+        if (constraint.firstAttribute != NSLayoutAttributeTop) continue;
+        if (constraint.constant < -0.01) {
+            constraint.constant = 0;
+        }
+    }
+
+    UIView *v = view;
+    for (int i = 0; i < 5 && v; i++) {
+        if (v.clipsToBounds) v.clipsToBounds = NO;
+        v = v.superview;
+    }
+}
+
+%hook AWEFeedStickerContainerView
+
+- (void)didMoveToSuperview {
+    %orig;
+    DYYYFixStickerTopConstraint(self);
+}
+
+- (void)layoutSubviews {
+    %orig;
+    DYYYFixStickerTopConstraint(self);
+}
+
+%end
+
 %hook AWEPlayInteractionViewController
 
 - (void)onVideoPlayerViewDoubleClicked:(id)arg1 {
