@@ -16380,6 +16380,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         if (!CGRectIntersectsRect(earlyRect, earlyView.window.bounds)) return;
     }
 
+    {
     // v608: 全屏统一交给 DYYYFullscreenCoordinator。
     if ([DYYYFullscreenCoordinator layoutNativeInteraction:self]) return;
 
@@ -16431,6 +16432,8 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         self.view.frame = frame;
     }
     [DYYYFullscreenCoordinator rememberInteractionGuide:self];
+    }
+
 
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
         DYYYHideVideoAIParseBar(self.view);
