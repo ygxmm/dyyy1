@@ -16418,25 +16418,39 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         DYYYClearBlackEdgeBars(self.view, screenW, screenH, safeTop, 0);
     }
 
-    // v628: 高度钉死 792（视口 - 60），不 return，后面的按钮/速度逻辑还要跑。
-    // v630: 搜索结果页整页跳过。
-    if (DYYYGetBool(@"DYYYEnableFullScreen") && !DYYYIsSearchResultsPage(self)) {
-        self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    // v631: 全屏几何统一交给 DYYYFullscreenCoordinator（参考 Wtrwx/DYYY）。
+    // 搜索结果页整页跳过，避免卡片被撑高。
+    if (!DYYYIsSearchResultsPage(self)) {
+        if ([DYYYFullscreenCoordinator layoutNativeInteraction:self]) return;
+
+        if ([DYYYFullscreenCoordinator usesRecommendedLayoutForController:self]) {
+            [DYYYFullscreenCoordinator layoutInteraction:self];
+            if (![DYYYFullscreenCoordinator isImageContentController:self]) return;
+            if ([DYYYFullscreenCoordinator hasCommentInWindow:self.view.window]) return;
+        }
+
+        if (!DYYYGetBool(@"DYYYEnableFullScreen")) return;
+        if (!self.view.superview) return;
+
+        CGRect frame = self.view.frame;
         UIView *container = self.view.superview;
-        CGFloat viewportH = 0;
-        if (container && container.bounds.size.height > 0) {
-            viewportH = container.bounds.size.height;
-        } else if (self.view.window) {
-            viewportH = self.view.window.bounds.size.height;
-        }
-        if (viewportH > 600) {
-            CGRect f = self.view.frame;
-            CGFloat targetH = viewportH - 60.0;
-            if (fabs(f.size.height - targetH) > 0.5) {
-                f.size.height = targetH;
-                self.view.frame = f;
+        CGFloat superviewHeight = MAX(0, CGRectGetMaxY(container.bounds) - frame.origin.y);
+        if (fabs(frame.size.width - container.bounds.size.width) > 1 || superviewHeight <= 0) return;
+
+        CGFloat occupied = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:self.view];
+        if (occupied <= 0.5) {
+            CGFloat safeBottom = 0;
+            if (@available(iOS 11.0, *)) {
+                safeBottom = self.view.window.safeAreaInsets.bottom;
             }
+            occupied = 49.0 + safeBottom;
         }
+        frame.size.height = MAX(0, superviewHeight - occupied);
+
+        if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
+            self.view.frame = frame;
+        }
+        [DYYYFullscreenCoordinator rememberInteractionGuide:self];
     }
 
 
@@ -17040,8 +17054,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 - (void)viewDidLayoutSubviews {
     %orig;
     if (DYYYIsSearchResultsPage(self)) return;
-    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-    if (self.view.superview && self.view.superview.bounds.size.height < screenH * 0.9) return;
     [DYYYFullscreenCoordinator layoutPlayerContainer:self];
 }
 
@@ -17104,8 +17116,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 - (void)viewDidLayoutSubviews {
     %orig;
     if (DYYYIsSearchResultsPage(self)) return;
-    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-    if (self.view.superview && self.view.superview.bounds.size.height < screenH * 0.9) return;
     [DYYYFullscreenCoordinator layoutPlayerContainer:self];
 }
 
@@ -17828,15 +17838,18 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     %orig(color);
 }
 
+- (void)setFrame:(CGRect)frame {
+    %orig([DYYYFullscreenCoordinator frameForPlayer:self proposed:frame]);
+}
+
 - (void)layoutSubviews {
+    [DYYYFullscreenCoordinator preparePlayer:self];
     %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        return;   // 全屏时不要把黑色底传到父视图
-    }
     UIView *parent = self.superview;
     if (parent) {
         parent.backgroundColor = self.backgroundColor;
     }
+    [DYYYFullscreenCoordinator finishPlayer:self];
 }
 
 %end
@@ -17896,54 +17909,9 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 %end
 
 %hook TTMetalViewVP
-// v619: Merge 容器会被原生在 852/792/707 之间拉，渲染层必须单独钉住。
-- (void)setBounds:(CGRect)bounds {
-    UIView *view = (UIView *)self;
-    UIViewController *ownerVC = [DYYYUtils firstAvailableViewControllerFromView:view];
-    if (DYYYIsSearchResultsPage(ownerVC)) {
-        %orig(bounds);
-        return;
-    }
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && !gDYYYInRotation && view.window) {
-        CGSize screen = [UIScreen mainScreen].bounds.size;
-        BOOL fullScreenParent = view.superview && view.superview.bounds.size.height >= screen.height * 0.9;
-        if (screen.height > screen.width && fullScreenParent &&
-            fabs(bounds.size.width - screen.width) <= 1.0 &&
-            bounds.size.height > screen.height * 0.5) {
-            bounds.size.height = screen.height;
-        }
-    }
-    %orig(bounds);
-}
-
-- (void)setCenter:(CGPoint)center {
-    UIView *view = (UIView *)self;
-    UIViewController *ownerVC = [DYYYUtils firstAvailableViewControllerFromView:view];
-    if (DYYYIsSearchResultsPage(ownerVC)) {
-        %orig(center);
-        return;
-    }
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && !gDYYYInRotation && view.window) {
-        CGSize screen = [UIScreen mainScreen].bounds.size;
-        BOOL fullScreenParent = view.superview && view.superview.bounds.size.height >= screen.height * 0.9;
-        if (screen.height > screen.width && fullScreenParent) {
-            center = CGPointMake(screen.width * 0.5, screen.height * 0.5);
-        }
-    }
-    %orig(center);
-}
-
 - (void)layoutSubviews {
     %orig;
-    UIView *view = (UIView *)self;
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen") || gDYYYInRotation || !view.window) return;
-    UIView *v = view.superview;
-    for (int i = 0; i < 5 && v; i++) {
-        if (v.clipsToBounds) v.clipsToBounds = NO;
-        v = v.superview;
-    }
 }
-
 %end
 
 // 隐藏图片滑条
@@ -19261,6 +19229,11 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 %hook AWEAwemeDetailTableViewController
 
+
+- (double)baseTableViewBottomInset {
+    double inset = %orig;
+    return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
+}
 
 - (double)cellHeightAtIndex:(long long)index {
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
