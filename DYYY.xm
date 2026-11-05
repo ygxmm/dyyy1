@@ -148,6 +148,39 @@ static void DYYYAsyncSetFullscreenFrame(UIView *view, CGRect target) {
 // 旋转期间 layout 被全部跳过，而 gDYYYInRotation 要等转场结束 0.3s 才复位；
 // 这里补一次复位后的 setNeedsLayout，让上面的异步归位重新跑起来。
 
+// v596: 详情页是纵向分页器（AWEAwemeDetailTableViewController）。
+// 判断“当前这一页”是视频还是图文，必须读分页器的 currentDisplayingAweme，
+// 不能读某个 cell/player 自己的 model —— 那可能是预加载的下一页。
+static UIViewController *DYYYDetailPagerForController(UIViewController *vc) {
+    UIViewController *p = vc;
+    int depth = 0;
+    while (p && depth < 6) {
+        if ([p isKindOfClass:NSClassFromString(@"AWEAwemeDetailTableViewController")]) return p;
+        p = p.parentViewController;
+        depth++;
+    }
+    return nil;
+}
+
+static BOOL DYYYShouldApplyPageGeometry(UIViewController *vc) {
+    if (!vc) return NO;
+    UIViewController *pager = DYYYDetailPagerForController(vc);
+    if (!pager) return YES; // 非详情页（首页 / 附近 / 关注等）：维持原有逻辑
+
+    id aweme = nil;
+    @try {
+        aweme = [pager valueForKey:@"currentDisplayingAweme"];
+    } @catch (NSException *e) {
+        aweme = nil;
+    }
+    if (!aweme) return YES; // 还没绑定时先按原逻辑走，下一次 layout 再判
+
+    if ([aweme respondsToSelector:@selector(awemeType)] && [aweme awemeType] == 68) {
+        return NO; // 当前页是图文：不参与全屏几何
+    }
+    return YES;
+}
+
 static Class DYYYMergePlayerClass(void) {
     static Class cls;
     static dispatch_once_t once;
@@ -16043,7 +16076,8 @@ static Class tabBarButtonClass = nil;
     // 画中画/横屏/小卡片一律放行。
     // v593: 先用纯数值挡住 99% 的 label/button 写入，再去问 nextResponder。
     if (enableFS && !gDYYYInRotation && CGRectGetHeight(frame) > 400.0 &&
-        [self.nextResponder isKindOfClass:DYYYMergePlayerClass()]) {
+        [self.nextResponder isKindOfClass:DYYYMergePlayerClass()] &&
+        DYYYShouldApplyPageGeometry((UIViewController *)self.nextResponder)) {
         UIWindow *ownerWindow = self.window;
         UIView *parent = self.superview;
         if ((!ownerWindow || ownerWindow.windowLevel == UIWindowLevelNormal) && parent) {
@@ -16339,7 +16373,9 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
         UIView *v = self.viewIfLoaded;
         CGSize sz = [UIScreen mainScreen].bounds.size;
-        if (v && sz.height > sz.width) { // 竖屏
+        // v596: 分页器当前页是图文时，保持原生高度，不钉 792
+        BOOL pageIsVideo = DYYYShouldApplyPageGeometry(self);
+        if (v && sz.height > sz.width && pageIsVideo) { // 竖屏
             if (gDYYYInRotation) {
                 DYYYRetryLayoutAfterRotation(v);
             } else {
@@ -16942,6 +16978,9 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
     if (vw.clipsToBounds) vw.clipsToBounds = NO;
 
+    // v596: 详情页只看分页器当前页；图文页不参与
+    if (!DYYYShouldApplyPageGeometry(self)) return;
+
     CGSize screenSize = [UIScreen mainScreen].bounds.size;
     if (!DYYYShouldApplyFullscreenPlayerFix(vw, screenSize)) return;
 
@@ -17074,6 +17113,9 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
     // v590: 这里只解裁剪，绝不“同步”改 frame
     if (vw.clipsToBounds) vw.clipsToBounds = NO;
+
+    // v596: 详情页只看分页器当前页；图文页不参与
+    if (!DYYYShouldApplyPageGeometry(self)) return;
 
     // 只处理真正上屏的 Merge；详情页里可能同时存在多个 cell 的 Merge，
     // 离屏的一律不动，避免多路 852 渲染把 GPU 打满。
