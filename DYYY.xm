@@ -16429,17 +16429,18 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     }
 
     {
-    // v611: 所有页面统一——UI 固定在屏幕底往上 60（852 - 60 = 792）。
-    // 媒体层仍由 DYYYFullscreenCoordinator 处理，这里只统一交互层高度。
-    UIWindow *window = self.view.window;
-    UIView *superview = self.view.superview;
-    if (window && superview) {
-        CGRect f = self.view.frame;
-        CGRect inWindow = [superview convertRect:f toView:window];
-        CGFloat bottom = CGRectGetHeight(window.bounds) - 60.0;
-        CGFloat height = bottom - CGRectGetMinY(inWindow);
-        if (height > 100) {
-            DYYYAsyncSetFullscreenFrame(self.view, CGRectMake(f.origin.x, f.origin.y, f.size.width, height));
+    // v615: 交互层带 FlexibleHeight，cell 每次布局都会把它拉回 803/769；
+    // 先去掉高度自适应，再同步钉死 792（幂等），避免异步写入和原生布局互相拉锯。
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+        UIWindow *window = self.view.window;
+        if (window) {
+            CGRect f = self.view.frame;
+            CGFloat targetH = window.bounds.size.height - 60.0;
+            if (fabs(f.size.height - targetH) > 0.5) {
+                f.size.height = targetH;
+                self.view.frame = f;
+            }
             return;
         }
     }
