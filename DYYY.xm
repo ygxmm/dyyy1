@@ -16373,9 +16373,8 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
         UIView *v = self.viewIfLoaded;
         CGSize sz = [UIScreen mainScreen].bounds.size;
-        // v596: 分页器当前页是图文时，保持原生高度，不钉 792
-        BOOL pageIsVideo = DYYYShouldApplyPageGeometry(self);
-        if (v && sz.height > sz.width && pageIsVideo) { // 竖屏
+        // v602: 图文页也走同一套高度逻辑（v597 里被 pageIsVideo 跳过，导致它贴底）
+        if (v && sz.height > sz.width) { // 竖屏
             if (gDYYYInRotation) {
                 DYYYRetryLayoutAfterRotation(v);
             } else {
