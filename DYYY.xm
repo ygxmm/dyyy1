@@ -19135,12 +19135,6 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 %hook AWEAwemePlayVideoViewController
-- (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        return;
-    }
-    %orig;
-}
 
 %end
 
