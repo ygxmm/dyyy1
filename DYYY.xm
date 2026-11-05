@@ -16418,6 +16418,33 @@ static void DYYYFixStickerTopConstraint(UIView *view) {
     }
 }
 
+// v621: 搜索视频页判定（贴纸/内层容器共用）
+static BOOL DYYYIsSearchVideoStickerView(UIView *view) {
+    if (!view) return NO;
+    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
+    NSString *refer = nil;
+    @try {
+        refer = [vc valueForKey:@"referString"];
+    } @catch (NSException *e) {
+        refer = nil;
+    }
+    return [refer isKindOfClass:[NSString class]] && [refer containsString:@"search"] &&
+           DYYYDetailPagerForController(vc) != nil &&
+           !DYYYCurrentDetailPageIsImage(vc);
+}
+
+%hook ACCStickerContainerView
+
+// v621: SDK 每次布局都会重写 transform，这里把 +28 叠回去，保证视觉上一直下移。
+- (void)setTransform:(CGAffineTransform)transform {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYIsSearchVideoStickerView((UIView *)self)) {
+        transform.ty = 28.0;
+    }
+    %orig(transform);
+}
+
+%end
+
 %hook AWEFeedStickerContainerView
 
 - (void)didMoveToSuperview {
@@ -16456,7 +16483,8 @@ static void DYYYFixStickerTopConstraint(UIView *view) {
         }
     }
     if (inner && fabs(inner.transform.ty - 28.0) > 0.5) {
-        inner.transform = CGAffineTransformMakeTranslation(0, 28.0);
+        // 写 identity，setTransform: hook 会把它变成 ty = 28
+        inner.transform = CGAffineTransformIdentity;
         DYYYProbeLog(@"STICKER inner translate 28 refer=%@", refer);
     }
 }
