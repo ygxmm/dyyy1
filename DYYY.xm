@@ -19043,23 +19043,18 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     return win ? win.bounds.size.height : %orig;
 }
 
-// 原版逻辑在这里用了 table.bounds（早期是792），导致 contentSize 算错。
-// 这里改用 table.window.bounds，确保 contentSize 一开始就是按全屏计算的，从根源解决翻页错位。
+// 修复原版错误：原版这里用了 table.bounds（早期返回 792 覆盖了原生的 852）。
+// 改为和上面三个方法一致，只取 getActiveWindow 的高度。
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
-    double height = %orig;
-    UITableView *table = (UITableView *)a0;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && [table isKindOfClass:[UITableView class]]) {
-        UIWindow *win = table.window;
-        if (win && win.bounds.size.height > 0) {
-            height = win.bounds.size.height;
-        } else if (table.bounds.size.height > 0) {
-            height = table.bounds.size.height;
-        }
+    double orig = %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return orig;
+    
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    if (win && win.bounds.size.height > 0) {
+        return win.bounds.size.height;
     }
-    DYYYProbe(@"rowH", @"idx=%@ ret=%.1f orig=%.1f tblH=%.1f winH=%.1f csz=%.1f", 
-              a1, height, %orig, table.bounds.size.height, 
-              table.window ? table.window.bounds.size.height : -1, table.contentSize.height);
-    return height;
+    // 早期拿不到 window 时，直接放行原生给的 852，绝不用 table.bounds 覆盖
+    return orig;
 }
 
 - (double)baseTableViewBottomInset {
@@ -19067,27 +19062,13 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
 }
 
-- (void)viewDidAppear:(BOOL)animated {
-    %orig;
-    UITableView *t = [self tableView];
-    DYYYProbe(@"Detail.Enter", @"cnt=%ld tableFrame=%@ winH=%.1f off=%.1f csz=%.1f", 
-              (long)[t numberOfRowsInSection:0], NSStringFromCGRect(t.frame), 
-              t.window ? t.window.bounds.size.height : -1,
-              t.contentOffset.y, t.contentSize.height);
-}
-
-- (void)viewWillDisappear:(BOOL)animated {
-    UITableView *t = [self tableView];
-    DYYYProbe(@"Detail.Leave", @"cnt=%ld tableFrame=%@ winH=%.1f off=%.1f csz=%.1f", 
-              (long)[t numberOfRowsInSection:0], NSStringFromCGRect(t.frame), 
-              t.window ? t.window.bounds.size.height : -1,
-              t.contentOffset.y, t.contentSize.height);
-    %orig;
-}
-
 %end
 
 %end
+
+%ctor {
+    %init(DYYYDetailHeightHook);
+}
 
 %ctor {
     DYYYProbe(@"BOOT", @"DYYY loaded, final probe active");
