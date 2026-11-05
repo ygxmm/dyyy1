@@ -15992,8 +15992,8 @@ static Class tabBarButtonClass = nil;
                     if (model && [model respondsToSelector:@selector(video)]) {
                         id video = [model video];
                         if (video && [video respondsToSelector:@selector(width)] && [video respondsToSelector:@selector(height)]) {
-                            double w = [[video width] doubleValue];
-                            double h = [[video height] doubleValue];
+                            double w = [((AWEVideoModel *)video).width doubleValue];
+                            double h = [((AWEVideoModel *)video).height doubleValue];
                             if (w > 0 && h > 0 && (h / w) < 1.70) canCover = NO; // 横屏比例
                         }
                     }

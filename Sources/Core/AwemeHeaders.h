@@ -173,6 +173,7 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 
 @interface AWEAwemeModel : NSObject
+@property (nonatomic, strong) AWEVideoModel *video;
 @property(nonatomic, strong, readwrite) NSNumber *createTime;
 @property(nonatomic, strong, readwrite) NSNumber *recommendShareRate; // 推荐视频专有属性
 @property(nonatomic, assign, readwrite) CGFloat videoDuration;
