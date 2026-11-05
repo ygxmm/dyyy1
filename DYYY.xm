@@ -16359,7 +16359,33 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         if (!CGRectIntersectsRect(earlyRect, earlyView.window.bounds)) return;
     }
 
-    // v603: 不再 hook 交互/表格容器，UI 保持原生；只撑媒体层。
+    // v606: 全屏时 tabBar 被隐藏，原生交互层会自己扩到 852；
+    // 这里把它钉回原生 769（屏高 - 49 - 底部安全区），UI 不再到底。
+    // 只改高度、保留 origin/宽度。
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        UIView *v = self.viewIfLoaded;
+        CGSize sz = [UIScreen mainScreen].bounds.size;
+        if (v && sz.height > sz.width) { // 竖屏
+            if (gDYYYInRotation) {
+                DYYYRetryLayoutAfterRotation(v);
+            } else {
+                UIView *parent = v.superview;
+                if (parent) {
+                    CGFloat safeBottom = 0;
+                    if (@available(iOS 11.0, *)) {
+                        safeBottom = v.window.safeAreaInsets.bottom;
+                    }
+                    CGFloat tabHeight = 49.0 + safeBottom;
+                    CGFloat bottom = CGRectGetMaxY(parent.bounds) - tabHeight;
+                    CGRect f = v.frame;
+                    CGFloat height = bottom - f.origin.y;
+                    if (height > 100) {
+                        DYYYAsyncSetFullscreenFrame(v, CGRectMake(f.origin.x, f.origin.y, f.size.width, height));
+                    }
+                }
+            }
+        }
+    }
 
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
         DYYYHideVideoAIParseBar(self.view);
