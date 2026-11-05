@@ -104,6 +104,64 @@ static CGFloat gGlobalTransparency = kInvalidAlpha;
 static CGFloat gCurrentTabBarHeight = kInvalidHeight;
 static CGFloat originalTabBarHeight = kInvalidHeight;
 static BOOL gDYYYInRotation = NO;  // 旋转中标志：viewWillTransitionToSize 置位，completion + 0.3s 兜底复位
+
+// v590: 全屏几何异步归位。绝不能在 viewDidLayoutSubviews 里同步改 frame：
+// 改 frame 会再次触发自身 layout，形成 self -> layout -> frame -> layout 死循环，
+// 主线程被堵死后由 Watchdog 以 0x8BADF00D 强杀。
+static char kDYYYAsyncFramePendingKey;
+static char kDYYYAsyncFrameTimeKey;
+static char kDYYYRotationRetryKey;
+
+static void DYYYAsyncSetFullscreenFrame(UIView *view, CGRect target) {
+    if (!view) return;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    if (gDYYYInRotation) return;
+    if (CGRectEqualToRect(view.frame, target)) return;
+
+    // 0.5s 限流：即使抖音的 layout 反复把 frame 改回去，也不会高频拉锯
+    NSTimeInterval now = CACurrentMediaTime();
+    NSNumber *last = objc_getAssociatedObject(view, &kDYYYAsyncFrameTimeKey);
+    if (last && now - last.doubleValue < 0.5) return;
+    if (objc_getAssociatedObject(view, &kDYYYAsyncFramePendingKey)) return;
+
+    objc_setAssociatedObject(view, &kDYYYAsyncFramePendingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(view, &kDYYYAsyncFrameTimeKey, @(now), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    __weak UIView *weakView = view;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIView *strongView = weakView;
+        if (!strongView) return;
+        objc_setAssociatedObject(strongView, &kDYYYAsyncFramePendingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+        // 异步块执行时状态可能已经变了，逐项复核
+        if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+        if (gDYYYInRotation) return;
+        if (!strongView.window) return;
+        if (CGRectEqualToRect(strongView.frame, target)) return;
+
+        [UIView performWithoutAnimation:^{
+            strongView.frame = target;
+        }];
+    });
+}
+
+// 旋转期间 layout 被全部跳过，而 gDYYYInRotation 要等转场结束 0.3s 才复位；
+// 这里补一次复位后的 setNeedsLayout，让上面的异步归位重新跑起来。
+static void DYYYRetryLayoutAfterRotation(UIView *view) {
+    if (!view) return;
+    if (objc_getAssociatedObject(view, &kDYYYRotationRetryKey)) return;
+    objc_setAssociatedObject(view, &kDYYYRotationRetryKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    __weak UIView *weakView = view;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        UIView *strongView = weakView;
+        if (!strongView) return;
+        objc_setAssociatedObject(strongView, &kDYYYRotationRetryKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+        if (gDYYYInRotation) return;
+        [strongView setNeedsLayout];
+    });
+}
 static NSString *const kDYYYGlobalTransparencyKey = @"DYYYGlobalTransparency";
 static NSString *const kDYYYGlobalTransparencyDidChangeNotification = @"DYYYGlobalTransparencyDidChangeNotification";
 static NSString *const kDYYYEnableLoginBypassKey = @"DYYYEnableLoginBypass";
@@ -16227,16 +16285,16 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     // v535: 全屏时把交互层高度从 852 收到 792（屏幕高 - 60），
     // 底部锚定的内容随之上移 60。只改高度，不动 origin。
     // v484: 恢复 Interaction 钉死逻辑（只在竖屏全屏生效）
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+    // v590: 交互层高度归位改为异步。同步在这里改 frame 会触发自身重排，
+    // 再次进入 viewDidLayoutSubviews，形成死循环（0x8BADF00D）。
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        UIView *v = self.viewIfLoaded;
         CGSize sz = [UIScreen mainScreen].bounds.size;
-        if (sz.height > sz.width) { // 竖屏
-            UIView *v = self.viewIfLoaded;
-            if (v) {
-                CGFloat targetH = sz.height - 60.0;
-                // 一旦发现高度不对或者原点漂移，直接强制归位
-                if (fabs(v.frame.origin.y) > 0.5 || fabs(v.frame.size.height - targetH) > 0.5) {
-                    v.frame = CGRectMake(0, 0, sz.width, targetH);
-                }
+        if (v && sz.height > sz.width) { // 竖屏
+            if (gDYYYInRotation) {
+                DYYYRetryLayoutAfterRotation(v);
+            } else {
+                DYYYAsyncSetFullscreenFrame(v, CGRectMake(0, 0, sz.width, sz.height - 60.0));
             }
         }
     }
@@ -16888,10 +16946,12 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 %hook AWEDPlayerViewController_Merge
 
 - (void)changePlayerFrameIfNeededWithAnimated:(BOOL)animated {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+    // v590: 全屏时砍断抖音自己的缩放；旋转中仍走原生布局，
+    // 避免 UIKit 在半途拿到不完整的几何值，转场结束后由 layout 异步兜底。
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && !gDYYYInRotation) {
         return;
     }
-    %orig;
+    %orig(animated);
 }
 
 - (BOOL)enableHDR {
@@ -16921,47 +16981,34 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 - (void)viewDidLayoutSubviews {
     %orig;
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    if (gDYYYInRotation) return;
+
     UIView *vw = self.view;
-    UIView *sv = vw.superview;
-    if (!vw || !sv) return;
-    // v484: 详情页 Merge.view 被压到 792（父层 852），TTMetalViewVP 按 792 算
-    // 宽高比，底部露 60px 黑边。改成跟随父层高度，子 view autoresize 自适应。
-    // 可见性判断：不可见 cell 不拉高，避免详情页多 cell 同时 852 渲染 GPU 过载。
-    if (vw.window) {
-        CGRect r = [vw convertRect:vw.bounds toView:vw.window];
-        CGRect relaxed = CGRectInset(vw.window.bounds, 0, -vw.bounds.size.height);
-        if (!CGRectIntersectsRect(r, relaxed)) {
-            vw.clipsToBounds = NO;
-            return;
-        }
-    } else {
-        vw.clipsToBounds = NO;
+    if (!vw) return;
+
+    if (gDYYYInRotation) {
+        // 旋转中不碰 frame，只挂一个转场结束后的布局重试
+        DYYYRetryLayoutAfterRotation(vw);
         return;
     }
-    CGFloat superH = sv.bounds.size.height;
-    
-    // v486: 异步兜底，防止视频层被莫名其妙压到 792 或 393
-    CGSize sz = [UIScreen mainScreen].bounds.size;
-    BOOL isPortrait = sz.height > sz.width;
-    if (isPortrait) {
-        if (fabs(vw.frame.size.height - sz.height) > 0.5 || fabs(vw.frame.size.width - sz.width) > 0.5 || fabs(vw.frame.origin.y) > 0.5) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                vw.frame = CGRectMake(0, 0, sz.width, sz.height);
-            });
-            return; // 交给异步处理，直接返回
-        }
-    }
-    
-    // 原有的跟随父层高度逻辑
-    if (superH > 100 && fabs(vw.frame.size.height - superH) > 0.5) {
-        CGRect f = vw.frame;
-        f.origin.y = 0;
-        f.size.height = superH;
-        vw.frame = f;
-    }
-    
-    vw.clipsToBounds = NO;
+
+    // v590: 这里只解裁剪，绝不“同步”改 frame
+    if (vw.clipsToBounds) vw.clipsToBounds = NO;
+
+    // 只处理真正上屏的 Merge；详情页里可能同时存在多个 cell 的 Merge，
+    // 离屏的一律不动，避免多路 852 渲染把 GPU 打满。
+    if (!vw.window) return;
+    CGRect visibleRect = [vw convertRect:vw.bounds toView:vw.window];
+    if (!CGRectIntersectsRect(visibleRect, vw.window.bounds)) return;
+
+    CGSize screenSize = [UIScreen mainScreen].bounds.size;
+    if (screenSize.width < 1.0 || screenSize.height < 1.0) return;
+
+    // 放行非全宽容器：搜索页卡片、小窗、内嵌播放器不应该被拉满
+    UIView *sv = vw.superview;
+    if (sv && sv.bounds.size.width > 1.0 && sv.bounds.size.width < screenSize.width - 1.0) return;
+
+    // 宽、高、原点一起归位到全屏；真正的赋值在异步块里做
+    DYYYAsyncSetFullscreenFrame(vw, CGRectMake(0, 0, screenSize.width, screenSize.height));
 }
 
 - (void)setIsAutoPlay:(BOOL)arg0 {
