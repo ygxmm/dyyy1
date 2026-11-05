@@ -15982,20 +15982,10 @@ static Class tabBarButtonClass = nil;
         if ([owner isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")] ||
             [owner isKindOfClass:NSClassFromString(@"AWEDPlayerViewController_Merge")]) {
             
-            UIView *v = (UIView *)self;
-            UIView *sv = v.superview;
-            BOOL isFeed = NO;
-            while (sv) {
-                if ([sv.nextResponder isKindOfClass:NSClassFromString(@"AWEFeedCellViewController")]) {
-                    isFeed = YES; break;
-                }
-                sv = sv.superview;
-            }
-
             CGSize sz = [UIScreen mainScreen].bounds.size;
             BOOL isPortrait = sz.height > sz.width;
 
-            if (isFeed && isPortrait) {
+            if (isPortrait) {
                 if ([owner isKindOfClass:NSClassFromString(@"AWEPlayInteractionViewController")]) {
                     // 1. UI 层钉死 792
                     CGFloat targetH = sz.height - 60.0;
