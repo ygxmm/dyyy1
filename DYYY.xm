@@ -14700,64 +14700,6 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 // ============================================================
 static char kDYYYSearchHitKey;
 static char kDYYYOrigTransformKey;
-static char kDYYYSearchDetailInteractionKey;
-
-// 只在「搜索 -> 视频详情」这一层生效：
-// 父链里有 DetailCell / DetailTable，且 referString 含 search（或导航栈里有 Search 控制器）。
-// 首页、普通详情、搜索列表都不满足，不会被动到。
-static BOOL DYYYIsSearchDetailInteraction(UIViewController *vc) {
-    if (!vc) return NO;
-    NSNumber *cached = objc_getAssociatedObject(vc, &kDYYYSearchDetailInteractionKey);
-    if (cached) return cached.boolValue;
-
-    NSString *refer = nil;
-    // referString 可能挂在 detail cell / 播放器上，沿父链取第一个非空值
-    UIViewController *probe = vc;
-    int probeDepth = 0;
-    while (probe && probeDepth < 4 && refer.length == 0) {
-        @try {
-            id value = [probe valueForKey:@"referString"];
-            if ([value isKindOfClass:[NSString class]] && [value length] > 0) {
-                refer = value;
-            }
-        } @catch (__unused NSException *e) {}
-        probe = probe.parentViewController;
-        probeDepth++;
-    }
-
-    // referString 还没绑定时不缓存，等下一次 layout 再判断
-    if (![refer isKindOfClass:[NSString class]] || refer.length == 0) return NO;
-
-    BOOL isSearch = [refer containsString:@"search"];
-    if (!isSearch) {
-        for (UIViewController *item in vc.navigationController.viewControllers) {
-            if ([NSStringFromClass([item class]) containsString:@"Search"]) {
-                isSearch = YES;
-                break;
-            }
-        }
-    }
-    if (!isSearch) {
-        objc_setAssociatedObject(vc, &kDYYYSearchDetailInteractionKey, @NO, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return NO;
-    }
-
-    BOOL isDetail = NO;
-    UIViewController *parent = vc.parentViewController;
-    int depth = 0;
-    while (parent && depth < 4) {
-        NSString *cls = NSStringFromClass([parent class]);
-        if ([cls containsString:@"DetailCell"] || [cls containsString:@"DetailTable"]) {
-            isDetail = YES;
-            break;
-        }
-        parent = parent.parentViewController;
-        depth++;
-    }
-    objc_setAssociatedObject(vc, &kDYYYSearchDetailInteractionKey, @(isDetail), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    return isDetail;
-}
-
 static void DYYYApplySearchShiftIfNeeded(id vc) {
     if (!vc) return;
 
@@ -16393,7 +16335,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     // 底部锚定的内容随之上移 60。只改高度，不动 origin。
     // v590: 交互层高度归位改为异步。同步在这里改 frame 会触发自身重排，
     // 再次进入 viewDidLayoutSubviews，形成死循环（0x8BADF00D）。
-    // v593: 搜索 -> 视频详情这一层例外：保持 852，UI 下移 60，和其他页面一致。
+    // v594: 搜索详情不再单独放 852 —— 交互层统一 792，视频层 852 补住底部。
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
         UIView *v = self.viewIfLoaded;
         CGSize sz = [UIScreen mainScreen].bounds.size;
@@ -16401,8 +16343,9 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
             if (gDYYYInRotation) {
                 DYYYRetryLayoutAfterRotation(v);
             } else {
-                CGFloat targetH = DYYYIsSearchDetailInteraction(self) ? sz.height : (sz.height - 60.0);
-                DYYYAsyncSetFullscreenFrame(v, CGRectMake(0, 0, sz.width, targetH));
+                // v594: 交互层统一回到 792。视频层已经是 852，底部 60pt 由视频补上；
+                // 交互层若也放 852，作者/按钮/进度条会压到 Home 指示条上（v593 的问题）。
+                DYYYAsyncSetFullscreenFrame(v, CGRectMake(0, 0, sz.width, sz.height - 60.0));
             }
         }
     }
