@@ -16393,15 +16393,22 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 // ACCStickerContainerView 被整体上移。把它改成 0，并关掉祖先裁剪。
 static void DYYYFixStickerTopConstraint(UIView *view) {
     if (!view || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    UIView *superview = view.superview;
-    if (!superview) return;
+    if (!view.superview) return;
 
-    for (NSLayoutConstraint *constraint in superview.constraints) {
-        if (constraint.firstItem != view) continue;
-        if (constraint.firstAttribute != NSLayoutAttributeTop) continue;
-        if (constraint.constant < -0.01) {
-            constraint.constant = 0;
+    // 约束不一定挂在直接父视图上，也不一定 firstItem == view；
+    // 向上找 3 层，两种方向都处理，避免只改到一部分页面。
+    UIView *owner = view.superview;
+    for (int depth = 0; depth < 3 && owner; depth++) {
+        for (NSLayoutConstraint *constraint in owner.constraints) {
+            BOOL topOnView = (constraint.firstItem == view && constraint.firstAttribute == NSLayoutAttributeTop);
+            BOOL topOnSecond = (constraint.secondItem == view && constraint.secondAttribute == NSLayoutAttributeTop);
+            if (!topOnView && !topOnSecond) continue;
+            if (constraint.constant < -0.01) {
+                DYYYProbeLog(@"STICKER top %.1f -> 0 owner=%@ depth=%d", constraint.constant, NSStringFromClass([owner class]), depth);
+                constraint.constant = 0;
+            }
         }
+        owner = owner.superview;
     }
 
     UIView *v = view;
