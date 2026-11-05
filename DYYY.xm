@@ -19018,9 +19018,25 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 }
 
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
-    UIWindow *win = [DYYYUtils getActiveWindow];
-    return win ? win.bounds.size.height : %orig;
+    // 原生已经是全屏高度，直接放行，防止在窗口未就绪时被错误覆盖为792
+    return %orig;
+}
+
+// 在原生翻页时，发现 contentSize 仍然是按 792 算的（偏小），
+// 只在这个明确翻页的时机触发一次全表高度重算，不会影响退出的转场动画。
+- (void)updateTableViewLayoutForTargetPageIndex:(NSInteger)index {
+    UITableView *table = [self tableView];
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && table.window) {
+        NSInteger count = [table numberOfRowsInSection:0];
+        CGFloat H = table.bounds.size.height;
+        if (count > 0 && H > 0 && fabs(count * H - table.contentSize.height) > H * 0.5) {
+            [UIView performWithoutAnimation:^{
+                [table beginUpdates];
+                [table endUpdates];
+            }];
+        }
+    }
+    %orig;
 }
 
 - (double)baseTableViewBottomInset {
@@ -19028,48 +19044,6 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
 }
 
-// 行高已统一为窗口高，但 UIKit 可能仍按旧行高（792）建立 contentSize。
-// contentSize 与「行数×行高」不符时，在布局稳定后让 UIKit 全量重算一次，
-// 使 contentSize = 行数 × 行高，分页 offset 与真实行对齐。
-- (void)viewDidLayoutSubviews {
-    %orig;
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    UITableView *table = [self tableView];
-    if (!table.window) return;
-    CGFloat H = table.bounds.size.height;
-    if (H <= 0) return;
-    NSInteger count = [table numberOfRowsInSection:0];
-    if (count <= 0) return;
-    if (fabs(count * H - table.contentSize.height) < H * 0.5) return;
-    static void *kReloading = &kReloading;
-    if (objc_getAssociatedObject(self, kReloading)) return;
-    objc_setAssociatedObject(self, kReloading, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    dispatch_async(dispatch_get_main_queue(), ^{
-        @try {
-            UITableView *t = [self tableView];
-            if (!t.window) return;
-            CGFloat h = t.bounds.size.height;
-            NSInteger n = [t numberOfRowsInSection:0];
-            if (n <= 0 || h <= 0) return;
-            if (fabs(n * h - t.contentSize.height) < h * 0.5) return;
-            NSInteger idx = (NSInteger)[self currentVisibleCellIndex];
-            if (idx < 0 || idx >= n) {
-                idx = (NSInteger)llround(t.contentOffset.y / MAX(h, 1));
-                if (idx < 0) idx = 0;
-                if (idx >= n) idx = n - 1;
-            }
-            [UIView performWithoutAnimation:^{
-                [t beginUpdates];
-                [t endUpdates];
-                [t layoutIfNeeded];
-                NSIndexPath *ip = [NSIndexPath indexPathForRow:idx inSection:0];
-                [t scrollToRowAtIndexPath:ip atScrollPosition:UITableViewScrollPositionTop animated:NO];
-            }];
-        } @finally {
-            objc_setAssociatedObject(self, kReloading, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-    });
-}
 
 
 
