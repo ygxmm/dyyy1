@@ -18994,66 +18994,8 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 %group DYYYDetailHeightHook
 
 %hook AWEAwemeDetailTableViewController
-
-
-
-// v642: 详情表的行高有多条来源（cellHeight / fixedCellHeight / cellHeightAtIndex），
-// 只改 heightForRow 会让预加载行保留原生 792，最后几项一高一低。这里统一到窗口高度。
-- (double)cellHeightAtIndex:(long long)index {
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
-    UIWindow *win = [DYYYUtils getActiveWindow];
-    return win ? win.bounds.size.height : %orig;
-}
-
-- (double)fixedCellHeight {
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
-    UIWindow *win = [DYYYUtils getActiveWindow];
-    return win ? win.bounds.size.height : %orig;
-}
-
-- (double)cellHeight {
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
-    UIWindow *win = [DYYYUtils getActiveWindow];
-    return win ? win.bounds.size.height : %orig;
-}
-
-- (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
-    // 原生已经是全屏高度，直接放行，防止在窗口未就绪时被错误覆盖为792
-    return %orig;
-}
-
-// 在原生翻页时，发现 contentSize 仍然是按 792 算的（偏小），
-// 只在这个明确翻页的时机触发一次全表高度重算，不会影响退出的转场动画。
-- (void)updateTableViewLayoutForTargetPageIndex:(NSInteger)index {
-    UITableView *table = [self tableView];
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && table.window) {
-        NSInteger count = [table numberOfRowsInSection:0];
-        CGFloat H = table.bounds.size.height;
-        if (count > 0 && H > 0 && fabs(count * H - table.contentSize.height) > H * 0.5) {
-            [UIView performWithoutAnimation:^{
-                [table beginUpdates];
-                [table endUpdates];
-            }];
-        }
-    }
-    %orig;
-}
-
-- (double)baseTableViewBottomInset {
-    double inset = %orig;
-    return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
-}
-
-
-
-
-
-
-// v632: 参考的详情分页校正，原样接回（不动 UI 高度）
-
-
-
-
+// 已移除所有强行修改行高的补丁，将计算权交还给原生抖音，
+// 修复视频越多错位越大、往前翻越界及首页转场UI错乱的问题。
 %end
 
 %end
