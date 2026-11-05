@@ -18417,36 +18417,38 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 - (void)layoutSubviews {
     %orig;
+    // 这个 Swift 类没进头文件，Logos 把 self 推成 id，需要显式转 UIView
+    UIView *imageView = (UIView *)self;
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
     if (gDYYYInRotation) return;
-    if (!self.window) return;
+    if (!imageView.window) return;
 
     static char kDYYYImageFillApplyingKey;
-    if (objc_getAssociatedObject(self, &kDYYYImageFillApplyingKey)) return;
+    if (objc_getAssociatedObject(imageView, &kDYYYImageFillApplyingKey)) return;
 
-    UIViewController *owner = [DYYYUtils firstAvailableViewControllerFromView:self];
+    UIViewController *owner = [DYYYUtils firstAvailableViewControllerFromView:imageView];
     if (!DYYYCurrentDetailPageIsImage(owner)) return;
 
     CGSize screenSize = [UIScreen mainScreen].bounds.size;
     if (screenSize.height <= screenSize.width) return;
 
-    UIView *superview = self.superview;
+    UIView *superview = imageView.superview;
     if (!superview) return;
-    if (fabs(self.bounds.size.width - screenSize.width) > 1.0) return;
+    if (fabs(imageView.bounds.size.width - screenSize.width) > 1.0) return;
 
-    CGFloat nativeHeight = self.bounds.size.height;
+    CGFloat nativeHeight = imageView.bounds.size.height;
     if (nativeHeight < 100) return;
     CGFloat scale = screenSize.height / nativeHeight;
     if (scale < 1.02) return;
 
     CGAffineTransform target = CGAffineTransformMakeScale(scale, scale);
     CGPoint center = CGPointMake(CGRectGetMidX(superview.bounds), CGRectGetMidY(superview.bounds));
-    if (CGAffineTransformEqualToTransform(self.transform, target) && CGPointEqualToPoint(self.center, center)) return;
+    if (CGAffineTransformEqualToTransform(imageView.transform, target) && CGPointEqualToPoint(imageView.center, center)) return;
 
-    objc_setAssociatedObject(self, &kDYYYImageFillApplyingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    self.transform = target;
-    self.center = center;
-    objc_setAssociatedObject(self, &kDYYYImageFillApplyingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(imageView, &kDYYYImageFillApplyingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    imageView.transform = target;
+    imageView.center = center;
+    objc_setAssociatedObject(imageView, &kDYYYImageFillApplyingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 - (void)setTransform:(CGAffineTransform)transform {
