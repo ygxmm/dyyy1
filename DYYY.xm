@@ -147,6 +147,26 @@ static void DYYYAsyncSetFullscreenFrame(UIView *view, CGRect target) {
 
 // 旋转期间 layout 被全部跳过，而 gDYYYInRotation 要等转场结束 0.3s 才复位；
 // 这里补一次复位后的 setNeedsLayout，让上面的异步归位重新跑起来。
+
+static Class DYYYMergePlayerClass(void) {
+    static Class cls;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ cls = NSClassFromString(@"AWEDPlayerViewController_Merge"); });
+    return cls;
+}
+
+// 只处理“详情页 / 全屏 feed”的大画面：全宽且高度 >= 屏高 70%。
+// 搜索列表里的小卡片不满足，直接放行，避免被误拉满。
+static BOOL DYYYShouldApplyFullscreenPlayerFix(UIView *view, CGSize screenSize) {
+    if (!view || !view.window) return NO;
+    if (screenSize.width < 1.0 || screenSize.height < 1.0) return NO;
+    if (view.frame.size.width < screenSize.width - 1.0) return NO;
+    if (view.frame.size.height < screenSize.height * 0.7) return NO;
+    CGRect visible = [view convertRect:view.bounds toView:view.window];
+    if (!CGRectIntersectsRect(visible, view.window.bounds)) return NO;
+    return YES;
+}
+
 static void DYYYRetryLayoutAfterRotation(UIView *view) {
     if (!view) return;
     if (objc_getAssociatedObject(view, &kDYYYRotationRetryKey)) return;
@@ -16017,6 +16037,25 @@ static Class tabBarButtonClass = nil;
         %orig(frame);
         return;
     }
+
+    // v592: Merge 视频容器写入时归位。抖音在搜索详情/评论区会把 Merge.view 写成
+    // 792（父层 852），事后纠正永远慢半拍；这里按写入方身份直接改目标值。
+    // 只认主窗口、竖屏、父层接近满屏、来意高度 >= 父层 80% 的写入，
+    // 画中画/横屏/小卡片一律放行。
+    if (enableFS && !gDYYYInRotation && [self.nextResponder isKindOfClass:DYYYMergePlayerClass()]) {
+        UIWindow *ownerWindow = self.window;
+        UIView *parent = self.superview;
+        if ((!ownerWindow || ownerWindow.windowLevel == UIWindowLevelNormal) && parent) {
+            CGRect pb = parent.bounds;
+            CGFloat pw = CGRectGetWidth(pb);
+            CGFloat ph = CGRectGetHeight(pb);
+            CGSize screenSize = [UIScreen mainScreen].bounds.size;
+            BOOL fullScreenContainer = (ph > pw) && (pw >= screenSize.width - 1.0) && (ph >= screenSize.height * 0.9);
+            if (fullScreenContainer && CGRectGetHeight(frame) >= ph * 0.8) {
+                frame = CGRectMake(0, 0, pw, ph);
+            }
+        }
+    }
     // v382: 卡帧优化 —— 最便宜的 isMemberOfClass 放最前面
     // 99% 的 setFrame 调用来自 UILabel/UIButton/UIImageView 等子类，
     // 一行判定立即跳过，完全不碰关联对象（objc_getAssociatedObject 有全局锁，最贵）。
@@ -16877,6 +16916,27 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %hook AWEAwemePlayVideoViewController
 
+- (void)viewDidLayoutSubviews {
+    %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+
+    UIView *vw = self.view;
+    if (!vw) return;
+
+    if (gDYYYInRotation) {
+        DYYYRetryLayoutAfterRotation(vw);
+        return;
+    }
+
+    if (vw.clipsToBounds) vw.clipsToBounds = NO;
+
+    CGSize screenSize = [UIScreen mainScreen].bounds.size;
+    if (!DYYYShouldApplyFullscreenPlayerFix(vw, screenSize)) return;
+
+    // v591: 搜索详情等页面原生会把播放器压到 792（852 - 60），
+    // 底部留 60pt 黑边；这里异步拉回全屏。
+    DYYYAsyncSetFullscreenFrame(vw, CGRectMake(0, 0, screenSize.width, screenSize.height));
+}
 
 - (void)setIsAutoPlay:(BOOL)arg0 {
     %orig(arg0);
@@ -16911,15 +16971,24 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        // v459: 只解除裁剪,不改 frame。TTMetalViewVP 自身 clips=0 会溢出到 852。
-        // 3ffe7a0 删掉 viewDidLayoutSubviews 里改 frame 的自触发循环(改 frame ->
-        // 重布局 -> 再进回调 -> 主线程堵死)。
-        UIView *vw = self.view;
-        if (vw) {
-            vw.clipsToBounds = NO;
-        }
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+
+    UIView *vw = self.view;
+    if (!vw) return;
+
+    if (gDYYYInRotation) {
+        DYYYRetryLayoutAfterRotation(vw);
+        return;
     }
+
+    // v459: 只解除裁剪,不改 frame。TTMetalViewVP 自身 clips=0 会溢出到 852。
+    if (vw.clipsToBounds) vw.clipsToBounds = NO;
+
+    CGSize screenSize = [UIScreen mainScreen].bounds.size;
+    if (!DYYYShouldApplyFullscreenPlayerFix(vw, screenSize)) return;
+
+    // v591: 首页/搜索全屏 feed 的播放器同样要归位（含 160x852 的宽度残留）
+    DYYYAsyncSetFullscreenFrame(vw, CGRectMake(0, 0, screenSize.width, screenSize.height));
 }
 
 - (void)setIsAutoPlay:(BOOL)arg0 {
