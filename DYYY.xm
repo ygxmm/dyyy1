@@ -16410,7 +16410,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         } else if (self.view.window) {
             viewportH = self.view.window.bounds.size.height;
         }
-        if (viewportH > 100) {
+        if (viewportH > 600) {
             CGRect f = self.view.frame;
             CGFloat targetH = viewportH - 60.0;
             if (fabs(f.size.height - targetH) > 0.5) {
@@ -17020,6 +17020,8 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)viewDidLayoutSubviews {
     %orig;
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    if (self.view.superview && self.view.superview.bounds.size.height < screenH * 0.9) return;
     [DYYYFullscreenCoordinator layoutPlayerContainer:self];
 }
 
@@ -17081,6 +17083,8 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)viewDidLayoutSubviews {
     %orig;
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    if (self.view.superview && self.view.superview.bounds.size.height < screenH * 0.9) return;
     [DYYYFullscreenCoordinator layoutPlayerContainer:self];
 }
 
@@ -17876,7 +17880,8 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     UIView *view = (UIView *)self;
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && !gDYYYInRotation && view.window) {
         CGSize screen = [UIScreen mainScreen].bounds.size;
-        if (screen.height > screen.width &&
+        BOOL fullScreenParent = view.superview && view.superview.bounds.size.height >= screen.height * 0.9;
+        if (screen.height > screen.width && fullScreenParent &&
             fabs(bounds.size.width - screen.width) <= 1.0 &&
             bounds.size.height > screen.height * 0.5) {
             bounds.size.height = screen.height;
@@ -17889,7 +17894,8 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     UIView *view = (UIView *)self;
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && !gDYYYInRotation && view.window) {
         CGSize screen = [UIScreen mainScreen].bounds.size;
-        if (screen.height > screen.width) {
+        BOOL fullScreenParent = view.superview && view.superview.bounds.size.height >= screen.height * 0.9;
+        if (screen.height > screen.width && fullScreenParent) {
             center = CGPointMake(screen.width * 0.5, screen.height * 0.5);
         }
     }
