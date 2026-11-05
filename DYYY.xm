@@ -12449,6 +12449,20 @@ static BOOL DYYYIsSearchVideoStickerView(UIView *view);
     %orig(frame, needMask);
 }
 
+// v626: config 阶段容器还没进窗口，判定不到页面；布局时它会读 playerFrame，
+// 在 getter 里补 28，这时 referString/分页器都已经可用。
+- (NSValue *)playerFrame {
+    NSValue *value = %orig;
+    if (value && DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYIsSearchVideoStickerView(self)) {
+        CGRect frame = CGRectZero;
+        [value getValue:&frame];
+        frame.origin.y += 28.0;
+        DYYYProbeLog(@"STICKER playerFrame getter +28");
+        return [NSValue valueWithCGRect:frame];
+    }
+    return value;
+}
+
 %end
 
 %hook ACCStickerContainerView
