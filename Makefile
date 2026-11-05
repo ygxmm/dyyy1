@@ -41,6 +41,8 @@ include $(THEOS)/makefiles/common.mk
 TWEAK_NAME = DYYY
 
 DYYY_FILES = DYYY.xm \
+	Sources/Features/DYYYFullscreenCoordinator.m \
+	Sources/Features/DYYYFullscreenGeometry.m \
 	DYYYFloatClearButton.xm \
 	DYYYSettings.xm \
 	DYYYABTestHook.xm \
