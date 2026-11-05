@@ -1619,6 +1619,14 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property (nonatomic) long long currentPlayIndex;
 @property (nonatomic) long long currentIndex;
 @end
+@interface AWEAwemeDetailTableViewController (DYYYFullscreen)
+- (double)baseTableViewBottomInset;
+- (UITableView *)tableView;
+- (unsigned long long)currentVisibleCellIndex;
+- (void)updateTableViewLayoutForTargetPageIndex:(long long)index;
+- (UIView *)activeBottomBar;
+@end
+
 @interface AWEMixVideoPanelDetailTableViewController : AWEAwemeDetailTableViewController
 @property(nonatomic, assign) BOOL isShowingRelatedMixViewController;
 @end
