@@ -12431,14 +12431,6 @@ static BOOL DYYYIsSearchVideoStickerView(UIView *view);
 - (void)layoutSubviews {
     %orig;
 
-    // v622: SDK 直接改 layer，视图 transform 拦不住；在它自己的 layout 之后写 layer。
-    BOOL searchVideo = DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYIsSearchVideoStickerView(self);
-    CATransform3D target = searchVideo ? CATransform3DMakeTranslation(0, 28.0, 0) : CATransform3DIdentity;
-    if (!CATransform3DEqualToTransform(self.layer.transform, target)) {
-        self.layer.transform = target;
-        if (searchVideo) DYYYProbeLog(@"STICKER layer ty=28");
-    }
-
     if (!DYYYGetBool(@"DYYYHideSearchSame")) {
         return;
     }
@@ -16402,6 +16394,8 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 // v617: 搜索完视频页的贴纸容器 top 约束是 -28，导致内部 852 高的
 // ACCStickerContainerView 被整体上移。把它改成 0，并关掉祖先裁剪。
+static BOOL DYYYIsSearchVideoStickerView(UIView *view);
+
 static void DYYYFixStickerTopConstraint(UIView *view) {
     if (!view || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
     if (!view.superview) return;
@@ -16414,9 +16408,11 @@ static void DYYYFixStickerTopConstraint(UIView *view) {
             BOOL topOnView = (constraint.firstItem == view && constraint.firstAttribute == NSLayoutAttributeTop);
             BOOL topOnSecond = (constraint.secondItem == view && constraint.secondAttribute == NSLayoutAttributeTop);
             if (!topOnView && !topOnSecond) continue;
-            if (constraint.constant < -0.01) {
-                DYYYProbeLog(@"STICKER top %.1f -> 0 owner=%@ depth=%d", constraint.constant, NSStringFromClass([owner class]), depth);
-                constraint.constant = 0;
+            // v623: 搜索视频页整体下移 28（0 -> 28）；其他页面保持 0。
+            CGFloat target = DYYYIsSearchVideoStickerView(view) ? 28.0 : 0.0;
+            if (fabs(constraint.constant - target) > 0.5) {
+                DYYYProbeLog(@"STICKER top %.1f -> %.1f owner=%@ depth=%d", constraint.constant, target, NSStringFromClass([owner class]), depth);
+                constraint.constant = target;
             }
         }
         owner = owner.superview;
@@ -16453,37 +16449,8 @@ static BOOL DYYYIsSearchVideoStickerView(UIView *view) {
 
 - (void)layoutSubviews {
     %orig;
-
-    UIView *selfView = (UIView *)self;
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-
-    // v620: 只对「搜索完点开的视频」：
-    // 外层容器保持 0..792，内层 ACCStickerContainerView 整体下移 28。
-    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:selfView];
-    NSString *refer = nil;
-    @try {
-        refer = [vc valueForKey:@"referString"];
-    } @catch (NSException *e) {
-        refer = nil;
-    }
-    BOOL isSearchVideo = [refer isKindOfClass:[NSString class]] && [refer containsString:@"search"] &&
-                         DYYYDetailPagerForController(vc) != nil &&
-                         !DYYYCurrentDetailPageIsImage(vc);
-    if (!isSearchVideo) {
-        DYYYFixStickerTopConstraint(selfView);
-        return;
-    }
-
-    UIView *inner = nil;
-    for (UIView *sub in selfView.subviews) {
-        if ([sub isKindOfClass:NSClassFromString(@"ACCStickerContainerView")]) {
-            inner = sub;
-            break;
-        }
-    }
-    if (inner) {
-        DYYYProbeLog(@"STICKER inner defer to layer refer=%@", refer);
-    }
+    DYYYFixStickerTopConstraint((UIView *)self);
 }
 
 %end
