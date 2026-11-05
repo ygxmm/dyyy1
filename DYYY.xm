@@ -42,17 +42,24 @@
 
 // ===== 临时探针：诊断完整体删除 =====
 static void DYYYProbe(NSString *tag, NSString *fmt, ...) {
+    static NSMutableDictionary *lastMap; static dispatch_once_t once;
+    dispatch_once(&once, ^{ lastMap = [NSMutableDictionary new]; });
+    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+    @synchronized (lastMap) {
+        NSNumber *last = lastMap[tag];
+        if (last && now - last.doubleValue < 0.25) return;
+        lastMap[tag] = @(now);
+    }
     va_list ap; va_start(ap, fmt);
     NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
     va_end(ap);
-    NSString *line = [NSString stringWithFormat:@"%.3f [%@] %@\n",
-                      [[NSDate date] timeIntervalSince1970], tag, msg];
-    static dispatch_queue_t q; static dispatch_once_t once;
-    dispatch_once(&once, ^{ q = dispatch_queue_create("dyyy.probe", DISPATCH_QUEUE_SERIAL); });
+    NSString *line = [NSString stringWithFormat:@"%.3f [%@] %@\n", now, tag, msg];
+    static dispatch_queue_t q; static dispatch_once_t once2;
+    dispatch_once(&once2, ^{ q = dispatch_queue_create("dyyy.probe", DISPATCH_QUEUE_SERIAL); });
     dispatch_async(q, ^{
         NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/DYYYProbe.log"];
         NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil];
-        if ([attrs fileSize] > 8 * 1024 * 1024) return;
+        if ([attrs fileSize] > 2 * 1024 * 1024) return;
         NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
         if (!fh) { [line writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil]; return; }
         @try { [fh seekToEndOfFile];
