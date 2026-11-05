@@ -181,6 +181,25 @@ static BOOL DYYYShouldApplyPageGeometry(UIViewController *vc) {
     return YES;
 }
 
+// v601: 首页（AWEFeedTableViewController）和详情（AWEAwemeDetailTableViewController）
+// 都声明了 heightForRowAtIndexPath: / cellHeight / tableViewBottomInsetForAllPlatform，
+// 这里用同一组函数统一算，避免两边各写一套。
+static double DYYYFullscreenViewportHeight(UITableView *table) {
+    if (table && table.bounds.size.height > 0) return table.bounds.size.height;
+    CGSize screenSize = [UIScreen mainScreen].bounds.size;
+    return MAX(screenSize.width, screenSize.height);
+}
+
+static double DYYYFullscreenRowHeight(double proposed, UITableView *table) {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return proposed;
+    return DYYYFullscreenViewportHeight(table);
+}
+
+static double DYYYFullscreenBottomInset(double inset) {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return inset;
+    return inset > 0 ? 0 : inset;
+}
+
 static Class DYYYMergePlayerClass(void) {
     static Class cls;
     static dispatch_once_t once;
@@ -17287,21 +17306,20 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     DYYYHandleCommittedSpeedAwemeChanged([self currentAweme]);
 }
 
-// v354: 让抖音的"账本"也用 852 —— 修改 row 高 (v464 重写: 避免过渡态拿到393)
+// v601: 与详情页共用同一套分页尺寸
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGSize sz = [UIScreen mainScreen].bounds.size;
-        return sz.width > sz.height ? sz.width : sz.height;
-    }
-    return %orig;
+    double height = %orig;
+    return DYYYFullscreenRowHeight(height, (UITableView *)a0);
 }
 
 - (double)cellHeight {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGSize sz = [UIScreen mainScreen].bounds.size;
-        return sz.width > sz.height ? sz.width : sz.height;
-    }
-    return %orig;
+    double height = %orig;
+    return DYYYFullscreenRowHeight(height, nil);
+}
+
+- (double)tableViewBottomInsetForAllPlatform {
+    double inset = %orig;
+    return DYYYFullscreenBottomInset(inset);
 }
 %end
 
@@ -19229,51 +19247,40 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 %hook AWEAwemeDetailTableViewController
 
+// v601: 与首页共用同一套分页尺寸
 - (double)cellHeightAtIndex:(long long)index {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIWindow *win = [DYYYUtils getActiveWindow];
-        if (win && win.bounds.size.height > 0) return win.bounds.size.height;
-    }
-    return %orig;
+    double height = %orig;
+    return DYYYFullscreenRowHeight(height, nil);
 }
 
 - (double)fixedCellHeight {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIWindow *win = [DYYYUtils getActiveWindow];
-        if (win && win.bounds.size.height > 0) return win.bounds.size.height;
-    }
-    return %orig;
+    double height = %orig;
+    return DYYYFullscreenRowHeight(height, nil);
 }
 
 - (double)cellHeight {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIWindow *win = [DYYYUtils getActiveWindow];
-        if (win && win.bounds.size.height > 0) return win.bounds.size.height;
-    }
-    return %orig;
+    double height = %orig;
+    return DYYYFullscreenRowHeight(height, nil);
+}
+
+- (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
+    double height = %orig;
+    return DYYYFullscreenRowHeight(height, (UITableView *)a0);
 }
 
 - (double)contentOffsetYForCellAtIndex:(long long)index {
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        UIWindow *win = [DYYYUtils getActiveWindow];
-        if (win && win.bounds.size.height > 0) return (double)index * win.bounds.size.height;
-    }
-    return %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
+    return (double)index * DYYYFullscreenViewportHeight(nil);
 }
 
-// v600: 详情表还留着 60pt 的 bottomInset，视口是 792，而行高被我们改成了 852；
-// 首页是视口 852 + 行高 852。两套分页逻辑不一致，UI 永远对不齐。
-// 这里把详情表的 inset 也归零，和首页统一成同一套视口。
 - (double)baseTableViewBottomInset {
     double inset = %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && inset > 0) return 0;
-    return inset;
+    return DYYYFullscreenBottomInset(inset);
 }
 
 - (double)tableViewBottomInsetForAllPlatform {
     double inset = %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && inset > 0) return 0;
-    return inset;
+    return DYYYFullscreenBottomInset(inset);
 }
 
 %end
