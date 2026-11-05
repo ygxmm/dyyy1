@@ -16379,9 +16379,41 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
             if (gDYYYInRotation) {
                 DYYYRetryLayoutAfterRotation(v);
             } else {
-                // v594: 交互层统一回到 792。视频层已经是 852，底部 60pt 由视频补上；
-                // 交互层若也放 852，作者/按钮/进度条会压到 Home 指示条上（v593 的问题）。
-                DYYYAsyncSetFullscreenFrame(v, CGRectMake(0, 0, sz.width, sz.height - 60.0));
+                // v597: 对齐参考实现 DYYYFullscreenCoordinator 的 layoutNativeInteraction：
+                // 不重置 origin、不改宽度，只把高度收到“底边”为止；
+                // 底边优先取真实底栏 AWEAwemeDetailTableViewController.activeBottomBar 的顶边，
+                // 没有底栏时才退回“屏幕底部往上 60”。这样搜索页和详情页不会一上一下。
+                CGRect f = v.frame;
+                UIView *parent = v.superview;
+                CGFloat bottom = parent ? CGRectGetMaxY(parent.bounds) - 60.0 : sz.height - 60.0;
+
+                UIViewController *pager = DYYYDetailPagerForController(self);
+                if (pager) {
+                    UIView *bar = nil;
+                    @try {
+                        bar = [pager valueForKey:@"activeBottomBar"];
+                    } @catch (NSException *e) {
+                        bar = nil;
+                    }
+                    if ([bar isKindOfClass:[UIView class]] && bar.window == v.window &&
+                        !bar.hidden && bar.bounds.size.height > 0.5) {
+                        UIView *root = pager.viewIfLoaded;
+                        if (root && parent) {
+                            CGRect barWin = [bar convertRect:bar.bounds toView:v.window];
+                            CGRect rootWin = [root convertRect:root.bounds toView:v.window];
+                            if (fabs(barWin.size.width - rootWin.size.width) <= 1.0 &&
+                                fabs(CGRectGetMaxY(barWin) - CGRectGetMaxY(rootWin)) <= 1.0) {
+                                CGRect barParent = [bar convertRect:bar.bounds toView:parent];
+                                bottom = CGRectGetMinY(barParent);
+                            }
+                        }
+                    }
+                }
+
+                CGFloat height = bottom - f.origin.y;
+                if (height > 100) {
+                    DYYYAsyncSetFullscreenFrame(v, CGRectMake(f.origin.x, f.origin.y, f.size.width, height));
+                }
             }
         }
     }
