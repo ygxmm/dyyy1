@@ -178,6 +178,24 @@ static BOOL DYYYCurrentDetailPageIsImage(UIViewController *vc) {
     return [aweme respondsToSelector:@selector(awemeType)] && [aweme awemeType] == 68;
 }
 
+// v630: 搜索结果页整页白名单：不参与任何全屏 hook。
+// 判定：父链含 SearchResult / GeneralSearchCachalot / SearchMiddleFeed / SearchSliding，
+// 且没有详情分页器（搜索详情不算）。
+static BOOL DYYYIsSearchResultsPage(UIViewController *vc) {
+    if (!vc) return NO;
+    if (DYYYDetailPagerForController(vc)) return NO;
+    for (UIViewController *p = vc; p; p = p.parentViewController) {
+        NSString *cls = NSStringFromClass([p class]);
+        if ([cls containsString:@"AWESearchResultViewController"] ||
+            [cls containsString:@"AWESearchMiddleFeedViewController"] ||
+            [cls containsString:@"AWEGeneralSearchCachalotViewController"] ||
+            [cls containsString:@"AWESearchSlidingViewController"]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
 static BOOL DYYYShouldApplyPageGeometry(UIViewController *vc) {
     if (!vc) return NO;
     UIViewController *pager = DYYYDetailPagerForController(vc);
@@ -16401,7 +16419,8 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     }
 
     // v628: 高度钉死 792（视口 - 60），不 return，后面的按钮/速度逻辑还要跑。
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+    // v630: 搜索结果页整页跳过。
+    if (DYYYGetBool(@"DYYYEnableFullScreen") && !DYYYIsSearchResultsPage(self)) {
         self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth;
         UIView *container = self.view.superview;
         CGFloat viewportH = 0;
@@ -17020,6 +17039,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)viewDidLayoutSubviews {
     %orig;
+    if (DYYYIsSearchResultsPage(self)) return;
     CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
     if (self.view.superview && self.view.superview.bounds.size.height < screenH * 0.9) return;
     [DYYYFullscreenCoordinator layoutPlayerContainer:self];
@@ -17083,6 +17103,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)viewDidLayoutSubviews {
     %orig;
+    if (DYYYIsSearchResultsPage(self)) return;
     CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
     if (self.view.superview && self.view.superview.bounds.size.height < screenH * 0.9) return;
     [DYYYFullscreenCoordinator layoutPlayerContainer:self];
@@ -17878,6 +17899,11 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 // v619: Merge 容器会被原生在 852/792/707 之间拉，渲染层必须单独钉住。
 - (void)setBounds:(CGRect)bounds {
     UIView *view = (UIView *)self;
+    UIViewController *ownerVC = [DYYYUtils firstAvailableViewControllerFromView:view];
+    if (DYYYIsSearchResultsPage(ownerVC)) {
+        %orig(bounds);
+        return;
+    }
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && !gDYYYInRotation && view.window) {
         CGSize screen = [UIScreen mainScreen].bounds.size;
         BOOL fullScreenParent = view.superview && view.superview.bounds.size.height >= screen.height * 0.9;
@@ -17892,6 +17918,11 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 - (void)setCenter:(CGPoint)center {
     UIView *view = (UIView *)self;
+    UIViewController *ownerVC = [DYYYUtils firstAvailableViewControllerFromView:view];
+    if (DYYYIsSearchResultsPage(ownerVC)) {
+        %orig(center);
+        return;
+    }
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && !gDYYYInRotation && view.window) {
         CGSize screen = [UIScreen mainScreen].bounds.size;
         BOOL fullScreenParent = view.superview && view.superview.bounds.size.height >= screen.height * 0.9;
