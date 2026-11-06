@@ -16216,7 +16216,7 @@ static void DYYYUIProbeLog(id vc) {
         for (NSUInteger qi = 0; qi < queue.count && qi < 200; qi++) {
             UIView *pv = queue[qi];
             if ([NSStringFromClass(pv.class) containsString:@"AWEPlayInteractionProgressContainerView"]) {
-                progressFrame = NSStringFromRect([pv convertRect:pv.bounds toView:view.window]);
+                progressFrame = NSStringFromCGRect([pv convertRect:pv.bounds toView:view.window]);
                 break;
             }
             [queue addObjectsFromArray:pv.subviews];
