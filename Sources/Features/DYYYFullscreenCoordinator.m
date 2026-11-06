@@ -845,6 +845,29 @@
     state.imageAdjusted = !CGAffineTransformEqualToTransform(target, transform);
     return target;
 }
++ (void)fillImageContentContainer:(UIView *)view {
+    // v653: 详情/搜索详情的图文内容链按 cell−60 布局（原生预留底栏），
+    // 底部 60pt 露黑/被遮。全屏时把内容视图到 cell 之间的链路归位到 cell 全高。
+    if (!DYYYGetBool(@"DYYYEnableFullScreen") || !view.window) return;
+    UIViewController *owner = [DYYYUtils firstAvailableViewControllerFromView:view];
+    if (![self usesFullscreenLayoutForController:owner]) return;
+    UIView *cell = nil;
+    for (UIView *v = view.superview; v && ![v isKindOfClass:[UIWindow class]]; v = v.superview) {
+        if ([v isKindOfClass:[UITableViewCell class]] || [v isKindOfClass:[UICollectionViewCell class]]) { cell = v; break; }
+    }
+    if (!cell || cell.bounds.size.height <= 0) return;
+    CGFloat height = cell.bounds.size.height;
+    if (height - view.bounds.size.height < 1) return; // 已经铺满
+    for (UIView *v = view; v && v != cell; v = v.superview) {
+        if (fabs(v.bounds.size.width - cell.bounds.size.width) > 1) break;
+        if (fabs(v.frame.size.height - height) > 0.5) {
+            CGRect frame = v.frame;
+            frame.origin.y = 0;
+            frame.size.height = height;
+            v.frame = frame;
+        }
+    }
+}
 + (void)layoutImageView:(UIView *)view {
     if (![NSThread isMainThread] || !view.window) return;
     DYYYFullscreenPlayerState *state = [self state:view];
@@ -865,6 +888,7 @@
         state.applying = NO;
     }
     state.imageAdjusted = !CGAffineTransformEqualToTransform(target, state.nativeImageTransform);
+    [self fillImageContentContainer:view];
 }
 + (void)commentController:(UIViewController *)controller visible:(BOOL)visible {
     if (![NSThread isMainThread]) {
