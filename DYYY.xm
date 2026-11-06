@@ -18827,7 +18827,8 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
         [self changeModernFullScreen:enableFS];
     }
     if ([self respondsToSelector:@selector(setPureMode:)]) {
-        [self setPureMode:enableFS];
+        // 使用 objc_msgSend 绕过头文件未声明的编译报错
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(self, @selector(setPureMode:), enableFS);
     }
 }
 
