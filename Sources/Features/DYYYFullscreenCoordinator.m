@@ -112,9 +112,8 @@
     if (![NSThread isMainThread] || !DYYYGetBool(@"DYYYEnableFullScreen") || ![self usesDetailLayoutForController:controller]) return inset;
     UIView *view = controller.viewIfLoaded;
     if (!view.window || CGRectIsEmpty(view.bounds)) return inset;
-    // 原代码这里强行 return 0，破坏了抖音原生的分页吸附和边缘回弹机制。
-    // 直接返回原生给的 inset，翻页逻辑即恢复完美。
-    return inset;
+    // 完美还原原版逻辑：全屏时把底部安全区强行抹平，让列表自然撑满！
+    return inset > 0 ? 0 : inset;
 }
 + (CGFloat)heightForDetailRow:(CGFloat)height table:(UITableView *)table controller:(UIViewController *)controller {
     if (![NSThread isMainThread] || !DYYYGetBool(@"DYYYEnableFullScreen") || ![self usesDetailLayoutForController:controller]) return height;
