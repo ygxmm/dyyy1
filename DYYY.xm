@@ -17548,41 +17548,39 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 // ==================== 图文内容铺满（v649） ====================
 // 40.8/41.0 原生图文布局给内容链预留 60pt 底栏（adapter = cell - 60），
 // 全屏时图片底部露出黑条。在写入与布局两处把适配器高度归位到 cell 全高。
-@interface AWEMultiContentImpl_ImageContentAdapterCellView : UIView
-- (void)layoutSubviews;
-- (void)setFrame:(CGRect)frame;
-@end
-
 %group DYYYImageAdapterFillGroup
 %hook AWEMultiContentImpl_ImageContentAdapterCellView
-%new
-- (BOOL)dyyyShouldFillContainer {
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return NO;
-    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-    return [DYYYFullscreenCoordinator usesFullscreenLayoutForController:vc] ||
-           [DYYYFullscreenCoordinator isCreatorDetailController:vc];
-}
 
 - (void)layoutSubviews {
     %orig;
-    if (![self dyyyShouldFillContainer]) return;
-    UIView *parent = self.superview;
-    if (!parent || parent.bounds.size.height <= 0 || fabs(self.bounds.size.width - parent.bounds.size.width) > 1) return;
-    if (fabs(self.frame.size.height - parent.bounds.size.height) > 0.5) {
-        CGRect frame = self.frame;
+    // 占位类无声明：self 一律先强转为 UIView 再使用（同 BDMultiContentContainer 图片块）
+    UIView *view = (UIView *)self;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
+    if (![DYYYFullscreenCoordinator usesFullscreenLayoutForController:vc] &&
+        ![DYYYFullscreenCoordinator isCreatorDetailController:vc]) return;
+    UIView *parent = view.superview;
+    if (!parent || parent.bounds.size.height <= 0 || fabs(view.bounds.size.width - parent.bounds.size.width) > 1) return;
+    if (fabs(view.frame.size.height - parent.bounds.size.height) > 0.5) {
+        CGRect frame = view.frame;
         frame.origin.y = 0;
         frame.size.height = parent.bounds.size.height;
-        self.frame = frame;
+        view.frame = frame;
     }
 }
 
 - (void)setFrame:(CGRect)frame {
-    if ([self dyyyShouldFillContainer]) {
-        UIView *parent = self.superview;
-        if (parent && parent.bounds.size.height > 0 && fabs(frame.size.width - parent.bounds.size.width) <= 1 &&
-            fabs(frame.size.height - parent.bounds.size.height) > 0.5) {
-            frame.origin.y = 0;
-            frame.size.height = parent.bounds.size.height;
+    UIView *view = (UIView *)self;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
+        if ([DYYYFullscreenCoordinator usesFullscreenLayoutForController:vc] ||
+            [DYYYFullscreenCoordinator isCreatorDetailController:vc]) {
+            UIView *parent = view.superview;
+            if (parent && parent.bounds.size.height > 0 && fabs(frame.size.width - parent.bounds.size.width) <= 1 &&
+                fabs(frame.size.height - parent.bounds.size.height) > 0.5) {
+                frame.origin.y = 0;
+                frame.size.height = parent.bounds.size.height;
+            }
         }
     }
     %orig(frame);
