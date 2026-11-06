@@ -18827,6 +18827,12 @@ static void DYYYMediaResetCollectionState(AWECommentMediaFeedViewController *c) 
 static void DYYYMediaApplyCollectionState(AWECommentMediaFeedViewController *c, BOOL enabled) {
     UICollectionView *col = DYYYMediaPageCollection(c);
     if (!col) return;
+    
+    // 修复黑边：图文全屏逻辑必须服从主全屏开关。如果主全屏关了，图文也恢复原生，禁止强行拉伸。
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        enabled = NO;
+    }
+    
     if (!enabled) {
         DYYYMediaResetCollectionState(c);
         if ([objc_getAssociatedObject(c, &kDYYYMediaNativeReanchorKey) boolValue]) {
