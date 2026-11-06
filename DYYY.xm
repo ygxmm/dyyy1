@@ -15880,6 +15880,8 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
+    // 补回因变量裁剪导致丢失的声明
+    BOOL enableBlur = DYYYGetBoolCached(@"DYYYEnableCommentBlur");
     if (!enableBlur || frame.origin.x == 0) {
         %orig(frame);
         return;
