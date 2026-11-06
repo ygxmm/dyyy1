@@ -18423,6 +18423,8 @@ static void (*v179_orig_dcvLayout)(id, SEL) = NULL;
 
 static void v179_dcvLayout(id self, SEL _cmd) {
     if (v179_orig_dcvLayout) v179_orig_dcvLayout(self, _cmd);
+    // 核心修复：如果全屏开关是关的，绝对不准把内层容器强撑到 852！
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
     @try {
         if (![self isKindOfClass:[UIViewController class]]) return;
         UIViewController *vc = (UIViewController *)self;
