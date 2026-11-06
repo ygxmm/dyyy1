@@ -18409,6 +18409,13 @@ static void v179_dcvLayout(id self, SEL _cmd) {
             }
         }
 
+        // v654: DCV 自身视图也归位到全高（探针实测：852 的 cell 里 DCV 视图仍为 792，
+        // 视频/内容底部露 60pt）。子控制器强拉之外，先把容器本体拉满。
+        UIView *ownView = vc.view;
+        if (ownView && fabs(ownView.frame.size.height - h) > 1.0) {
+            ownView.frame = CGRectMake(0, 0, w, h);
+        }
+
         // v642: 视频容器按同样方式设置——Merge / 播放视频视图也拉到全屏 frame
         for (UIViewController *child in vc.childViewControllers) {
             NSString *cn = NSStringFromClass([child class]);
@@ -18996,6 +19003,19 @@ static void DYYYProbeDetail(UIViewController *vc) {
 %group DYYYDetailHeightHook
 
 %hook AWEAwemeDetailTableViewController
+
+- (void)updateTableViewLayoutForTargetPageIndex:(long long)index {
+    %orig(index);
+    // v654: 原生可能按 792 几何算偏移（每页漂 60pt），写入后按当前视口
+    // 高度重新对齐到目标页，消除点击落错页的竞态。
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    UITableView *table = [self tableView];
+    if (!table.window || table.bounds.size.height <= 0) return;
+    CGFloat targetY = index * table.bounds.size.height;
+    if (fabs(table.contentOffset.y - targetY) > 0.5) {
+        table.contentOffset = CGPointMake(0, targetY);
+    }
+}
 
 - (double)cellHeightAtIndex:(long long)index {
     double height = %orig;
