@@ -19034,6 +19034,19 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     return height;
 }
 
+- (void)updateTableViewLayoutForTargetPageIndex:(long long)index {
+    %orig(index);
+    // v655: 原生按旧几何算偏移（每页漂 60pt），写入后按当前视口高度
+    // 重新对齐到目标页，消除点击落错页（127→倒数10 / 194→14）。
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    UITableView *table = [self tableView];
+    if (!table.window || table.bounds.size.height <= 0) return;
+    CGFloat targetY = index * table.bounds.size.height;
+    if (fabs(table.contentOffset.y - targetY) > 0.5) {
+        table.contentOffset = CGPointMake(0, targetY);
+    }
+}
+
 - (double)baseTableViewBottomInset {
     double inset = %orig;
     return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
