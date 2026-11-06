@@ -18423,35 +18423,7 @@ static void (*v179_orig_dcvLayout)(id, SEL) = NULL;
 
 static void v179_dcvLayout(id self, SEL _cmd) {
     if (v179_orig_dcvLayout) v179_orig_dcvLayout(self, _cmd);
-    // 核心修复：如果全屏开关是关的，绝对不准把内层容器强撑到 852！
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    @try {
-        if (![self isKindOfClass:[UIViewController class]]) return;
-        UIViewController *vc = (UIViewController *)self;
-
-        // v414: 原地修复，只要不是主播放页的图文，直接放行。避免卡顿并恢复搜索页全屏。
-        NSString *clsName = NSStringFromClass([vc class]);
-        if (![clsName containsString:@"AwemeDetailCell"] && 
-            ![clsName containsString:@"AwemeDetailTable"]) return;
-
-        // v179fix: 评论面板打开时不动 RC.view（避免评论背景变透明）
-        id ic = nil;
-        @try { ic = [vc valueForKey:@"interactionController"]; } @catch (NSException *e) {}
-        if (ic) {
-            @try {
-                // v339: performSelector 返回 BOOL 原始值（0x1），不能再调 boolValue（会 SIGSEGV）
-                if ([ic respondsToSelector:NSSelectorFromString(@"isCommentVCShowing")]) {
-                    BOOL (*fnVC)(id, SEL) = (BOOL (*)(id, SEL))[ic methodForSelector:NSSelectorFromString(@"isCommentVCShowing")];
-                    BOOL showing = fnVC(ic, NSSelectorFromString(@"isCommentVCShowing"));
-                    if (showing) return;
-                }
-                if ([ic respondsToSelector:NSSelectorFromString(@"isCommentListShowing")]) {
-                    BOOL (*fnList)(id, SEL) = (BOOL (*)(id, SEL))[ic methodForSelector:NSSelectorFromString(@"isCommentListShowing")];
-                    BOOL showing = fnList(ic, NSSelectorFromString(@"isCommentListShowing"));
-                    if (showing) return;
-                }
-            } @catch (NSException *e) {}
-        }
+}
 
         CGFloat w = [UIScreen mainScreen].bounds.size.width;
         CGFloat h = [UIScreen mainScreen].bounds.size.height;
