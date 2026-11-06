@@ -19056,39 +19056,37 @@ static void DYYYProbeDetailBrief(UIViewController *vc) {
 - (void)viewDidLayoutSubviews {
     %orig;
     DYYYProbeDetailBrief(self);
+
+    // v658: 表格撑到全屏视口后，按之前存下的目标索引补位。
+    // 只在进入后 2s 窗口内生效；用户一开始拖动就放弃，避免和手势打架。
+    static char kDYYYCoverIdxKey;
+    static char kDYYYCoverDeadlineKey;
+    NSNumber *pendingIdx = objc_getAssociatedObject(self, &kDYYYCoverIdxKey);
+    NSNumber *deadline = objc_getAssociatedObject(self, &kDYYYCoverDeadlineKey);
+    if (!pendingIdx || !deadline) return;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    UITableView *table = [self tableView];
+    if (!table.window) return;
+    if (table.tracking || table.dragging || table.decelerating) {
+        objc_setAssociatedObject(self, &kDYYYCoverIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
+    if (CACurrentMediaTime() > deadline.doubleValue) {
+        objc_setAssociatedObject(self, &kDYYYCoverIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
+    if (table.bounds.size.height < 800) return;
+    long long idx = pendingIdx.longLongValue;
+    NSInteger count = [table numberOfRowsInSection:0];
+    if (idx < 0 || idx >= count) return;
+    CGFloat targetY = idx * table.bounds.size.height;
+    if (fabs(table.contentOffset.y - targetY) > 0.5) {
+        table.contentOffset = CGPointMake(0, targetY);
+        objc_setAssociatedObject(self, &kDYYYCoverIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
 }
 
-- (void)viewDidAppear:(BOOL)animated {
-    %orig(animated);
-    // v656: 点击进入时原生按旧几何（792 基）算分页偏移 → 落错页。
-    // 布局稳定后一次性校正：若当前偏移恰好是 792 基整页，按同一索引换算到
-    // 当前视口（852）基。只在进入时跑一次，不干扰后续手势翻页。
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    __weak UIViewController *weakSelf = self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        UIViewController *vc = weakSelf;
-        if (!vc) return;
-        SEL tsel = NSSelectorFromString(@"tableView");
-        if (![vc respondsToSelector:tsel]) return;
-        id tv = ((id (*)(id, SEL))[vc methodForSelector:tsel])(vc, tsel);
-        if (![tv isKindOfClass:[UITableView class]]) return;
-        UITableView *table = (UITableView *)tv;
-        if (!table.window || table.bounds.size.height <= 0) return;
-        CGFloat y = table.contentOffset.y;
-        CGFloat h = table.bounds.size.height;
-        if (fabs(y) < 1.0) return;
-        CGFloat remNew = fabs(fmod(y, h));
-        if (remNew < 0.5 || fabs(remNew - h) < 0.5) return; // 已是当前视口整页
-        CGFloat remOld = fabs(fmod(y, 792.0));
-        if (remOld < 0.5 || fabs(remOld - 792.0) < 0.5) {
-            long long targetIdx = (long long)llround(y / 792.0);
-            NSInteger count = [table numberOfRowsInSection:0];
-            if (targetIdx >= 0 && targetIdx < count) {
-                [table setContentOffset:CGPointMake(0, targetIdx * h) animated:NO];
-            }
-        }
-    });
-}
+
 
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
     double height = %orig;
@@ -19101,14 +19099,20 @@ static void DYYYProbeDetailBrief(UIViewController *vc) {
 
 - (void)updateTableViewLayoutForTargetPageIndex:(long long)index {
     %orig(index);
-    // v655: 原生按旧几何算偏移（每页漂 60pt），写入后按当前视口高度
-    // 重新对齐到目标页，消除点击落错页（127→倒数10 / 194→14）。
+    // v658: 原生在表格还是 792 时下发目标索引（此时按 792 滚动是对的），
+    // 但表格随后撑到 852，偏移不换算 → 视觉索引掉 N 页。这里把目标索引
+    // 存下来，等表格到全屏视口后在 viewDidLayoutSubviews 里补位。
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    static char kDYYYCoverIdxKey;
+    static char kDYYYCoverDeadlineKey;
+    objc_setAssociatedObject(self, &kDYYYCoverIdxKey, @(index), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(self, &kDYYYCoverDeadlineKey, @(CACurrentMediaTime() + 2.0), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     UITableView *table = [self tableView];
-    if (!table.window || table.bounds.size.height <= 0) return;
-    CGFloat targetY = index * table.bounds.size.height;
-    if (fabs(table.contentOffset.y - targetY) > 0.5) {
-        table.contentOffset = CGPointMake(0, targetY);
+    if (table.window && table.bounds.size.height >= 800) {
+        CGFloat targetY = index * table.bounds.size.height;
+        if (fabs(table.contentOffset.y - targetY) > 0.5) {
+            table.contentOffset = CGPointMake(0, targetY);
+        }
     }
 }
 
