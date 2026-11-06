@@ -17489,6 +17489,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 - (void)viewDidLayoutSubviews {
     %orig;
+    [DYYYFullscreenCoordinator layoutDetailTableController:self];
     [DYYYFullscreenCoordinator reconcileDetailPaging:self];
     [DYYYFullscreenCoordinator reconcileCreatorPaging:self];
 }
@@ -17543,49 +17544,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     }
     return NO;
 }
-%end
-
-// ==================== 图文内容铺满（v649） ====================
-// 40.8/41.0 原生图文布局给内容链预留 60pt 底栏（adapter = cell - 60），
-// 全屏时图片底部露出黑条。在写入与布局两处把适配器高度归位到 cell 全高。
-%group DYYYImageAdapterFillGroup
-%hook AWEMultiContentImpl_ImageContentAdapterCellView
-
-- (void)layoutSubviews {
-    %orig;
-    // 占位类无声明：self 一律先强转为 UIView 再使用（同 BDMultiContentContainer 图片块）
-    UIView *view = (UIView *)self;
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
-    if (![DYYYFullscreenCoordinator usesFullscreenLayoutForController:vc] &&
-        ![DYYYFullscreenCoordinator isCreatorDetailController:vc]) return;
-    UIView *parent = view.superview;
-    if (!parent || parent.bounds.size.height <= 0 || fabs(view.bounds.size.width - parent.bounds.size.width) > 1) return;
-    if (fabs(view.frame.size.height - parent.bounds.size.height) > 0.5) {
-        CGRect frame = view.frame;
-        frame.origin.y = 0;
-        frame.size.height = parent.bounds.size.height;
-        view.frame = frame;
-    }
-}
-
-- (void)setFrame:(CGRect)frame {
-    UIView *view = (UIView *)self;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
-        if ([DYYYFullscreenCoordinator usesFullscreenLayoutForController:vc] ||
-            [DYYYFullscreenCoordinator isCreatorDetailController:vc]) {
-            UIView *parent = view.superview;
-            if (parent && parent.bounds.size.height > 0 && fabs(frame.size.width - parent.bounds.size.width) <= 1 &&
-                fabs(frame.size.height - parent.bounds.size.height) > 0.5) {
-                frame.origin.y = 0;
-                frame.size.height = parent.bounds.size.height;
-            }
-        }
-    }
-    %orig(frame);
-}
-%end
 %end
 
 // ==================== 纯净模式全屏容器（v646 搬自原版） ====================
@@ -18947,12 +18905,6 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     Class dyyyAbTest = NSClassFromString(@"AWECommentABTestSettings");
     if ([dyyyAbTest respondsToSelector:@selector(enableCommentAdaptiveWindowResponsiveLayout)]) {
         %init(DYYYMediaAdaptiveLayoutHook);
-    }
-    // v649: 图文适配器是 Swift 类（AWEMultiContentImpl.ImageContentAdapterCellView），
-    // 用占位符 hook + 运行时绑定，同 BDMultiContentContainer.ImageContentView 的做法。
-    Class dyyyImageAdapterClass = objc_getClass("AWEMultiContentImpl.ImageContentAdapterCellView");
-    if (dyyyImageAdapterClass) {
-        %init(DYYYImageAdapterFillGroup, AWEMultiContentImpl_ImageContentAdapterCellView = dyyyImageAdapterClass);
     }
 }
 

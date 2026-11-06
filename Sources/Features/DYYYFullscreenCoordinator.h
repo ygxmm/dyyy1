@@ -9,6 +9,7 @@
 + (CGFloat)bottomInsetForCreator:(CGFloat)inset controller:(UIViewController *)controller;
 + (void)reconcileCreatorPaging:(UIViewController *)controller;
 + (void)layoutCreatorInteraction:(UIViewController *)controller;
++ (void)layoutDetailTableController:(UIViewController *)controller;
 + (BOOL)usesFullscreenLayoutForController:(UIViewController *)controller;
 + (CGRect)frameForPureModeContainer:(UIViewController *)controller proposed:(CGRect)frame;
 + (CGFloat)bottomInsetForDetail:(CGFloat)inset controller:(UIViewController *)controller;

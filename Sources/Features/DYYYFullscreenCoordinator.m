@@ -238,6 +238,59 @@
         return;
     }
 }
++ (void)layoutDetailTableController:(UIViewController *)controller {
+    if (![NSThread isMainThread] || !DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    if (![self usesDetailLayoutForController:controller] && ![self isCreatorDetailController:controller]) return;
+    if (![controller respondsToSelector:@selector(tableView)]) return;
+    UITableView *table = [(AWEAwemeDetailTableViewController *)controller tableView];
+    if (!table.window || CGRectIsEmpty(table.bounds)) return;
+    UIView *host = table.superview;
+    if (!host || CGRectIsEmpty(host.bounds)) return;
+    // v650: 41.0 的详情页在原生布局层就按 792 排（底栏预留），inset 归零
+    // 不再拉伸容器；全屏时把分页表格归位到详情视图全高。异步执行，避免
+    // 布局回调内同步改 frame（0x8BADF00D 红线，同 v590 的异步兜底方案）。
+    if (host.bounds.size.height <= table.bounds.size.height + 0.5) return;
+    __weak UIViewController *weakController = controller;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIViewController *strongController = weakController;
+        if (!strongController || !DYYYGetBool(@"DYYYEnableFullScreen")) return;
+        UITableView *t = [(AWEAwemeDetailTableViewController *)strongController tableView];
+        UIView *h = t.superview;
+        if (!t.window || !h) return;
+        CGRect frame = t.frame;
+        if (fabs(frame.size.height - h.bounds.size.height) > 0.5 || fabs(frame.origin.y) > 0.5) {
+            frame.origin = CGPointZero;
+            frame.size = h.bounds.size;
+            t.frame = frame;
+        }
+        // 视口变化后立即让行高与分页偏移跟随，并按当前视频索引恢复分页。
+        [self reconcileDetailPaging:strongController];
+        [self reconcileCreatorPaging:strongController];
+    });
+}
++ (void)fillImageContentContainer:(UIView *)view {
+    // v650: 41.0 图文内容链按 cell-60 布局（永远预留 60pt 底栏），全屏时
+    // 图片底部露出黑条。把内容视图到 cell 之间的链路归位到 cell 全高。
+    if (!DYYYGetBool(@"DYYYEnableFullScreen") || !view.window) return;
+    UIViewController *owner = [DYYYUtils firstAvailableViewControllerFromView:view];
+    if (![self usesFullscreenLayoutForController:owner] && ![self isCreatorDetailController:owner]) return;
+    UIView *cell = nil;
+    for (UIView *v = view.superview; v && ![v isKindOfClass:[UIWindow class]]; v = v.superview) {
+        if ([v isKindOfClass:[UITableViewCell class]] || [v isKindOfClass:[UICollectionViewCell class]]) { cell = v; break; }
+    }
+    if (!cell || cell.bounds.size.height <= 0) return;
+    CGFloat height = cell.bounds.size.height;
+    if (height - view.bounds.size.height < 1) return; // 已经铺满
+    for (UIView *v = view; v && v != cell; v = v.superview) {
+        if (fabs(v.bounds.size.width - cell.bounds.size.width) > 1) break;
+        if (fabs(v.frame.size.height - height) > 0.5) {
+            CGRect frame = v.frame;
+            frame.origin.y = 0;
+            frame.size.height = height;
+            v.frame = frame;
+        }
+    }
+}
 + (void)layoutBottomBar:(UIView *)bar controller:(UIViewController *)controller enabled:(BOOL)enabled {
     DYYYFullscreenPlayerState *state = [self state:bar];
     if (state.updatingBottomBar) return;
@@ -964,6 +1017,7 @@
         state.applying = NO;
     }
     state.imageAdjusted = !CGAffineTransformEqualToTransform(target, state.nativeImageTransform);
+    [self fillImageContentContainer:view];
 }
 + (void)commentController:(UIViewController *)controller visible:(BOOL)visible {
     if (![NSThread isMainThread]) {
