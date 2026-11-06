@@ -18768,6 +18768,20 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 %group DYYYDetailHeightHook
 
 %hook AWEAwemeDetailTableViewController
+- (void)viewDidLayoutSubviews {
+    %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        UITableView *table = [self tableView];
+        if (table) {
+            UIEdgeInsets inset = table.contentInset;
+            if (inset.top != 28) {
+                inset.top = 28;
+                table.contentInset = inset;
+            }
+        }
+    }
+}
+
 - (double)baseTableViewBottomInset {
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0;
     return %orig;
