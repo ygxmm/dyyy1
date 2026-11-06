@@ -19019,11 +19019,82 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
+// ===== v656 探针：详情分页几何（写沙盒 Documents/dyyy_ui.log） =====
+static void DYYYProbeDetailBrief(UIViewController *vc) {
+    @autoreleasepool {
+        SEL tsel = NSSelectorFromString(@"tableView");
+        if (![vc respondsToSelector:tsel]) return;
+        id tv = ((id (*)(id, SEL))[vc methodForSelector:tsel])(vc, tsel);
+        if (![tv isKindOfClass:[UITableView class]]) return;
+        UITableView *table = (UITableView *)tv;
+        if (!table.window) return;
+        static NSMutableSet *seen; static dispatch_once_t once;
+        dispatch_once(&once, ^{ seen = [NSMutableSet set]; });
+        NSString *refer = @"nil";
+        SEL rsel = NSSelectorFromString(@"referString");
+        if ([vc respondsToSelector:rsel]) {
+            id r = ((id (*)(id, SEL))[vc methodForSelector:rsel])(vc, rsel);
+            if ([r isKindOfClass:[NSString class]]) refer = r;
+        }
+        SEL isel = NSSelectorFromString(@"currentVisibleCellIndex");
+        unsigned long long idx = 0;
+        if ([vc respondsToSelector:isel]) idx = ((unsigned long long (*)(id, SEL))[vc methodForSelector:isel])(vc, isel);
+        NSString *sig = [NSString stringWithFormat:@"%@%llu%ld%.0f%.0f", refer, idx, (long)[table numberOfRowsInSection:0], table.contentOffset.y, table.bounds.size.height];
+        if ([seen containsObject:sig]) return;
+        [seen addObject:sig];
+        NSString *line = [NSString stringWithFormat:@"[DETAIL] refer=%@ idx=%llu count=%ld y=%.1f tableH=%.0f cs=%.0f\n",
+            refer, idx, (long)[table numberOfRowsInSection:0], table.contentOffset.y, table.bounds.size.height, table.contentSize.height];
+        NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_ui.log"];
+        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+        if (fh) {
+            @try { [fh seekToEndOfFile]; [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]]; } @catch (NSException *e) {}
+            [fh closeFile];
+        }
+    }
+}
+
 // ==================== v457: 作品详情页高度统一 852 ====================
 %group DYYYDetailHeightHook
 
 %hook AWEAwemeDetailTableViewController
 
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+    DYYYProbeDetailBrief(self);
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    %orig(animated);
+    // v656: 点击进入时原生按旧几何（792 基）算分页偏移 → 落错页。
+    // 布局稳定后一次性校正：若当前偏移恰好是 792 基整页，按同一索引换算到
+    // 当前视口（852）基。只在进入时跑一次，不干扰后续手势翻页。
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    __weak UIViewController *weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        UIViewController *vc = weakSelf;
+        if (!vc) return;
+        SEL tsel = NSSelectorFromString(@"tableView");
+        if (![vc respondsToSelector:tsel]) return;
+        id tv = ((id (*)(id, SEL))[vc methodForSelector:tsel])(vc, tsel);
+        if (![tv isKindOfClass:[UITableView class]]) return;
+        UITableView *table = (UITableView *)tv;
+        if (!table.window || table.bounds.size.height <= 0) return;
+        CGFloat y = table.contentOffset.y;
+        CGFloat h = table.bounds.size.height;
+        if (fabs(y) < 1.0) return;
+        CGFloat remNew = fabs(fmod(y, h));
+        if (remNew < 0.5 || fabs(remNew - h) < 0.5) return; // 已是当前视口整页
+        CGFloat remOld = fabs(fmod(y, 792.0));
+        if (remOld < 0.5 || fabs(remOld - 792.0) < 0.5) {
+            long long targetIdx = (long long)llround(y / 792.0);
+            NSInteger count = [table numberOfRowsInSection:0];
+            if (targetIdx >= 0 && targetIdx < count) {
+                [table setContentOffset:CGPointMake(0, targetIdx * h) animated:NO];
+            }
+        }
+    });
+}
 
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
     double height = %orig;
