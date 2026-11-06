@@ -16222,6 +16222,30 @@ static void DYYYUIProbeLog(id vc) {
             [queue addObjectsFromArray:pv.subviews];
         }
 
+        NSMutableArray *progressLines = [NSMutableArray array];
+        NSMutableArray *queue2 = [NSMutableArray arrayWithObject:view];
+        for (NSUInteger qi = 0; qi < queue2.count && qi < 400; qi++) {
+            UIView *sv = queue2[qi];
+            NSString *sn = NSStringFromClass(sv.class);
+            if ([sn containsString:@"FeedProgressSlider"] || [sn containsString:@"StoryProgressContainerView"] || [sn containsString:@"InteractionProgressContainerView"]) {
+                [progressLines addObject:[NSString stringWithFormat:@"%@{%.0f,%.0f,%.0fx%.0f}a%.1f", sn,
+                    [sv convertRect:sv.bounds toView:view.window].origin.x,
+                    [sv convertRect:sv.bounds toView:view.window].origin.y,
+                    sv.bounds.size.width, sv.bounds.size.height, sv.alpha]];
+            }
+            [queue2 addObjectsFromArray:sv.subviews];
+        }
+        NSString *sliderInfo = progressLines.count ? [progressLines componentsJoinedByString:@"|"] : @"none";
+        NSString *bottomInfo = @"none";
+        SEL bcSel = NSSelectorFromString(@"bottomContainerView");
+        if ([vc respondsToSelector:bcSel]) {
+            UIView *bv = ((id (*)(id, SEL))[vc methodForSelector:bcSel])(vc, bcSel);
+            if ([bv isKindOfClass:[UIView class]]) {
+                CGRect bf = [bv convertRect:bv.bounds toView:view.window];
+                bottomInfo = [NSString stringWithFormat:@"{%.0f,%.0f,%.0fx%.0f}a%.1f h%d", bf.origin.x, bf.origin.y, bf.size.width, bf.size.height, bv.alpha, bv.hidden];
+            }
+        }
+
         int awemeType = -1;
         SEL ms = NSSelectorFromString(@"model");
         if ([vc respondsToSelector:ms]) {
@@ -16245,6 +16269,7 @@ static void DYYYUIProbeLog(id vc) {
             superCls, superH, view.window.bounds.size.height, awemeType,
             imageFlag, leftOff, stackOff, lrOff, infoH, ctrlOff, ctrlYOff, progressFrame,
             [chain componentsJoinedByString:@">"]];
+        line = [line stringByAppendingFormat:@"slider=%@ bottom=%@\n", sliderInfo, bottomInfo];
         NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_ui.log"];
         NSFileManager *fm = [NSFileManager defaultManager];
         if (![fm fileExistsAtPath:path]) [fm createFileAtPath:path contents:nil attributes:nil];
