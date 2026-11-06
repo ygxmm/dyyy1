@@ -17689,7 +17689,20 @@ static char kDYYYV29DoneKey; // v439
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
-        %orig(frame);
+    // v654: 详情表格在写入时归位到全屏（取代 kDYYYV29DoneKey 约束强改——
+    // 那份 hack 与原生 792 布局反复对抗，导致表格 792↔852 翻转、分页索引
+    // 跳变「往前翻」。写入时改写：一次写入一个值，零对抗。
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
+        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+        // 只处理全宽、竖直分页视口量级的写入（约 50%~100% 屏高）
+        if (fabs(frame.size.width - screenW) <= 1.0 &&
+            frame.size.height > screenH * 0.5 && fabs(frame.size.height - screenH) > 1.0) {
+            frame.origin = CGPointZero;
+            frame.size = CGSizeMake(screenW, screenH);
+        }
+    }
+    %orig(frame);
 }
 
 - (void)layoutSubviews {
@@ -17705,35 +17718,8 @@ static char kDYYYV29DoneKey; // v439
         self.clipsToBounds = YES;
     }
 
-    // v439: 直接把自身 bottom 约束改 0 撑满（替代 _m_v29 的 BFS 方案）
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        // 已经是屏幕高度就不用动
-        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-        if (self.bounds.size.height >= screenH - 1.0) return;
-        // 已经改过就不再改
-        if (objc_getAssociatedObject(self, &kDYYYV29DoneKey)) return;
-        // v446: 约束现成，直接改，不等 IC 创建
-        // 时序安全：在 table 自己的 layoutSubviews 里改，不主动触发 layout，不打断 IC 创建
-        // 改 self 上下三层的 bottom 约束（table / superview / 祖父）
-        BOOL changed = NO;
-        NSMutableArray *pools = [NSMutableArray arrayWithObject:self.constraints];
-        if (self.superview) [pools addObject:self.superview.constraints];
-        if (self.superview.superview) [pools addObject:self.superview.superview.constraints];
-        for (NSArray *pool in pools) {
-            for (NSLayoutConstraint *c in pool) {
-                if (c.firstItem != self && c.secondItem != self) continue;
-                if (c.firstAttribute != NSLayoutAttributeBottom &&
-                    c.secondAttribute != NSLayoutAttributeBottom) continue;
-                if (fabs(c.constant) > 1.0) {
-                    c.constant = 0;
-                    changed = YES;
-                }
-            }
-        }
-        if (changed) {
-            objc_setAssociatedObject(self, &kDYYYV29DoneKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-    }
+    // v654: kDYYYV29DoneKey 约束强改已删除（交接文档毒瘤 #3）。
+    // 表格全屏由 setFrame 写入归位完成，不再改 NSLayoutConstraint。
 }
 
 %end
