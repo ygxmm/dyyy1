@@ -159,7 +159,15 @@
     }
 }
 + (BOOL)isCreatorDetailController:(UIViewController *)controller {
-    return [[self contentSourceForController:controller] isEqualToString:@"others_homepage"];
+    if ([[self contentSourceForController:controller] isEqualToString:@"others_homepage"]) return YES;
+    // v649: 41.0 主页控制器改名 AWEUserDetailViewControllerV2，referString 值也可能变化；
+    // 按祖先类名兜底，保证各版本的创作者主页都能命中专属通道。
+    for (UIViewController *parent = controller; parent; parent = parent.parentViewController) {
+        NSString *name = NSStringFromClass(parent.class);
+        if ([name containsString:@"UserDetailViewController"] || [name containsString:@"UserHomeViewController"] ||
+            [name containsString:@"ProfileViewController"]) return YES;
+    }
+    return NO;
 }
 + (CGFloat)bottomInsetForCreator:(CGFloat)inset controller:(UIViewController *)controller {
     if (![NSThread isMainThread] || !DYYYGetBool(@"DYYYEnableFullScreen") || ![self isCreatorDetailController:controller]) return inset;

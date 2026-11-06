@@ -17545,6 +17545,51 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 }
 %end
 
+// ==================== 图文内容铺满（v649） ====================
+// 40.8/41.0 原生图文布局给内容链预留 60pt 底栏（adapter = cell - 60），
+// 全屏时图片底部露出黑条。在写入与布局两处把适配器高度归位到 cell 全高。
+@interface AWEMultiContentImpl_ImageContentAdapterCellView : UIView
+- (void)layoutSubviews;
+- (void)setFrame:(CGRect)frame;
+@end
+
+%group DYYYImageAdapterFillGroup
+%hook AWEMultiContentImpl_ImageContentAdapterCellView
+%new
+- (BOOL)dyyyShouldFillContainer {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return NO;
+    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
+    return [DYYYFullscreenCoordinator usesFullscreenLayoutForController:vc] ||
+           [DYYYFullscreenCoordinator isCreatorDetailController:vc];
+}
+
+- (void)layoutSubviews {
+    %orig;
+    if (![self dyyyShouldFillContainer]) return;
+    UIView *parent = self.superview;
+    if (!parent || parent.bounds.size.height <= 0 || fabs(self.bounds.size.width - parent.bounds.size.width) > 1) return;
+    if (fabs(self.frame.size.height - parent.bounds.size.height) > 0.5) {
+        CGRect frame = self.frame;
+        frame.origin.y = 0;
+        frame.size.height = parent.bounds.size.height;
+        self.frame = frame;
+    }
+}
+
+- (void)setFrame:(CGRect)frame {
+    if ([self dyyyShouldFillContainer]) {
+        UIView *parent = self.superview;
+        if (parent && parent.bounds.size.height > 0 && fabs(frame.size.width - parent.bounds.size.width) <= 1 &&
+            fabs(frame.size.height - parent.bounds.size.height) > 0.5) {
+            frame.origin.y = 0;
+            frame.size.height = parent.bounds.size.height;
+        }
+    }
+    %orig(frame);
+}
+%end
+%end
+
 // ==================== 纯净模式全屏容器（v646 搬自原版） ====================
 %hook AFDPureModePageListViewController
 - (void)viewWillLayoutSubviews {
@@ -18904,6 +18949,12 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     Class dyyyAbTest = NSClassFromString(@"AWECommentABTestSettings");
     if ([dyyyAbTest respondsToSelector:@selector(enableCommentAdaptiveWindowResponsiveLayout)]) {
         %init(DYYYMediaAdaptiveLayoutHook);
+    }
+    // v649: 图文适配器是 Swift 类（AWEMultiContentImpl.ImageContentAdapterCellView），
+    // 用占位符 hook + 运行时绑定，同 BDMultiContentContainer.ImageContentView 的做法。
+    Class dyyyImageAdapterClass = objc_getClass("AWEMultiContentImpl.ImageContentAdapterCellView");
+    if (dyyyImageAdapterClass) {
+        %init(DYYYImageAdapterFillGroup, AWEMultiContentImpl_ImageContentAdapterCellView = dyyyImageAdapterClass);
     }
 }
 
