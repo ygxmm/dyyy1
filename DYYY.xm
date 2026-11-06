@@ -18880,7 +18880,10 @@ static void DYYYMediaApplyCollectionState(AWECommentMediaFeedViewController *c, 
 
 static void DYYYMediaApplyControllerState(AWECommentMediaFeedViewController *c) {
     if (!c || !c.isViewLoaded) return;
-    BOOL enabled = DYYYCommentMediaCleanerEnabled();
+    
+    // 核心修复：关闭主全屏时，图文清理逻辑全部失效，必须保留原生输入框，杜绝黑边！
+    BOOL enabled = DYYYCommentMediaCleanerEnabled() && DYYYGetBoolCached(@"DYYYEnableFullScreen");
+    
     if (!enabled) {
         DYYYMediaRestoreViewsUnderRoot(c.view);
         DYYYMediaApplyCollectionState(c, NO);
