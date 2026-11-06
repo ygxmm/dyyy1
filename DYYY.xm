@@ -132,8 +132,6 @@ static UIViewController *DYYYDetailPagerForController(UIViewController *vc) {
 
 
 
-
-
 // 只处理“详情页 / 全屏 feed”的大画面：全宽且高度 >= 屏高 70%。
 // 搜索列表里的小卡片不满足，直接放行，避免被误拉满。
 
@@ -7797,8 +7795,6 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
 @property (nonatomic, copy) NSString *enterFrom;
 @property (nonatomic, copy) NSString * previousPage;
 @end
-
-
 
 
 %hook AWEAwemeDetailContainerPlayControlConfig
@@ -15957,7 +15953,8 @@ static Class tabBarButtonClass = nil;
     // v527: 黑条启发式已停用。
     // 原逻辑会在任意 setFrame 里把「40~80pt、全宽、纯黑」的视图置零并隐藏，
     // 满屏（852）滚动时反复打断布局，实测主线程卡死 30s 以上。
-    // 顶部黑条改由 DYYYClearBlackEdgeBars 在页面布局完成后统一清理。
+    // v651: 顶部黑条清理机制已整体移除——树扫描既慢（每次布局全树递归）
+    // 又危险（黑色背景的贴边视图会被 hidden，误伤时整块 UI 消失）。
 
 
     if (![NSThread isMainThread]) {
@@ -15966,8 +15963,6 @@ static Class tabBarButtonClass = nil;
         });
         return;
     }
-
-
 
 
     if (!enableBlur || frame.origin.x == 0) {
@@ -16105,56 +16100,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 // v368: 递归扫视图树，把边缘纯黑窄条透明（顶部/底部/左右）
 // 依据：实测确认黑条 {0,0,393,59} bg=纯黑挂在 HUD 根视图下（self.view 深 2 层），
 //       v367 只扫一层所以没命中；这里递归 5 层并覆盖四周。
-static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screenH, CGFloat safeTop, NSInteger depth) {
-    if (!view || depth > 5) return;
-    for (UIView *sub in view.subviews) {
-        CGRect f = sub.frame;
-        CGFloat x = f.origin.x, y = f.origin.y, w = f.size.width, h = f.size.height;
-        if (w > 1.0 && h > 1.0) {
-            BOOL edgeBar = NO;
-            if (fabs(x) < 1.0 && fabs(y) < 1.0 && w >= screenW * 0.5 && h <= safeTop + 60.0) edgeBar = YES;
-            else if (fabs(x) < 1.0 && fabs((y + h) - screenH) < 2.0 && w >= screenW * 0.5 && h <= 120.0) edgeBar = YES;
-            else if (fabs(x) < 1.0 && w <= 120.0 && h >= screenH * 0.2) edgeBar = YES;
-            else if (fabs((x + w) - screenW) < 2.0 && w <= 120.0 && h >= screenH * 0.2) edgeBar = YES;
-            if (edgeBar) {
-                // v370: 同时检查 view.backgroundColor 和 layer.backgroundColor
-                BOOL shouldClear = NO;
 
-                UIColor *bg = sub.backgroundColor;
-                if (bg) {
-                    CGFloat r = 0, g = 0, b = 0, a = 0;
-                    if ([bg getRed:&r green:&g blue:&b alpha:&a] &&
-                        r < 0.05 && g < 0.05 && b < 0.05 && a > 0.95) {
-                        shouldClear = YES;
-                    }
-                }
-
-                if (!shouldClear) {
-                    CGColorRef layerBg = sub.layer.backgroundColor;
-                    if (layerBg) {
-                        const CGFloat *comp = CGColorGetComponents(layerBg);
-                        size_t n = CGColorGetNumberOfComponents(layerBg);
-                        CGFloat r = 0, g = 0, b = 0, a = 1;
-                        if (n >= 4) { r = comp[0]; g = comp[1]; b = comp[2]; a = comp[3]; }
-                        else if (n == 2) { r = comp[0]; g = comp[0]; b = comp[0]; a = comp[1]; }
-                        if (r < 0.05 && g < 0.05 && b < 0.05 && a > 0.95) {
-                            shouldClear = YES;
-                        }
-                    }
-                }
-
-                if (shouldClear) {
-                    // v374: 精简版——只清背景 + 隐藏，无日志
-                    sub.backgroundColor = [UIColor clearColor];
-                    sub.layer.backgroundColor = [UIColor clearColor].CGColor;
-                    sub.layer.contents = nil;
-                    sub.hidden = YES;
-                }
-            }
-        }
-        DYYYClearBlackEdgeBars(sub, screenW, screenH, safeTop, depth + 1);
-    }
-}
 
 // v532: 类转储 AWEPlayInteractionViewController.h 里有 bottomContainerView，
 // 项目内 AwemeHeaders.h 未收录，这里补声明。
@@ -16215,18 +16161,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         if (!CGRectIntersectsRect(earlyRect, earlyView.window.bounds)) return;
     }
 
-    // v616: 打开评论区上方黑条清理
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") || DYYYGetBoolCached(@"DYYYEnableCommentBlur")) {
-        CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
-        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-        CGFloat safeTop = 0;
-        if (@available(iOS 11.0, *)) {
-            safeTop = self.view.safeAreaInsets.top;
-        }
-        if (safeTop <= 0.5) safeTop = 47.0;
-        DYYYClearBlackEdgeBars(self.view, screenW, screenH, safeTop, 0);
-    }
-
     {
     // v637: 完全照搬参考的交互层全屏逻辑（去掉 DYYYFloatingButtonCoordinator 依赖）。
     if (!self.viewIfLoaded.window) return;
@@ -16274,8 +16208,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     }
     [DYYYFullscreenCoordinator rememberInteractionGuide:self];
     }
-
-
 
 
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
@@ -16366,21 +16298,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
     // v334: 删掉改 self.view.frame 的代码（和抖音 layout 打架 → 频闪）
 
-    // v374: 打开评论时清一次已存在的顶部黑条（v379 底层拦截的保底层）
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") || DYYYGetBoolCached(@"DYYYEnableCommentBlur")) {
-        CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
-        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-        CGFloat safeTop = 0;
-        if (@available(iOS 11.0, *)) {
-            safeTop = self.view.safeAreaInsets.top;
-        }
-        // v537: 交互层不在安全区内时 safeAreaInsets.top 读到 0，原来这里直接跳过，
-        // 导致顶部黑条清不掉。给一个兜底高度，保证清理一定执行。
-        if (safeTop <= 0.5) {
-            safeTop = 47.0;
-        }
-        DYYYClearBlackEdgeBars(self.view, screenW, screenH, safeTop, 0);
-    }
 }
 
 
@@ -16910,8 +16827,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     return %orig;
 }
 
-
-
 - (void)viewDidLayoutSubviews {
     %orig;
     [DYYYFullscreenCoordinator layoutPlayerContainer:self];
@@ -16944,8 +16859,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 }
 
 %end
-
-
 
 // v250: 只对单个 cell 里的 player VC 拉高。
 
@@ -17690,8 +17603,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 }
 
 %end
-
-
 
 // 隐藏图片滑条
 %hook AWEStoryProgressContainerView
@@ -19011,19 +18922,22 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
-
-
-
-
-
-
-
-
 // ==================== v457: 作品详情页高度统一 852 ====================
 %group DYYYDetailHeightHook
 
 %hook AWEAwemeDetailTableViewController
 
+- (void)viewDidLayoutSubviews {
+    %orig;
+    // v651: 分页漂移修复——重问行高并按当前视频索引恢复分页偏移。
+    // 194 个视频时每页 60pt 的行高/视口差会累积 ≈14 页错位。
+    [DYYYFullscreenCoordinator reconcileDetailPaging:self];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    %orig(animated);
+    [DYYYFullscreenCoordinator reconcileDetailPaging:self];
+}
 
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
     double height = %orig;
@@ -19041,18 +18955,12 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
-
-
 // v632: 参考的详情分页校正，原样接回（不动 UI 高度）
 
 
-
-
 %end
 
 %end
-
-
 
 
 
