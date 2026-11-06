@@ -18923,9 +18923,47 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 // ==================== v457: 作品详情页高度统一 852 ====================
+// v652: 分页器用的三个高度方法（cellHeightAtIndex/fixedCellHeight/cellHeight）
+// 也必须统一到视口，否则分页器按 792 算偏移、行却是 852 →
+// 每页 60pt 漂移（127 个作品点击最后一个滑到倒数第 10：127×60÷852≈9）。
+// 头文件声明 logos 不展开，按 915a7f6 的经验在文件内补声明。
+@interface AWEAwemeDetailTableViewController (DYYYHeightUnify)
+- (double)cellHeightAtIndex:(long long)index;
+- (double)fixedCellHeight;
+- (double)cellHeight;
+- (UITableView *)tableView;
+@end
+
 %group DYYYDetailHeightHook
 
 %hook AWEAwemeDetailTableViewController
+
+- (double)cellHeightAtIndex:(long long)index {
+    double height = %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        UITableView *table = [self tableView];
+        if (table.window && table.bounds.size.height > 0) return table.bounds.size.height;
+    }
+    return height;
+}
+
+- (double)fixedCellHeight {
+    double height = %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        UITableView *table = [self tableView];
+        if (table.window && table.bounds.size.height > 0) return table.bounds.size.height;
+    }
+    return height;
+}
+
+- (double)cellHeight {
+    double height = %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        UITableView *table = [self tableView];
+        if (table.window && table.bounds.size.height > 0) return table.bounds.size.height;
+    }
+    return height;
+}
 
 - (void)viewDidLayoutSubviews {
     %orig;
