@@ -18768,6 +18768,32 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 %group DYYYDetailHeightHook
 
 %hook AWEAwemeDetailTableViewController
+
+// 拦截原生统一布局方法
+- (void)applyTableViewLayoutForAllPlatform {
+    %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        UITableView *table = [self tableView];
+        if (table) {
+            UIEdgeInsets inset = table.contentInset;
+            inset.top = 28; // 整体下移28
+            inset.bottom = 0; // 消除安全区
+            table.contentInset = inset;
+        }
+    }
+}
+
+// 原生方法（头文件里暴露的）
+- (double)tableViewBottomInsetForAllPlatform {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0;
+    return %orig;
+}
+
+- (double)tableViewBottomInsetForAllPlatform:(id)a0 {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0;
+    return %orig;
+}
+
 - (void)viewDidLayoutSubviews {
     %orig;
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
