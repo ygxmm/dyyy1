@@ -16242,6 +16242,13 @@ static void DYYYUIProbeLog(id vc) {
     }
 }
 
+// v644: 探针实测——首页/图文帖的 stack 容器底部偏移都是 0.5，
+// 只有搜索详情的视频帖是 -59.5（原生按 60pt 底栏预留了锚点），
+// 导致同一详情页里视频文案比图文高 60pt。这里补声明并归一到首页值。
+@interface AWEPlayInteractionViewController (DYYYStackOffsetUnify)
+- (double)p_stackContainerViewBottomOffset;
+@end
+
 %hook AWEPlayInteractionViewController
 
 - (void)onVideoPlayerViewDoubleClicked:(id)arg1 {
@@ -16269,6 +16276,16 @@ static void DYYYUIProbeLog(id vc) {
 
 // v346: HUD 容器底部偏移 +60（让左右栈和栈容器都上移 60）
 
+
+- (double)p_stackContainerViewBottomOffset {
+    double offset = %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return offset;
+    if (![DYYYFullscreenCoordinator usesDetailLayoutForController:self] &&
+        ![DYYYFullscreenCoordinator isCreatorDetailController:self]) return offset;
+    // v644: 详情页里只归位异常负值（视频帖 -59.5 → 首页/图文同款 0.5），
+    // 正常值（0.5 等）原样放行。
+    return offset < -1.0 ? 0.5 : offset;
+}
 
 - (void)viewDidLayoutSubviews {
     %orig;
