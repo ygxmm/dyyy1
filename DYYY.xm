@@ -18855,8 +18855,8 @@ static void DYYYMediaApplyCollectionState(AWECommentMediaFeedViewController *c, 
 static void DYYYMediaApplyControllerState(AWECommentMediaFeedViewController *c) {
     if (!c || !c.isViewLoaded) return;
     
-    // 核心修复：关闭主全屏时，图文清理逻辑全部失效，必须保留原生输入框，杜绝黑边！
-    BOOL enabled = DYYYCommentMediaCleanerEnabled() && DYYYGetBoolCached(@"DYYYEnableFullScreen");
+    // 图文清理只受图文开关控制
+    BOOL enabled = DYYYCommentMediaCleanerEnabled();
     
     if (!enabled) {
         DYYYMediaRestoreViewsUnderRoot(c.view);
@@ -18901,9 +18901,7 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     CGSize size = %orig;
     if (!DYYYCommentMediaCleanerEnabled() || collectionView != DYYYMediaPageCollection(self)) return size;
     
-    // 核心修复：关闭主全屏开关时，图文 cell 必须恢复原生尺寸，禁止强行撑满全屏！
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return size;
-    
+    // 图文磨砂全屏拉伸，只受图文清理开关控制，与主全屏开关无关
     CGSize target = self.view.bounds.size;
     return target.width > 0.0 && target.height > 0.0 ? target : size;
 }
@@ -18919,7 +18917,7 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     gDYYYMediaSuppressAdaptiveLayout = DYYYCommentMediaCleanerEnabled();
     %orig;
     gDYYYMediaSuppressAdaptiveLayout = outerSuppress;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+    if (DYYYCommentMediaCleanerEnabled()) {
         [gDYYYMediaControllers addObject:self];
         DYYYMediaApplyControllerState(self);
     }
