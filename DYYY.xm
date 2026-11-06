@@ -18416,8 +18416,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 // 写沙盒日志（动态路径，不写死）
 
-}
-
 // v212: 评论面板内 section bg 强制透明（保 DYYY 原版毛玻璃可见）
 static void (*v212_orig_setBg)(id, SEL, id) = NULL;
 
