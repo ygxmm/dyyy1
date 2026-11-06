@@ -18861,36 +18861,4 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 }
 
 
-// ==================== 完美搬用首页全屏布局逻辑 ====================
-// 让详情页里的图文容器/视频容器，跟着外层 Cell 一起撑满
 
-%hook AWEAwemeDetailCellViewController
-- (void)viewDidLayoutSubviews {
-    %orig;
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    UIView *parent = self.view.superview;
-    if (parent && parent.bounds.size.height > 0) {
-        if (fabs(self.view.frame.size.height - parent.bounds.size.height) > 1) {
-            CGRect frame = self.view.frame;
-            frame.size.height = parent.bounds.size.height;
-            self.view.frame = frame;
-        }
-    }
-}
-%end
-
-%hook RichContentContainerViewController
-- (void)viewDidLayoutSubviews {
-    %orig;
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    UIView *parent = self.view.superview;
-    if (parent && parent.bounds.size.height > 0) {
-        if (fabs(self.view.frame.size.height - parent.bounds.size.height) > 1) {
-            CGRect frame = self.view.frame;
-            frame.size.height = parent.bounds.size.height;
-            self.view.frame = frame;
-        }
-    }
-}
-%end
-// ===============================================================
