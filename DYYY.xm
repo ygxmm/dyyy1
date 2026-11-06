@@ -1,20 +1,12 @@
-//
 //  DYYY
-//
 //  Copyright (c) 2024 huami. All rights reserved.
 //  Channel: @huamidev
 //  Created on: 2024/10/04
-//
-// ============================================================
 // 系统框架
-// ============================================================
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
 #import <QuartzCore/QuartzCore.h>
-
-// ============================================================
 // C 标准库
-// ============================================================
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,32 +17,20 @@
 #include <pthread.h>
 
 #include <dlfcn.h>
-
-// ============================================================
 // 运行时 / 第三方
-// ============================================================
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import <os/lock.h>
 #import <substrate.h>
-
-// ============================================================
 // 项目核心
-// ============================================================
 #import "AwemeHeaders.h"
 #import "DYYYFullscreenCoordinator.h"
-
-
-
 
 #import "DYYYConstants.h"
 #import "DYYYUtils.h"
 #import "AWMSafeDispatchTimer.h"
 #import "CityManager.h"
-
-// ============================================================
 // 项目管理器
-// ============================================================
 #import "DYYYManager.h"
 #import "DYYYHookManager.h"
 #import "DYYYLoginBypassManager.h"
@@ -59,15 +39,11 @@
 static __thread int gDYYYSetFrameDepth = 0;
 static void DYYYSetFrameDepthDec(int *p) { (void)p; gDYYYSetFrameDepth--; }
 
-
 #import "DYYYLivePreStreamLayoutCoordinator.h"
 
 #import "DYYYPrivacyRecordUploadGuard.h"
 #import "DYYYMiniProgramRewardBypass.h"
-
-// ============================================================
 // 项目 Hook 模块
-// ============================================================
 #import "DYYYLoginRepairHooks.h"
 #import "DYYYHideMusicButtonHooks.h"
 #import "DYYYHideShareContentViewHooks.h"
@@ -76,10 +52,7 @@ static void DYYYSetFrameDepthDec(int *p) { (void)p; gDYYYSetFrameDepth--; }
 #import "DYYYHideTemplateCollectionHooks.h"
 #import "DYYYSearchKeyboardVoiceHooks.h"
 #import "DYYYHighFPSHooks.h"
-
-// ============================================================
 // 项目 UI 模块
-// ============================================================
 #import "DYYYBottomAlertView.h"
 #import "DYYYGlassConfirmView.h"
 #import "DYYYFloatClearButton.h"
@@ -87,14 +60,10 @@ static void DYYYSetFrameDepthDec(int *p) { (void)p; gDYYYSetFrameDepth--; }
 #import "DYYYFPSOverlay.h"
 #import "DYYYSettingViewController.h"
 #import "DYYYToast.h"
-
-// ============================================================
 // 前向声明（v278）
-// ============================================================
 static BOOL DYYYIsHomePlayInteraction(UIView *view);
 
 static CGFloat gStartY = 0.0;
-
 
 static CGFloat gStartVal = 0.0;
 static DYEdgeMode gMode = DYEdgeModeNone;
@@ -114,7 +83,6 @@ static char kDYYYAsyncFramePendingKey;
 static char kDYYYAsyncFrameTimeKey;
 static char kDYYYRotationRetryKey;
 
-
 // 旋转期间 layout 被全部跳过，而 gDYYYInRotation 要等转场结束 0.3s 才复位；
 // 这里补一次复位后的 setNeedsLayout，让上面的异步归位重新跑起来。
 
@@ -131,10 +99,6 @@ static UIViewController *DYYYDetailPagerForController(UIViewController *vc) {
     }
     return nil;
 }
-
-
-
-
 
 // 只处理“详情页 / 全屏 feed”的大画面：全宽且高度 >= 屏高 70%。
 // 搜索列表里的小卡片不满足，直接放行，避免被误拉满。
@@ -179,8 +143,6 @@ static NSURL *DYYYLoginBypassURLByReplacingBundleIdentifier(NSURL *url) {
 }
 
 %group DYYYLoginBypassCore
-
-// ===== DYYY 统一日志（变参，动态沙盒路径）=====
 static NSString *DYYYLogPath(void) {
     NSString *home = NSHomeDirectory();
     if (home.length == 0) return nil;
@@ -3547,7 +3509,6 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
     %orig(lutFilter, DYYYShouldDisableAllHDR() ? nil : HDRLutImage);
 }
 
-
 %end
 
 %hook AWEDPlayerBrightnessContainer
@@ -5529,7 +5490,6 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
         v.backgroundColor = [UIColor clearColor];
     }
 
-
     if (!DYYYGetBool(@"DYYYEnableFullScreen")) {
         return;
     }
@@ -6865,7 +6825,6 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 
 // v356: 进度条位置 -60（让首页全屏时进度条上移）
 
-
 %new
 - (void)dyyy_syncScheduleLabelsWithCurrentTime:(CGFloat)currentTime totalDuration:(CGFloat)totalDuration {
     if (!DYYYGetBool(@"DYYYShowScheduleDisplay")) {
@@ -6889,9 +6848,7 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 
 // v361: 直接改进度条 frame 返回值
 
-
 %end
-
 
 %hook AWEDProgressCoreContainer
 
@@ -7105,7 +7062,6 @@ static NSString *const kDYYYLongPressCopyEnabledKey = @"DYYYLongPressCopyTextEna
 
 %end
 
-
 %end
 
 %group DYYYHideFeedAnchorTemplateGroup
@@ -7245,7 +7201,6 @@ static void DYYYStartHideFeedAnchorHookInstaller(void) {
 }
 
 %end
-
 
 %hook AWENormalModeTabBarGeneralPlusButton
 - (void)setImage:(UIImage *)image forState:(UIControlState)state {
@@ -7796,9 +7751,6 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
 @property (nonatomic, copy) NSString * previousPage;
 @end
 
-
-
-
 %hook AWEAwemeDetailContainerPlayControlConfig
 
 - (BOOL)enableUserProfilePostAutoPlay {
@@ -7813,7 +7765,6 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
     return YES;
 }
 
-
 - (BOOL)getFeedIphoneAutoPlayState {
     BOOL r = %orig;
     return YES;
@@ -7827,7 +7778,6 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
     return YES;
 }
 %end
-
 
 %end
 
@@ -10063,7 +10013,6 @@ static BOOL DYYYShouldVerifiedCollapseCommentHeaderModel(id model) {
 }
 
 %end
-
 
 %hook UIButton
 
@@ -13312,7 +13261,6 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 	%orig;
 }
 
-
 - (id)initWithDictionary:(id)arg1 error:(id *)arg2 {
     id orig = %orig;
     if (orig) {
@@ -14609,19 +14557,12 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
     %orig(arg1);
 }
 %end
-
-// ============================================================
 // DYYY v141: 搜索页 UI 下移 60pt（幂等 transform 方案）
 // 原理：抖音自己用 transform 做布局，我们在其基础上再 +60pt
 // 幂等：transform 已达标则跳过，不触发重排 → 不卡帧
-// ============================================================
-
-// ============================================================
 // DYYY v141: 搜索页 UI 下移 60pt（幂等 transform，静态函数版）
-// ============================================================
 static char kDYYYSearchHitKey;
 static char kDYYYOrigTransformKey;
-
 
 static void DYYYUpdateManagedPrivacyHalfScreenAppearance(AFDPrivacyHalfScreenViewController *viewController) {
     BOOL isDarkMode = [DYYYUtils isDarkMode];
@@ -14915,7 +14856,6 @@ static void DYYYLogHidePlusOverlayOnce(NSString *target) {
 
 %end
 
-
 // DYYY_FIX_TABBAR_INTERNAL_BACKGROUND
 static void DYYYRepairTabBarInternalBackground(UIView *tabBar) {
     if (!tabBar || !DYYYGetBool(@"DYYYEnableFullScreen")) return;
@@ -15041,7 +14981,6 @@ static Class tabBarButtonClass = nil;
             self.skinContainerView.layer.backgroundColor = [UIColor clearColor].CGColor;
         }
     }
-
 
     if (originalTabBarHeight == kInvalidHeight) {
         [self initializeOriginalTabBarHeight];
@@ -15193,7 +15132,6 @@ static Class tabBarButtonClass = nil;
             self.skinContainerView.layer.backgroundColor = [UIColor clearColor].CGColor;
         }
     }
-
 
     BOOL disableHomeRefresh = DYYYGetBool(@"DYYYDisableHomeRefresh");
     BOOL enableFullScreen = DYYYGetBool(@"DYYYEnableFullScreen");
@@ -15860,7 +15798,6 @@ static Class tabBarButtonClass = nil;
 
     // v417: 移除此处全局拦截，商品详情页不再冻屏
 
-
     // v373: 拦截顶部 59px 黑占位 UIView 的背景色设置（抖音每帧重设黑，事后清无效）
     // 判据：裸 UIView + 纯黑不透明 + frame={0,0,屏宽,40~80} + 响应链能追到 AWEPlayInteractionViewController
     if (backgroundColor && [self isMemberOfClass:[UIView class]]) {
@@ -15926,7 +15863,6 @@ static Class tabBarButtonClass = nil;
     }
     frame = [DYYYFullscreenCoordinator frameForInteractionView:self proposed:frame];
 
-
     // v605: 不再在 setFrame 里撑 Merge 容器（会把 cell/交互层一起带大）。
 
     // v382: 卡帧优化 —— 最便宜的 isMemberOfClass 放最前面
@@ -15937,16 +15873,12 @@ static Class tabBarButtonClass = nil;
     // 满屏（852）滚动时反复打断布局，实测主线程卡死 30s 以上。
     // 顶部黑条改由 DYYYClearBlackEdgeBars 在页面布局完成后统一清理。
 
-
     if (![NSThread isMainThread]) {
         dispatch_async(dispatch_get_main_queue(), ^{
           [self setFrame:frame];
         });
         return;
     }
-
-
-
 
     if (!enableBlur || frame.origin.x == 0) {
         %orig(frame);
@@ -16014,9 +15946,7 @@ static Class tabBarButtonClass = nil;
     DYYYScanTabBarHeightViews(self.view, 0);
 }
 
-
 %end
-
 
 %hook AWEIMSkylightListView
 - (void)setFrame:(CGRect)frame {
@@ -16172,7 +16102,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 // v346: HUD 容器底部偏移 +60（让左右栈和栈容器都上移 60）
 
-
 - (void)viewDidLayoutSubviews {
     %orig;
 
@@ -16244,9 +16173,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     }
     [DYYYFullscreenCoordinator rememberInteractionGuide:self];
     }
-
-
-
 
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
         DYYYHideVideoAIParseBar(self.view);
@@ -16352,7 +16278,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         DYYYClearBlackEdgeBars(self.view, screenW, screenH, safeTop, 0);
     }
 }
-
 
 - (void)viewDidDisappear:(BOOL)animated {
     %orig;
@@ -16812,7 +16737,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %hook AWEAwemePlayVideoViewController
 
-
 - (void)setIsAutoPlay:(BOOL)arg0 {
     %orig(arg0);
     DYYYApplyNormalPlaybackSpeedToPlayerFallback(self);
@@ -16843,7 +16767,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     return %orig;
 }
 
-
 - (void)viewDidLayoutSubviews {
     %orig;
     [DYYYFullscreenCoordinator layoutPlayerContainer:self];
@@ -16869,9 +16792,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %end
 
-
 %hook AWEDPlayerViewController_Merge
-
 
 - (BOOL)enableHDR {
     if (DYYYShouldDisableAllHDR()) {
@@ -16879,8 +16800,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     }
     return %orig;
 }
-
-
 
 - (void)viewDidLayoutSubviews {
     %orig;
@@ -16915,10 +16834,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 %end
 
-
-
 // v250: 只对单个 cell 里的 player VC 拉高。
-
 
 %hook AWEFeedTableView
 - (void)layoutSubviews {
@@ -17332,7 +17248,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     %orig;
 }
 
-
 // v364 结论：AWEElementStackView 走 autolayout，setFrame: 只收到 (0,0,0,0)，
 // x≈329 判定从未真正命中。此方法不再做位移，仅保留透传（如需可完全删除）。
 - (void)setFrame:(CGRect)frame {
@@ -17347,7 +17262,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     }
 
     %orig;
-    
 
     UIViewController *viewController = [DYYYUtils firstAvailableViewControllerFromView:self];
 
@@ -17660,8 +17574,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 }
 
 %end
-
-
 
 // 隐藏图片滑条
 %hook AWEStoryProgressContainerView
@@ -18159,7 +18071,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 %end
 %end
 
-
 %hook AWEDPlayerProgressContainerView
 
 - (void)layoutSubviews {
@@ -18188,7 +18099,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 %end
 
 %ctor {
-
 
     [DYYYLoginBypassManager configureInitialStateIfNeeded];
 
@@ -18381,9 +18291,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
     }
 }
-
-
-// ===== 隐藏"暂时没有更多了"底部占位（只对详情页，主页不动） =====
 %ctor {
     Class cls = objc_getClass("AWEFeedRefreshFooter");
     if (!cls) return;
@@ -18439,7 +18346,6 @@ static void v212_setBg(id self, SEL _cmd, id color) {
     if (v212_orig_setBg) v212_orig_setBg(self, _cmd, color);
 }
 
-
 %ctor {
     @autoreleasepool {
         Class cls = objc_getClass("AWEBaseListSectionBackgroundView");
@@ -18475,8 +18381,6 @@ static id DYYYBestDownloadAddr(id videoModel) {
     }
     return best;
 }
-
-// ==================== 评论区图片清理底栏（DYKiller 提取） ====================
 // 开关 key: DYYYCommentMediaCleanBottomBar（设置项在 DYYYSettings.xm 视频播放界面）
 
 static NSString *const kDYYYMediaInputClass = @"AWECommentInputViewSwiftImpl.CommentInputContainerView";
@@ -18824,7 +18728,6 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
         else DYYYMediaRestoreView(carrier);
     }
 }
-// ==================== 工具函数结束 ====================
 
 %group DYYYMediaMainHook
 
@@ -18909,27 +18812,6 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
         %init(DYYYMediaAdaptiveLayoutHook);
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// ==================== v457: 作品详情页高度统一 852 ====================
-
-
-
 
 %group DYYYDetailHeightHook
 
