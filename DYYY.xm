@@ -16163,6 +16163,84 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 // v621: 搜索视频页判定（贴纸/内层容器共用）
 
+// ===== DYYY 互动层 UI 探针（临时诊断）：日志写沙盒 Documents/dyyy_ui.log =====
+// 每行标记页面：referString / 详情容器类（视频=Merge，图文=RichContentNewList）/ 媒体类型 /
+// 互动层 frame / superview 高度 / 四个原生锚点 offset。相同签名只记一次。
+static void DYYYUIProbeLog(id vc) {
+    @autoreleasepool {
+        static NSMutableSet *seen;
+        static dispatch_once_t onceToken;
+        dispatch_once(&onceToken, ^{ seen = [NSMutableSet set]; });
+        UIViewController *controller = (UIViewController *)vc;
+        UIView *view = controller.viewIfLoaded;
+        if (!view.window) return;
+
+        NSString *refer = @"nil";
+        NSString *container = @"?";
+        NSMutableArray *chain = [NSMutableArray array];
+        for (UIViewController *p = controller; p; p = p.parentViewController) {
+            if ([chain count] < 6) [chain addObject:NSStringFromClass(p.class)];
+            SEL rs = NSSelectorFromString(@"referString");
+            if ([refer isEqualToString:@"nil"] && [p respondsToSelector:rs]) {
+                id r = ((id (*)(id, SEL))[p methodForSelector:rs])(p, rs);
+                if ([r isKindOfClass:[NSString class]] && [(NSString *)r length]) refer = r;
+            }
+            if ([NSStringFromClass(p.class) containsString:@"DetailCellViewController"]) {
+                NSMutableArray *kids = [NSMutableArray array];
+                for (UIViewController *c in p.childViewControllers) {
+                    if ([kids count] < 4) [kids addObject:NSStringFromClass(c.class)];
+                }
+                container = [kids componentsJoinedByString:@","];
+                break;
+            }
+        }
+
+        double leftOff = -999, stackOff = -999, lrOff = -999, infoH = -999;
+        SEL s1 = NSSelectorFromString(@"leftContainerBottomOffset");
+        SEL s2 = NSSelectorFromString(@"p_stackContainerViewBottomOffset");
+        SEL s3 = NSSelectorFromString(@"p_leftAndRightContainerBottomOffset");
+        SEL s4 = NSSelectorFromString(@"infoAreaHeight");
+        if ([vc respondsToSelector:s1]) leftOff = ((double (*)(id, SEL))[vc methodForSelector:s1])(vc, s1);
+        if ([vc respondsToSelector:s2]) stackOff = ((double (*)(id, SEL))[vc methodForSelector:s2])(vc, s2);
+        if ([vc respondsToSelector:s3]) lrOff = ((double (*)(id, SEL))[vc methodForSelector:s3])(vc, s3);
+        if ([vc respondsToSelector:s4]) infoH = ((double (*)(id, SEL))[vc methodForSelector:s4])(vc, s4);
+
+        int awemeType = -1;
+        SEL ms = NSSelectorFromString(@"model");
+        if ([vc respondsToSelector:ms]) {
+            id model = ((id (*)(id, SEL))[vc methodForSelector:ms])(vc, ms);
+            SEL at = NSSelectorFromString(@"awemeType");
+            if (model && [model respondsToSelector:at]) {
+                awemeType = (int)((long long (*)(id, SEL))[model methodForSelector:at])(model, at);
+            }
+        }
+
+        NSString *superCls = NSStringFromClass(view.superview.class);
+        CGFloat superH = view.superview ? view.superview.bounds.size.height : -1;
+        NSString *signature = [NSString stringWithFormat:@"%@|%@|%.0f|%.0f|%.0f|%.0f|%d", refer, container, view.frame.size.height, leftOff, stackOff, lrOff, awemeType];
+        if ([seen containsObject:signature]) return;
+        [seen addObject:signature];
+
+        NSString *line = [NSString stringWithFormat:
+            @"[UI] refer=%@ container=%@ inter=%.0fx%.0f@%.0f super=%@ h=%.0f win=%.0f type=%d image=%d leftOff=%.1f stackOff=%.1f lrOff=%.1f infoH=%.1f chain=%@\n",
+            refer, container, view.frame.size.width, view.frame.size.height, view.frame.origin.y,
+            superCls, superH, view.window.bounds.size.height, awemeType,
+            [[DYYYFullscreenCoordinator isImageContentController:vc] ? 1 : 0], leftOff, stackOff, lrOff, infoH,
+            [chain componentsJoinedByString:@">"]];
+        NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_ui.log"];
+        NSFileManager *fm = [NSFileManager defaultManager];
+        if (![fm fileExistsAtPath:path]) [fm createFileAtPath:path contents:nil attributes:nil];
+        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+        if (fh) {
+            @try {
+                [fh seekToEndOfFile];
+                [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+            } @catch (NSException *e) {}
+            [fh closeFile];
+        }
+    }
+}
+
 %hook AWEPlayInteractionViewController
 
 - (void)onVideoPlayerViewDoubleClicked:(id)arg1 {
@@ -16193,6 +16271,9 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 
 - (void)viewDidLayoutSubviews {
     %orig;
+
+    // 探针：记录原生布局后的页面标记与互动层锚点（临时诊断）
+    DYYYUIProbeLog(self);
 
     // v593: 离屏 cell 不跑 DYYY 的重活（黑条扫描 / 按钮重建 / 高度归位）。
     // 详情页里同时存在首页、附近、关注、搜索多个 cell，全跑一遍是明显的滚动卡顿来源。
