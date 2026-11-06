@@ -158,6 +158,78 @@
         state.applying = NO;
     }
 }
++ (BOOL)isCreatorDetailController:(UIViewController *)controller {
+    return [[self contentSourceForController:controller] isEqualToString:@"others_homepage"];
+}
++ (CGFloat)bottomInsetForCreator:(CGFloat)inset controller:(UIViewController *)controller {
+    if (![NSThread isMainThread] || !DYYYGetBool(@"DYYYEnableFullScreen") || ![self isCreatorDetailController:controller]) return inset;
+    CGSize size = controller.viewIfLoaded.bounds.size;
+    if (size.width <= 0 || size.height <= 0) size = [UIScreen mainScreen].bounds.size;
+    // 基础边距是原生视口与行高的共同输入，不能只改列表 frame。
+    // 不依赖输入栏是否已创建，避免首条与复用 cell 缓存不同高度。
+    return size.width < size.height && inset > 0 && inset < size.height * 0.25 ? 0 : inset;
+}
++ (void)reconcileCreatorPaging:(UIViewController *)controller {
+    if (![NSThread isMainThread] || !DYYYGetBool(@"DYYYEnableFullScreen") || ![self isCreatorDetailController:controller]) return;
+    if (![controller respondsToSelector:@selector(tableView)] || ![controller respondsToSelector:@selector(currentVisibleCellIndex)] ||
+        ![controller respondsToSelector:@selector(updateTableViewLayoutForTargetPageIndex:)]) return;
+    AWEAwemeDetailTableViewController *detail = (AWEAwemeDetailTableViewController *)controller;
+    UITableView *table = [detail tableView];
+    CGFloat height = table.bounds.size.height;
+    if (!table.window || fabs(height - table.window.bounds.size.height) > 0.5 || table.bounds.size.width >= height ||
+        table.tracking || table.dragging || table.decelerating || table.numberOfSections != 1) return;
+    DYYYFullscreenPlayerState *state = objc_getAssociatedObject(table, @selector(state:));
+    if (state.applying) return;
+    NSInteger count = [table numberOfRowsInSection:0];
+    NSUInteger index = [detail currentVisibleCellIndex];
+    if (count <= 0 || index >= (NSUInteger)count) return;
+    NSIndexPath *firstIndex = [NSIndexPath indexPathForRow:0 inSection:0];
+    NSIndexPath *lastIndex = [NSIndexPath indexPathForRow:count - 1 inSection:0];
+    CGRect first = [table rectForRowAtIndexPath:firstIndex];
+    CGRect last = [table rectForRowAtIndexPath:lastIndex];
+    if (fabs(first.size.height - height) < 0.5 && fabs(last.size.height - height) < 0.5 &&
+        fabs(CGRectGetMinY(last) - CGRectGetMinY(first) - (count - 1) * height) < 0.5) return;
+    if (![detail respondsToSelector:@selector(tableView:heightForRowAtIndexPath:)] ||
+        fabs([detail tableView:table heightForRowAtIndexPath:firstIndex] - height) > 0.5 ||
+        fabs([detail tableView:table heightForRowAtIndexPath:lastIndex] - height) > 0.5) return;
+    state = [self state:table];
+    state.applying = YES;
+    @try {
+        // 早期数据源可能已缓存带输入栏占位的行高；只改视口不会清除这些缓存。
+        // 批量更新重新询问原生行高，随后按同一个视频索引恢复原生分页偏移。
+        [UIView performWithoutAnimation:^{
+            [table beginUpdates];
+            [table endUpdates];
+            [detail updateTableViewLayoutForTargetPageIndex:(NSInteger)index];
+            [table layoutIfNeeded];
+        }];
+    } @finally {
+        state.applying = NO;
+    }
+}
++ (void)layoutCreatorInteraction:(UIViewController *)controller {
+    if (![NSThread isMainThread] || !DYYYGetBool(@"DYYYEnableFullScreen")) return;
+    UIView *view = controller.viewIfLoaded;
+    UIView *parent = view.superview;
+    if (!view.window || !parent || view.bounds.size.width < parent.bounds.size.width * 0.8 || view.window.bounds.size.width >= view.window.bounds.size.height) return;
+    Class detailClass = NSClassFromString(@"AWEAwemeDetailTableViewController");
+    for (UIViewController *owner = controller; owner; owner = owner.parentViewController) {
+        if (![owner isKindOfClass:detailClass] || ![owner respondsToSelector:@selector(activeBottomBar)]) continue;
+        UIView *bar = [(AWEAwemeDetailTableViewController *)owner activeBottomBar];
+        if (![bar isKindOfClass:NSClassFromString(@"AWECommentInputBackgroundView")] || bar.window != view.window || ![self visible:bar]) return;
+        CGRect barRect = [bar convertRect:bar.bounds toView:view.window];
+        if (barRect.size.height >= view.window.bounds.size.height * 0.25) return;
+        CGRect frame = view.frame;
+        // 固定输入栏使用窗口坐标；预加载 cell 的翻页平移不参与互动层高度。
+        CGFloat bottom = CGRectGetMinY(barRect) - CGRectGetMinY(view.window.bounds);
+        CGFloat height = MIN(CGRectGetMaxY(parent.bounds), bottom) - frame.origin.y;
+        if (height > 0 && fabs(frame.size.height - height) > 0.25) {
+            frame.size.height = height;
+            view.frame = frame;
+        }
+        return;
+    }
+}
 + (void)layoutBottomBar:(UIView *)bar controller:(UIViewController *)controller enabled:(BOOL)enabled {
     DYYYFullscreenPlayerState *state = [self state:bar];
     if (state.updatingBottomBar) return;

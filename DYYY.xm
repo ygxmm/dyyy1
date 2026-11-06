@@ -16136,6 +16136,14 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     // v637: 完全照搬参考的交互层全屏逻辑（去掉 DYYYFloatingButtonCoordinator 依赖）。
     if (!self.viewIfLoaded.window) return;
 
+    // v647: 创作者主页专属通道。必须放在 RemoteFeed 排除之前——
+    // 主页详情祖先链里可能含 AFDPlayRemoteFeedTableViewController，
+    // 若先排除则主页点开的视频永远不是全屏（原版 7f226a0 重构引入的回归）。
+    if ([DYYYFullscreenCoordinator isCreatorDetailController:self]) {
+        [DYYYFullscreenCoordinator layoutCreatorInteraction:self];
+        return;
+    }
+
     UIViewController *directParentVC = self.parentViewController;
     for (UIViewController *parent = directParentVC; parent; parent = parent.parentViewController) {
         if ([parent isKindOfClass:%c(AFDPlayRemoteFeedTableViewController)]) return;
@@ -17468,17 +17476,23 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 %hook AWEAwemeDetailTableViewController
 - (CGFloat)baseTableViewBottomInset {
     CGFloat inset = %orig;
+    // v647: 创作者主页（others_homepage）走专属底边通道，不受 RemoteFeed 祖先影响。
+    if ([DYYYFullscreenCoordinator isCreatorDetailController:self]) {
+        return [DYYYFullscreenCoordinator bottomInsetForCreator:inset controller:self];
+    }
     return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
 }
 
 - (void)viewDidLayoutSubviews {
     %orig;
     [DYYYFullscreenCoordinator reconcileDetailPaging:self];
+    [DYYYFullscreenCoordinator reconcileCreatorPaging:self];
 }
 
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
     [DYYYFullscreenCoordinator reconcileDetailPaging:self];
+    [DYYYFullscreenCoordinator reconcileCreatorPaging:self];
 }
 
 - (BOOL)prefersStatusBarHidden {
