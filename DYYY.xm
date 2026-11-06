@@ -18848,6 +18848,14 @@ static void DYYYMediaApplyCollectionState(AWECommentMediaFeedViewController *c, 
     CGFloat w = CGRectGetWidth(c.view.bounds);
     CGFloat h = CGRectGetHeight(c.view.bounds);
     if (w <= 0.0 || h <= 0.0) return;
+    
+    // 关键修复：只有开启全屏时，才强制高度铺满（h）。
+    // 关闭全屏时，交给原生逻辑，避免挤压底部文字导致黑边。
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        // 关闭全屏时，退化为占据宽度的自然高度，让抖音自己去算底部留白
+        h = 0; 
+    }
+    
     CGSize target = CGSizeMake(w, h);
     CGRect targetFrame = CGRectMake(0.0, 0.0, w, h);
     BOOL wasExpanded = [objc_getAssociatedObject(col, &kDYYYMediaCollectionExpandedKey) boolValue];
