@@ -18923,6 +18923,10 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
   sizeForItemAtIndexPath:(NSIndexPath *)indexPath {
     CGSize size = %orig;
     if (!DYYYCommentMediaCleanerEnabled() || collectionView != DYYYMediaPageCollection(self)) return size;
+    
+    // 核心修复：关闭主全屏开关时，图文 cell 必须恢复原生尺寸，禁止强行撑满全屏！
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return size;
+    
     CGSize target = self.view.bounds.size;
     return target.width > 0.0 && target.height > 0.0 ? target : size;
 }
