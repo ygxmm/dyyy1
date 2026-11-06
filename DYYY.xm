@@ -10043,6 +10043,11 @@ static BOOL DYYYShouldVerifiedCollapseCommentHeaderModel(id model) {
 
 %hook AWEIMFeedVideoQuickReplayInputViewController
 
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    CGFloat height = %orig;
+    return [DYYYFullscreenCoordinator heightForDetailRow:height table:tableView controller:self];
+}
+
 - (void)viewDidLayoutSubviews {
     %orig;
 
@@ -16136,7 +16141,7 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         if ([parent isKindOfClass:%c(AFDPlayRemoteFeedTableViewController)]) return;
     }
 
-    // v643: 交互层统一在底栏上方（792），不再按视频/图文分叉。
+    // v645: 详情页底栏由 layoutNativeInteraction 对齐；其余页面按原版 referString 分支处理。
     if ([DYYYFullscreenCoordinator layoutNativeInteraction:self]) return;
 
     if ([DYYYFullscreenCoordinator usesRecommendedLayoutForController:self]) {
@@ -16160,15 +16165,54 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         return;
     }
 
-    CGFloat occupied = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:self.view];
-    if (occupied <= 0.5) {
-        CGFloat safeBottom = 0;
-        if (@available(iOS 11.0, *)) {
-            safeBottom = self.view.window.safeAreaInsets.bottom;
+    // v645: 照搬 Wtrwx/DYYY 原版的 referString 分支 —— 搜索/话题/密友/离线等页面
+    // 交互层用满高度，其余页面收高到占位底栏之上；保留自家 40.x 的
+    // mix 面板与私信直播两个适配分支。
+    BOOL isShowingRelatedMixViewController = NO;
+    UIViewController *sceneParentVC = directParentVC;
+    int sceneDepth = 0;
+    while (sceneParentVC && sceneDepth < 8) {
+        if ([sceneParentVC isKindOfClass:%c(AWEMixVideoPanelDetailTableViewController)]) {
+            AWEMixVideoPanelDetailTableViewController *mixDetailVC = (AWEMixVideoPanelDetailTableViewController *)sceneParentVC;
+            isShowingRelatedMixViewController = mixDetailVC.isShowingRelatedMixViewController;
+            break;
         }
-        occupied = 49.0 + safeBottom;
+        sceneParentVC = sceneParentVC.parentViewController;
+        sceneDepth++;
     }
-    frame.size.height = MAX(0, superviewHeight - occupied);
+
+    NSString *currentReferString = self.referString;
+
+    BOOL useFullHeight = [currentReferString isEqualToString:@"general_search"] || [currentReferString isEqualToString:@"search_result"] || [currentReferString isEqualToString:@"search_ecommerce"] ||
+                         [currentReferString isEqualToString:@"close_friends_moment"] || [currentReferString isEqualToString:@"offline_mode"] || [currentReferString isEqualToString:@"challenge"] ||
+                         [currentReferString isEqualToString:@"general_search_scan"] || currentReferString == nil || isShowingRelatedMixViewController;
+
+    if (!useFullHeight && [currentReferString isEqualToString:@"co_play_watch"]) {
+        Class richContentVCClass = NSClassFromString(@"AWEFriendsImpl.RichContentNewListViewController");
+        for (UIViewController *parent = directParentVC; parent; parent = parent.parentViewController) {
+            if (richContentVCClass && [parent isKindOfClass:richContentVCClass]) {
+                useFullHeight = YES;
+                break;
+            }
+        }
+    }
+
+    if (!useFullHeight && [currentReferString isEqualToString:@"chat"]) {
+        AWEAwemeModel *currentModel = self.model;
+        BOOL isLiveModel = currentModel && (([currentModel respondsToSelector:@selector(isLive)] && currentModel.isLive) ||
+                                            ([currentModel respondsToSelector:@selector(cellRoom)] && currentModel.cellRoom != nil) ||
+                                            ([currentModel respondsToSelector:@selector(videoFeedTag)] && [currentModel.videoFeedTag isEqualToString:@"直播中"]));
+        // 私信视频的信息区依赖完整高度；直播内容保持原布局，避免影响直播文案位置。
+        if (!isLiveModel) {
+            useFullHeight = YES;
+        }
+    }
+
+    if (useFullHeight) {
+        frame.size.height = superviewHeight;
+    } else {
+        frame.size.height = MAX(0, superviewHeight - [DYYYFullscreenCoordinator bottomOccupiedHeightForView:self.view]);
+    }
 
     if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
         self.view.frame = frame;
@@ -16190,95 +16234,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
         updateClearButtonVisibility();
     }
 
-    UIWindow *keyWindow = [DYYYUtils getActiveWindow];
-    if (keyWindow && keyWindow.safeAreaInsets.bottom == 0) {
-        return;
-    }
-
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) {
-        return;
-    }
-
-    UIViewController *directParentVC = self.parentViewController;
-    UIViewController *parentVC = directParentVC;
-    int maxIterations = 3;
-    int count = 0;
-
-    while (parentVC && count < maxIterations) {
-        if ([parentVC isKindOfClass:%c(AFDPlayRemoteFeedTableViewController)]) {
-            return;
-        }
-        parentVC = parentVC.parentViewController;
-        count++;
-    }
-
-    BOOL isShowingRelatedMixViewController = NO;
-    UIViewController *sceneParentVC = directParentVC;
-    int sceneDepth = 0;
-    while (sceneParentVC && sceneDepth < 8) {
-        if ([sceneParentVC isKindOfClass:%c(AWEMixVideoPanelDetailTableViewController)]) {
-            AWEMixVideoPanelDetailTableViewController *mixDetailVC = (AWEMixVideoPanelDetailTableViewController *)sceneParentVC;
-            isShowingRelatedMixViewController = mixDetailVC.isShowingRelatedMixViewController;
-            break;
-        }
-        sceneParentVC = sceneParentVC.parentViewController;
-        sceneDepth++;
-    }
-
-    if (!self.view.superview) {
-        return;
-    }
-
-    CGRect frame = self.view.frame;
-    CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-    CGFloat superviewHeight = self.view.superview.frame.size.height;
-
-    if (frame.size.width != screenWidth && frame.size.height < superviewHeight) {
-        return;
-    }
-
-    NSString *currentReferString = self.referString;
-
-    BOOL useFullHeight = [currentReferString isEqualToString:@"general_search"] || [currentReferString isEqualToString:@"search_result"] || [currentReferString isEqualToString:@"search_ecommerce"] ||
-                         [currentReferString isEqualToString:@"close_friends_moment"] || [currentReferString isEqualToString:@"offline_mode"] || [currentReferString isEqualToString:@"challenge"] ||
-                         [currentReferString isEqualToString:@"general_search_scan"] || currentReferString == nil || isShowingRelatedMixViewController;
-
-    if (!useFullHeight && [currentReferString isEqualToString:@"co_play_watch"]) {
-        Class richContentVCClass = NSClassFromString(@"AWEFriendsImpl.RichContentNewListViewController");
-        if (richContentVCClass && [directParentVC isKindOfClass:richContentVCClass]) {
-            useFullHeight = YES;
-        }
-    }
-
-    if (!useFullHeight && [currentReferString isEqualToString:@"chat"]) {
-        AWEAwemeModel *currentModel = self.model;
-        BOOL isLiveModel = currentModel && (([currentModel respondsToSelector:@selector(isLive)] && currentModel.isLive) ||
-                                            ([currentModel respondsToSelector:@selector(cellRoom)] && currentModel.cellRoom != nil) ||
-                                            ([currentModel respondsToSelector:@selector(videoFeedTag)] && [currentModel.videoFeedTag isEqualToString:@"直播中"]));
-
-        // 私信视频的信息区依赖完整高度；直播内容保持原布局，避免影响直播文案位置。
-        if (!isLiveModel) {
-            useFullHeight = YES;
-        }
-    }
-
-    // v334: 删掉改 self.view.frame 的代码（和抖音 layout 打架 → 频闪）
-
-    // v374: 打开评论时清一次已存在的顶部黑条（v379 底层拦截的保底层）
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") || DYYYGetBoolCached(@"DYYYEnableCommentBlur")) {
-        CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
-        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-        CGFloat safeTop = 0;
-        if (@available(iOS 11.0, *)) {
-            safeTop = self.view.safeAreaInsets.top;
-        }
-        // v537: 交互层不在安全区内时 safeAreaInsets.top 读到 0，原来这里直接跳过，
-        // 导致顶部黑条清不掉。给一个兜底高度，保证清理一定执行。
-        if (safeTop <= 0.5) {
-            safeTop = 47.0;
-        }
-        DYYYClearBlackEdgeBars(self.view, screenW, screenH, safeTop, 0);
-    }
 }
 
 - (void)viewDidDisappear:(BOOL)animated {
@@ -16924,6 +16879,12 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 %end
 
 %hook AFDPureModePageContainerViewController
+
+- (CGRect)getPureModeContainerFrame {
+    CGRect frame = %orig;
+    return [DYYYFullscreenCoordinator frameForPureModeContainer:self proposed:frame];
+}
+
 - (BOOL)prefersStatusBarHidden {
     if (DYYYGetBool(@"DYYYHideStatusbar")) {
         return YES;
@@ -16947,6 +16908,8 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     %orig;
     isPureViewVisible = NO;
     updateClearButtonVisibility();
+    // v645 搬自原版：清屏页归还媒体和互动层后，让原页面按自己的底栏更新布局。
+    [DYYYFullscreenCoordinator invalidateGuides];
 }
 %end
 
@@ -17435,7 +17398,16 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
         if ([subview isKindOfClass:[UIView class]]) {
             UIView *nextResponder = (UIView *)subview.nextResponder;
             if (isHome && [nextResponder isKindOfClass:%c(AWEPlayInteractionViewController)]) {
-                // 首页逻辑保持原样
+                UIViewController *awemeBaseViewController = [nextResponder valueForKey:@"awemeBaseViewController"];
+                if (![awemeBaseViewController isKindOfClass:%c(AWEFeedCellViewController)]) {
+                    continue;
+                }
+
+                CGRect frame = subview.frame;
+                if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+                    frame.size.height = subview.superview.frame.size.height - gCurrentTabBarHeight;
+                    subview.frame = frame;
+                }
             }
             else if (isAuthorProfile) {
                 BOOL isWorkImage = NO;
@@ -17530,11 +17502,11 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     UIView *view = (UIView *)self;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         CGFloat viewWidth = CGRectGetWidth(view.bounds);
-        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-        if (viewWidth + 0.5f >= screenWidth) {
+        CGFloat containerWidth = view.superview.bounds.size.width;
+        if (containerWidth > 0 && fabs(viewWidth - containerWidth) <= 1) {
             UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
             Class playClass = %c(AWEPlayVideoViewController);
-            if (playClass && [vc isKindOfClass:playClass]) {
+            if (playClass && [vc isKindOfClass:playClass] && [DYYYFullscreenCoordinator usesRecommendedLayoutForController:vc] && [DYYYFullscreenCoordinator isImageContentController:vc]) {
                 AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
                 AWEAwemeModel *model = playVC.model;
                 if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
@@ -17544,7 +17516,13 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
         }
     }
 
-    // v329: 删除 center 上移（40.7.0 isShowLandscapeEntryView 恒 YES 导致误判）
+    if (shouldAdjust) {
+        CGFloat offset = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:view];
+        if (offset > 0) {
+            center.y -= offset * 0.5;
+        }
+    }
+
     %orig(center);
 }
 
@@ -17557,11 +17535,11 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     UIView *view = (UIView *)self;
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         CGFloat viewWidth = CGRectGetWidth(view.bounds);
-        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-        if (viewWidth + 0.5f >= screenWidth) {
+        CGFloat containerWidth = view.superview.bounds.size.width;
+        if (containerWidth > 0 && fabs(viewWidth - containerWidth) <= 1) {
             UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
             Class playClass = %c(AWEPlayVideoViewController);
-            if (playClass && [vc isKindOfClass:playClass]) {
+            if (playClass && [vc isKindOfClass:playClass] && [DYYYFullscreenCoordinator usesRecommendedLayoutForController:vc] && [DYYYFullscreenCoordinator isImageContentController:vc]) {
                 AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
                 AWEAwemeModel *model = playVC.model;
                 if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
@@ -17571,7 +17549,13 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
         }
     }
 
-    // v329: 删除 center 上移（40.7.0 isShowLandscapeEntryView 恒 YES 导致误判）
+    if (shouldAdjust) {
+        CGFloat offset = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:view];
+        if (offset > 0) {
+            center.y -= offset * 0.5;
+        }
+    }
+
     %orig(center);
 }
 
@@ -17579,6 +17563,14 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 // 隐藏图片滑条
 %hook AWEStoryProgressContainerView
+
+- (void)setCenter:(CGPoint)center {
+    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
+    if ([vc isKindOfClass:NSClassFromString(@"AWEFeedPlayControlImpl.PureModePageCellViewController")] && DYYYGetBool(@"DYYYEnableFullScreen")) {
+        center.y -= gCurrentTabBarHeight;
+    }
+    %orig(center);
+}
 
 - (BOOL)isHidden {
     BOOL originalValue = %orig;
@@ -18771,9 +18763,9 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
-// ==================== 完美全屏逻辑（唯一版本） ====================
+// ==================== 详情页全屏（v645 搬自 Wtrwx/DYYY 原版，替换双份「完美全屏逻辑」） ====================
+// 原版只用底边 inset 归零 + 分页对账，不做任何行高强改。
 %hook AWEAwemeDetailTableViewController
-
 - (CGFloat)baseTableViewBottomInset {
     CGFloat inset = %orig;
     return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
@@ -18782,26 +18774,6 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 - (void)viewDidLayoutSubviews {
     %orig;
     [DYYYFullscreenCoordinator reconcileDetailPaging:self];
-
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        NSString *refer = nil;
-        @try { refer = [self valueForKey:@"referString"]; } @catch (NSException *e) {}
-        
-        BOOL useFullHeight = [refer isEqualToString:@"general_search"] || 
-                             [refer isEqualToString:@"search_result"] || 
-                             [refer isEqualToString:@"search_ecommerce"] ||
-                             [refer isEqualToString:@"general_search_scan"] ||
-                             refer == nil;
-                             
-        if (useFullHeight) {
-            UITableView *table = [self tableView];
-            if (table && table.contentInset.top != 28) {
-                UIEdgeInsets inset = table.contentInset;
-                inset.top = 28;
-                table.contentInset = inset;
-            }
-        }
-    }
 }
 
 - (void)viewDidAppear:(BOOL)animated {
@@ -18809,112 +18781,70 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     [DYYYFullscreenCoordinator reconcileDetailPaging:self];
 }
 
-- (double)cellHeightAtIndex:(long long)index {
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
-    UIWindow *win = [DYYYUtils getActiveWindow];
-    return win ? win.bounds.size.height : %orig;
-}
-
-- (double)fixedCellHeight {
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
-    UIWindow *win = [DYYYUtils getActiveWindow];
-    return win ? win.bounds.size.height : %orig;
-}
-
-- (double)cellHeight {
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
-    UIWindow *win = [DYYYUtils getActiveWindow];
-    return win ? win.bounds.size.height : %orig;
-}
-
-- (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
-    UITableView *table = (UITableView *)a0;
-    if (table.window && table.window.bounds.size.height > 0) {
-        return table.window.bounds.size.height;
+- (BOOL)prefersStatusBarHidden {
+    if (DYYYGetBool(@"DYYYHideStatusbar")) {
+        return YES;
     }
-    UIWindow *win = [DYYYUtils getActiveWindow];
-    return win ? win.bounds.size.height : %orig;
+    if (DYYYGetBool(@"DYYYHideStatusBarOnClear") && hideButton && hideButton.isElementsHidden) {
+        return YES;
+    }
+    if (class_getInstanceMethod([self class], @selector(prefersStatusBarHidden)) !=
+        class_getInstanceMethod([%c(AWEAwemeDetailTableViewController) class], @selector(prefersStatusBarHidden))) {
+        return %orig;
+    }
+    return NO;
 }
-
 %end
 
-// ==================== 完美全屏逻辑（唯一版本） ====================
-
-// 【核心修复】补全声明，告诉 Logos 这些方法原生存在，防止 %orig 误判为 %new
-@interface AWEAwemeDetailTableViewController (DYYYFullscreenFix)
-- (CGFloat)baseTableViewBottomInset;
-- (void)viewDidLayoutSubviews;
-- (void)viewDidAppear:(BOOL)animated;
-- (double)cellHeightAtIndex:(long long)index;
-- (double)fixedCellHeight;
-- (double)cellHeight;
-- (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1;
-@end
-
-%hook AWEAwemeDetailTableViewController
-
-- (CGFloat)baseTableViewBottomInset {
-    CGFloat inset = %orig();
-    return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
+// ==================== 纯净模式全屏容器（v645 搬自原版，此前缺失） ====================
+%hook AFDPureModePageListViewController
+- (void)viewWillLayoutSubviews {
+    // 先提供完整视口，再由原生更新 cell 尺寸、分页偏移和进度条。
+    [DYYYFullscreenCoordinator layoutPlayerContainer:self];
+    %orig;
 }
+%end
 
-- (void)viewDidLayoutSubviews {
-    %orig();
-    [DYYYFullscreenCoordinator reconcileDetailPaging:self];
-
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        NSString *refer = nil;
-        @try { refer = [self valueForKey:@"referString"]; } @catch (NSException *e) {}
-        
-        BOOL useFullHeight = [refer isEqualToString:@"general_search"] || 
-                             [refer isEqualToString:@"search_result"] || 
-                             [refer isEqualToString:@"search_ecommerce"] ||
-                             [refer isEqualToString:@"general_search_scan"] ||
-                             refer == nil;
-                             
-        if (useFullHeight) {
-            UITableView *table = [self tableView];
-            if (table && table.contentInset.top != 28) {
-                UIEdgeInsets inset = table.contentInset;
-                inset.top = 28;
-                table.contentInset = inset;
+// ==================== 横屏入口图渲染视图（v645 搬自原版，此前缺失） ====================
+%hook TTMetalViewVP
+- (void)setCenter:(CGPoint)center {
+    BOOL shouldAdjust = NO;
+    UIView *view = (UIView *)self;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        CGFloat viewWidth = CGRectGetWidth(view.bounds);
+        CGFloat containerWidth = view.superview.bounds.size.width;
+        if (containerWidth > 0 && fabs(viewWidth - containerWidth) <= 1) {
+            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
+            Class playClass = %c(AWEPlayVideoViewController);
+            if (playClass && [vc isKindOfClass:playClass] && [DYYYFullscreenCoordinator usesRecommendedLayoutForController:vc] && [DYYYFullscreenCoordinator isImageContentController:vc]) {
+                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
+                AWEAwemeModel *model = playVC.model;
+                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
+                    shouldAdjust = YES;
+                }
             }
         }
     }
-}
 
-- (void)viewDidAppear:(BOOL)animated {
-    %orig(animated); // 带上参数，防止 Logos 解析错误
-    [DYYYFullscreenCoordinator reconcileDetailPaging:self];
-}
-
-- (double)cellHeightAtIndex:(long long)index {
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig(index);
-    UIWindow *win = [DYYYUtils getActiveWindow];
-    return win ? win.bounds.size.height : %orig(index);
-}
-
-- (double)fixedCellHeight {
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig();
-    UIWindow *win = [DYYYUtils getActiveWindow];
-    return win ? win.bounds.size.height : %orig();
-}
-
-- (double)cellHeight {
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig();
-    UIWindow *win = [DYYYUtils getActiveWindow];
-    return win ? win.bounds.size.height : %orig();
-}
-
-- (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig(a0, a1);
-    UITableView *table = (UITableView *)a0;
-    if (table.window && table.window.bounds.size.height > 0) {
-        return table.window.bounds.size.height;
+    if (shouldAdjust) {
+        CGFloat offset = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:view];
+        if (offset > 0) {
+            center.y -= offset * 0.5;
+        }
     }
-    UIWindow *win = [DYYYUtils getActiveWindow];
-    return win ? win.bounds.size.height : %orig(a0, a1);
-}
 
+    %orig(center);
+}
+%end
+
+// ==================== 评论磨砂时锁定首页容器位置（v645 搬自原版） ====================
+%hook AWEStoryContainerCollectionView
+- (void)setFrame:(CGRect)frame {
+    if (DYYYGetBool(@"DYYYEnableCommentBlur")) {
+        if (frame.origin.y != 0) {
+            return;
+        }
+    }
+    %orig(frame);
+}
 %end

@@ -12,6 +12,7 @@
 + (CGFloat)heightForDetailRow:(CGFloat)height table:(UITableView *)table controller:(UIViewController *)controller;
 + (BOOL)layoutNativeInteraction:(UIViewController *)controller;
 + (BOOL)isImageContentController:(UIViewController *)controller;
++ (BOOL)isInteractionControllerVisible:(UIViewController *)controller;
 + (void)registerTabBar:(UIView *)tabBar;
 + (void)invalidateGuides;
 + (CGFloat)bottomOccupiedHeightForView:(UIView *)view;

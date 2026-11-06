@@ -118,7 +118,7 @@
 + (CGFloat)heightForDetailRow:(CGFloat)height table:(UITableView *)table controller:(UIViewController *)controller {
     if (![NSThread isMainThread] || !DYYYGetBool(@"DYYYEnableFullScreen") || ![self usesDetailLayoutForController:controller]) return height;
     // 行高与 UITableView 分页视口使用同一尺寸，预加载时也不扣第二次底栏。
-    UIWindow *win = table.window; return win && win.bounds.size.height > 0 ? win.bounds.size.height : height;
+    return height > 0 && table.bounds.size.height > 0 ? table.bounds.size.height : height;
 }
 + (void)reconcileDetailPaging:(UIViewController *)controller {
     if (![NSThread isMainThread] || !DYYYGetBool(@"DYYYEnableFullScreen") || ![self usesDetailLayoutForController:controller]) return;
@@ -342,13 +342,32 @@
         for (UIView *image in [self images].allObjects) if (image.window) [image setNeedsLayout];
     });
 }
++ (BOOL)isInteractionControllerVisible:(UIViewController *)controller {
+    UIView *view = controller.viewIfLoaded;
+    UIWindow *window = view.window;
+    if (!window || window.hidden || CGRectIsEmpty(view.bounds)) return NO;
+    for (UIView *ancestor = view; ancestor; ancestor = ancestor.superview) {
+        if (ancestor.hidden || ancestor.alpha <= 0.01) return NO;
+    }
+    CGRect rect = [view convertRect:view.bounds toView:window];
+    if (!CGRectIntersectsRect(rect, window.bounds)) return NO;
+    // 缓存页面可能仍挂在窗口上，只承认当前选中的 Tab 和导航栈顶。
+    for (UIViewController *child = controller; child; child = child.parentViewController) {
+        UIViewController *parent = child.parentViewController;
+        if ([parent isKindOfClass:UITabBarController.class] && ((UITabBarController *)parent).selectedViewController != child) return NO;
+        if ([parent isKindOfClass:UINavigationController.class] && ((UINavigationController *)parent).topViewController != child) return NO;
+        UIViewController *presented = child.presentedViewController;
+        if (presented.viewIfLoaded.window && !presented.isBeingDismissed) return NO;
+    }
+    return YES;
+}
 + (void)layoutRootTabBar:(UIView *)bar {
     BOOL playback = NO;
     DYYYFullscreenPlayerState *state = objc_getAssociatedObject(bar, @selector(state:));
     if ([self hasCommentInWindow:bar.window] && state.bottomBarEnabled) playback = YES;
     if (!playback) for (UIViewController *controller in [self interactions].allObjects) {
         if (controller.viewIfLoaded.window != bar.window || ![self usesFullscreenLayoutForController:controller] ||
-            !controller.viewIfLoaded.window) continue;
+            ![self isInteractionControllerVisible:controller]) continue;
         playback = YES;
         break;
     }
