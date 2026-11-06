@@ -6848,12 +6848,6 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 
 %end
 
-// v649: 探针实测——首页 sliderYOffset=46.1，详情页=-13.9（原生多扣 60pt 底栏预留）。
-// 滑块 y = sliderYOffset + 149.9，整个进度条因此偏上 60。补声明后在源头归位。
-@interface AWEPlayInteractionProgressController (DYYYProgressOffsetUnify)
-- (double)sliderYOffset;
-@end
-
 %hook AWEPlayInteractionProgressController
 
 // v649: 详情页把 sliderYOffset 的异常负值归一到首页基准（+60 = 底栏预留）。

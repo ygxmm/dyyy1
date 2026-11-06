@@ -515,6 +515,11 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property(retain, nonatomic) id progressSlider;
 - (NSString *)formatTimeFromSeconds:(CGFloat)seconds;
 - (NSString *)convertSecondsToTimeString:(NSInteger)totalSeconds;
+// v657: 进度条位置计算（真实头文件 AWEPlayInteractionProgressController.h 336-344 行）
+- (double)sliderYOffset;
+- (double)posAdjustY;
+- (CGRect)progressSliderNormalFrame;
+- (CGRect)progressSliderWakeUpFrame;
 @end
 
 @interface AWEDProgressCoreContainer : NSObject
@@ -2419,6 +2424,11 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 
 @interface AWEPlayInteractionViewController : UIViewController
 @property (nonatomic, strong) id model;
+// v657: 交互层锚点（真实头文件 AWEPlayInteractionViewController.h 220/224/225/268 行）
+- (double)leftContainerBottomOffset;
+- (double)p_stackContainerViewBottomOffset;
+- (double)p_leftAndRightContainerBottomOffset;
+- (double)infoAreaHeight;
 @property (nonatomic, strong) id context;
 @property (nonatomic, strong) id richContentContainer;
 @property (nonatomic, weak) id videoDelegate;
