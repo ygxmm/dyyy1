@@ -16221,11 +16221,12 @@ static void DYYYUIProbeLog(id vc) {
         if ([seen containsObject:signature]) return;
         [seen addObject:signature];
 
+        int imageFlag = [DYYYFullscreenCoordinator isImageContentController:vc] ? 1 : 0;
         NSString *line = [NSString stringWithFormat:
             @"[UI] refer=%@ container=%@ inter=%.0fx%.0f@%.0f super=%@ h=%.0f win=%.0f type=%d image=%d leftOff=%.1f stackOff=%.1f lrOff=%.1f infoH=%.1f chain=%@\n",
             refer, container, view.frame.size.width, view.frame.size.height, view.frame.origin.y,
             superCls, superH, view.window.bounds.size.height, awemeType,
-            [[DYYYFullscreenCoordinator isImageContentController:vc] ? 1 : 0], leftOff, stackOff, lrOff, infoH,
+            imageFlag, leftOff, stackOff, lrOff, infoH,
             [chain componentsJoinedByString:@">"]];
         NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_ui.log"];
         NSFileManager *fm = [NSFileManager defaultManager];
