@@ -18945,8 +18945,10 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     gDYYYMediaSuppressAdaptiveLayout = DYYYCommentMediaCleanerEnabled();
     %orig;
     gDYYYMediaSuppressAdaptiveLayout = outerSuppress;
-    [gDYYYMediaControllers addObject:self];
-    DYYYMediaApplyControllerState(self);
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        [gDYYYMediaControllers addObject:self];
+        DYYYMediaApplyControllerState(self);
+    }
 }
 
 - (void)viewDidDisappear:(BOOL)animated {
@@ -18963,7 +18965,10 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 - (void)layoutSubviews {
     %orig;
-    DYYYMediaApplyImageCellState(self);
+    // 关闭全屏时，不准干涉图片 Cell 的原生布局
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        DYYYMediaApplyImageCellState(self);
+    }
 }
 
 - (void)didMoveToWindow {
