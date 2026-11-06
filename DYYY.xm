@@ -5532,16 +5532,24 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
         return;
     }
 
-    UIViewController *pvc = [DYYYUtils firstAvailableViewControllerFromView:self];
-    if (!pvc || ![pvc isKindOfClass:%c(AWEPlayInteractionViewController)]) {
-        return;
+    // v645: 详情页全屏时把进度条归位到首页位置。探针实测：
+    // 首页视频 slider 在容器内 y=197（容器高−3），搜索视频帖为 136（偏上 61pt）。
+    // 整组子视图按同一 delta 下移，保持章节刻度/时间标签与滑块的相对关系。
+    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
+    if (![DYYYFullscreenCoordinator usesDetailLayoutForController:vc]) return;
+    UIView *sliderView = nil;
+    for (UIView *sub in self.subviews) {
+        if ([NSStringFromClass(sub.class) containsString:@"ProgressSlider"]) { sliderView = sub; break; }
     }
-    id base = nil;
-    if ([pvc respondsToSelector:NSSelectorFromString(@"awemeBaseViewController")]) {
-        base = [pvc valueForKey:@"awemeBaseViewController"];
-    }
-    if (!base || ![base isKindOfClass:%c(AWEFeedCellViewController)]) {
-        return;
+    if (!sliderView) return;
+    CGFloat desiredY = self.bounds.size.height - sliderView.bounds.size.height - 1.0;
+    CGFloat delta = desiredY - sliderView.frame.origin.y;
+    if (delta > 1.0 && delta < self.bounds.size.height) {
+        for (UIView *sub in self.subviews) {
+            CGRect frame = sub.frame;
+            frame.origin.y += delta;
+            sub.frame = frame;
+        }
     }
 
 }
