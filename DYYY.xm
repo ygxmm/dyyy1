@@ -18416,43 +18416,7 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 }
 
 // 写沙盒日志（动态路径，不写死）
-// ============================================================
-// v179: DCV 布局完成后把 RC.view 拉回 852（父改子，不循环）
-// ============================================================
-static void (*v179_orig_dcvLayout)(id, SEL) = NULL;
 
-static void v179_dcvLayout(id self, SEL _cmd) {
-    if (v179_orig_dcvLayout) v179_orig_dcvLayout(self, _cmd);
-}
-
-        CGFloat w = [UIScreen mainScreen].bounds.size.width;
-        CGFloat h = [UIScreen mainScreen].bounds.size.height;
-
-        for (UIViewController *child in vc.childViewControllers) {
-            NSString *cn = NSStringFromClass([child class]);
-            if ([cn containsString:@"RichContentContainer"]) {
-                UIView *cv = child.view;
-                if (!cv) continue;
-                CGRect f = cv.frame;
-                if (fabs(f.size.height - h) > 1.0 || fabs(f.origin.y) > 1.0) {
-                    cv.frame = CGRectMake(0, 0, w, h);
-                }
-                cv.clipsToBounds = NO;
-            }
-        }
-    } @catch (NSException *e) {}
-}
-
-%ctor {
-    @autoreleasepool {
-        Class cls = objc_getClass("AWEAwemeDetailCellViewController");
-        if (!cls) { return; }
-        Method m = class_getInstanceMethod(cls, @selector(viewDidLayoutSubviews));
-        if (m) {
-            v179_orig_dcvLayout = (void (*)(id, SEL))method_getImplementation(m);
-            method_setImplementation(m, (IMP)v179_dcvLayout);
-        }
-    }
 }
 
 // v212: 评论面板内 section bg 强制透明（保 DYYY 原版毛玻璃可见）
