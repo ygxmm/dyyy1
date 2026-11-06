@@ -5587,22 +5587,6 @@ static void DYYYProbeProgressTree(UIView *container) {
         return;
     }
 
-    // v648: 整体移动进度容器（用户建议方案）。详情页交互层被收到 792，
-    // 但详情页没有真底栏 → 容器底部应对齐窗口底部（等价 852 布局时的 652~852）。
-    // 只改容器自身的 frame，内部子视图（滑块/时间标签/章节刻度）保持原生局部
-    // 布局：逐帧 updateSliderFrame 写入的是局部值，与容器整体位移互不干扰，
-    // 不再出现「进度条蹦/时间标签跳」。
-    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-    if (![DYYYFullscreenCoordinator usesDetailLayoutForController:vc]) return;
-    UIWindow *win = self.window;
-    if (!win || !self.superview) return;
-    CGRect inWindow = [self.superview convertRect:self.frame toView:win];
-    CGFloat gap = CGRectGetHeight(win.bounds) - CGRectGetMaxY(inWindow);
-    if (gap > 1.0 && gap < 120.0) {
-        CGRect frame = self.frame;
-        frame.origin.y += gap;
-        self.frame = frame;
-    }
 
 }
 
@@ -6919,7 +6903,22 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 
 %end
 
+// v649: 探针实测——首页 sliderYOffset=46.1，详情页=-13.9（原生多扣 60pt 底栏预留）。
+// 滑块 y = sliderYOffset + 149.9，整个进度条因此偏上 60。补声明后在源头归位。
+@interface AWEPlayInteractionProgressController (DYYYProgressOffsetUnify)
+- (double)sliderYOffset;
+@end
+
 %hook AWEPlayInteractionProgressController
+
+// v649: 详情页把 sliderYOffset 的异常负值归一到首页基准（+60 = 底栏预留）。
+// 位置由控制器算出，容器/滑块不再做任何位移，杜绝前后跳动。
+- (double)sliderYOffset {
+    double offset = %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return offset;
+    if (offset < -0.5 && offset > -300.0) return offset + 60.0;
+    return offset;
+}
 
 // v356: 进度条位置 -60（让首页全屏时进度条上移）
 
