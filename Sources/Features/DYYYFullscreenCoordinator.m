@@ -520,7 +520,11 @@
     }
 }
 + (void)layoutInteraction:(UIViewController *)controller {
-    if (![NSThread isMainThread] || ![self usesRecommendedLayoutForController:controller]) return;
+    // v651: 详情页/主页详情与首页推荐共用同一套互动层全屏布局（跟首页一样）。
+    if (![NSThread isMainThread]) return;
+    if (![self usesRecommendedLayoutForController:controller] &&
+        ![self usesDetailLayoutForController:controller] &&
+        ![self isCreatorDetailController:controller]) return;
     UIView *view = controller.viewIfLoaded;
     UIView *parent = view.superview;
     if (!view.window || ![self view:view spansWidthOf:parent]) return;

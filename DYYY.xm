@@ -16136,14 +16136,6 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     // v637: 完全照搬参考的交互层全屏逻辑（去掉 DYYYFloatingButtonCoordinator 依赖）。
     if (!self.viewIfLoaded.window) return;
 
-    // v647: 创作者主页专属通道。必须放在 RemoteFeed 排除之前——
-    // 主页详情祖先链里可能含 AFDPlayRemoteFeedTableViewController，
-    // 若先排除则主页点开的视频永远不是全屏（原版 7f226a0 重构引入的回归）。
-    if ([DYYYFullscreenCoordinator isCreatorDetailController:self]) {
-        [DYYYFullscreenCoordinator layoutCreatorInteraction:self];
-        return;
-    }
-
     UIViewController *directParentVC = self.parentViewController;
     for (UIViewController *parent = directParentVC; parent; parent = parent.parentViewController) {
         if ([parent isKindOfClass:%c(AFDPlayRemoteFeedTableViewController)]) return;
@@ -16152,7 +16144,10 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     // v645: 详情页底栏由 layoutNativeInteraction 对齐；其余页面按原版 referString 分支处理。
     if ([DYYYFullscreenCoordinator layoutNativeInteraction:self]) return;
 
-    if ([DYYYFullscreenCoordinator usesRecommendedLayoutForController:self]) {
+    // v651: 详情页/主页详情与首页推荐共用同一套互动层全屏布局（跟首页一样）。
+    if ([DYYYFullscreenCoordinator usesRecommendedLayoutForController:self] ||
+        [DYYYFullscreenCoordinator usesDetailLayoutForController:self] ||
+        [DYYYFullscreenCoordinator isCreatorDetailController:self]) {
         [DYYYFullscreenCoordinator layoutInteraction:self];
         if (![DYYYFullscreenCoordinator isImageContentController:self]) return;
         if ([DYYYFullscreenCoordinator hasCommentInWindow:self.viewIfLoaded.window]) return;
