@@ -5562,18 +5562,20 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
 // 位置由 AWEPlayInteractionProgressController 的 sliderYOffset / posAdjustY /
 // progressSliderNormalFrame / progressSliderWakeUpFrame 等决定。
 - (void)updateSliderFrame:(CGRect)a0 height:(double)a1 originY:(double)a2 minColor:(id)a3 maxColor:(id)a4 thumb:(id)a5 thumbSize:(CGRect)a6 {
-    // v646: 详情页全屏时在写入入口就把 originY 归位到首页位置（容器高−h−1），
-    // 消除「容器位移被播放中的逐帧写入覆盖 → 进度条从下面蹦」的跳帧。
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && self.superview) {
-        UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-        if ([DYYYFullscreenCoordinator usesDetailLayoutForController:vc]) {
-            CGFloat desired = self.superview.bounds.size.height - a1 - 1.0;
-            if (desired > 0 && a2 < desired - 1.0) {
-                a2 = desired;
-            }
-        }
-    }
     %orig(a0, a1, a2, a3, a4, a5, a6);
+    // v647: 写入后按滑块实际 frame 在同坐标空间纠位（不改参数、不猜语义）。
+    // 详情页全屏时把滑块放到容器底部（首页位置＝容器高−h−1），
+    // 每次写入当场纠正，消除逐帧覆盖导致的「从下面蹦」。
+    UIView *bar = self.superview;
+    if (!bar || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
+    if (![DYYYFullscreenCoordinator usesDetailLayoutForController:vc]) return;
+    CGRect frame = self.frame;
+    CGFloat desired = bar.bounds.size.height - frame.size.height - 1.0;
+    if (desired > 0 && frame.origin.y < desired - 1.0) {
+        frame.origin.y = desired;
+        self.frame = frame;
+    }
 }
 
 - (void)layoutSubviews {
