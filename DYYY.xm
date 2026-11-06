@@ -19021,6 +19021,8 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 // ==================== v457: 作品详情页高度统一 852 ====================
+
+
 %group DYYYDetailHeightHook
 
 %hook AWEAwemeDetailTableViewController
@@ -19047,25 +19049,35 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     double orig = %orig;
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return orig;
     UIWindow *win = [DYYYUtils getActiveWindow];
-    if (win && win.bounds.size.height > 0) {
-        return win.bounds.size.height;
-    }
-    return orig;
+    return win ? win.bounds.size.height : orig;
 }
 
+// 探针：放行原生的 60 inset，测试是否是全屏强行归0导致翻页错位
 - (double)baseTableViewBottomInset {
-    double inset = %orig;
-    return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
+    double orig = %orig;
+    DYYYProbe(@"inset", @"orig=%.1f", orig);
+    return orig; 
+}
+
+// 探针：捕获抖音内部翻页的目标索引与状态
+- (void)updateTableViewLayoutForTargetPageIndex:(NSInteger)index {
+    UITableView *t = [self tableView];
+    DYYYProbe(@"updPage.BEFORE", @"idx=%ld off=%.1f csz=%.1f", (long)index, t.contentOffset.y, t.contentSize.height);
+    %orig;
+    DYYYProbe(@"updPage.AFTER", @"idx=%ld off=%.1f csz=%.1f", (long)index, t.contentOffset.y, t.contentSize.height);
+}
+
+// 探针：捕获滚动停止时的最终位置
+- (void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView {
+    DYYYProbe(@"scrollEnd", @"off=%.1f csz=%.1f", scrollView.contentOffset.y, scrollView.contentSize.height);
+    %orig;
 }
 
 %end
 
 %end
-
-
-
-
 
 %ctor {
+    DYYYProbe(@"BOOT", @"DYYY loaded, scroll probe active");
     %init(DYYYDetailHeightHook);
 }
