@@ -16290,6 +16290,31 @@ static void DYYYUIProbeLog(id vc) {
             superCls, superH, view.window.bounds.size.height, awemeType,
             imageFlag, leftOff, stackOff, lrOff, infoH, ctrlOff, ctrlYOff, progressFrame,
             [chain componentsJoinedByString:@">"]];
+        // 进度控制器偏移 + 时间标签位置（时间跳动的来源）
+        NSString *ctrlInfo = @"none";
+        SEL psd = NSSelectorFromString(@"progressSliderDelegate");
+        if ([vc respondsToSelector:psd]) {
+            id pc = ((id (*)(id, SEL))[vc methodForSelector:psd])(vc, psd);
+            if (pc) {
+                NSMutableArray *vals = [NSMutableArray array];
+                for (NSString *n in @[@"sliderYOffset", @"posAdjustY"]) {
+                    SEL s = NSSelectorFromString(n);
+                    if ([pc respondsToSelector:s]) {
+                        double v = ((double (*)(id, SEL))[pc methodForSelector:s])(pc, s);
+                        [vals addObject:[NSString stringWithFormat:@"%@=%.1f", n, v]];
+                    }
+                }
+                for (NSString *n in @[@"progressSliderNormalFrame", @"progressSliderWakeUpFrame"]) {
+                    SEL s = NSSelectorFromString(n);
+                    if ([pc respondsToSelector:s]) {
+                        CGRect r = ((CGRect (*)(id, SEL))[pc methodForSelector:s])(pc, s);
+                        [vals addObject:[NSString stringWithFormat:@"%@={%.0f,%.0f,%.0fx%.0f}", n, r.origin.x, r.origin.y, r.size.width, r.size.height]];
+                    }
+                }
+                ctrlInfo = vals.count ? [vals componentsJoinedByString:@" "] : @"empty";
+            }
+        }
+        line = [line stringByAppendingFormat:@"ctrl2=%@\n", ctrlInfo];
         line = [line stringByAppendingFormat:@"slider=%@ bottom=%@\n", sliderInfo, bottomInfo];
         NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_ui.log"];
         NSFileManager *fm = [NSFileManager defaultManager];
