@@ -18838,3 +18838,83 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 }
 
 %end
+
+// ==================== 完美全屏逻辑（唯一版本） ====================
+
+// 【核心修复】补全声明，告诉 Logos 这些方法原生存在，防止 %orig 误判为 %new
+@interface AWEAwemeDetailTableViewController (DYYYFullscreenFix)
+- (CGFloat)baseTableViewBottomInset;
+- (void)viewDidLayoutSubviews;
+- (void)viewDidAppear:(BOOL)animated;
+- (double)cellHeightAtIndex:(long long)index;
+- (double)fixedCellHeight;
+- (double)cellHeight;
+- (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1;
+@end
+
+%hook AWEAwemeDetailTableViewController
+
+- (CGFloat)baseTableViewBottomInset {
+    CGFloat inset = %orig();
+    return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
+}
+
+- (void)viewDidLayoutSubviews {
+    %orig();
+    [DYYYFullscreenCoordinator reconcileDetailPaging:self];
+
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        NSString *refer = nil;
+        @try { refer = [self valueForKey:@"referString"]; } @catch (NSException *e) {}
+        
+        BOOL useFullHeight = [refer isEqualToString:@"general_search"] || 
+                             [refer isEqualToString:@"search_result"] || 
+                             [refer isEqualToString:@"search_ecommerce"] ||
+                             [refer isEqualToString:@"general_search_scan"] ||
+                             refer == nil;
+                             
+        if (useFullHeight) {
+            UITableView *table = [self tableView];
+            if (table && table.contentInset.top != 28) {
+                UIEdgeInsets inset = table.contentInset;
+                inset.top = 28;
+                table.contentInset = inset;
+            }
+        }
+    }
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    %orig(animated); // 带上参数，防止 Logos 解析错误
+    [DYYYFullscreenCoordinator reconcileDetailPaging:self];
+}
+
+- (double)cellHeightAtIndex:(long long)index {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig(index);
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    return win ? win.bounds.size.height : %orig(index);
+}
+
+- (double)fixedCellHeight {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig();
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    return win ? win.bounds.size.height : %orig();
+}
+
+- (double)cellHeight {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig();
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    return win ? win.bounds.size.height : %orig();
+}
+
+- (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig(a0, a1);
+    UITableView *table = (UITableView *)a0;
+    if (table.window && table.window.bounds.size.height > 0) {
+        return table.window.bounds.size.height;
+    }
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    return win ? win.bounds.size.height : %orig(a0, a1);
+}
+
+%end
