@@ -132,6 +132,8 @@ static UIViewController *DYYYDetailPagerForController(UIViewController *vc) {
 
 
 
+
+
 // 只处理“详情页 / 全屏 feed”的大画面：全宽且高度 >= 屏高 70%。
 // 搜索列表里的小卡片不满足，直接放行，避免被误拉满。
 
@@ -7791,6 +7793,8 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
 @property (nonatomic, copy) NSString *enterFrom;
 @property (nonatomic, copy) NSString * previousPage;
 @end
+
+
 
 
 %hook AWEAwemeDetailContainerPlayControlConfig
@@ -15960,6 +15964,8 @@ static Class tabBarButtonClass = nil;
     }
 
 
+
+
     if (!enableBlur || frame.origin.x == 0) {
         %orig(frame);
         return;
@@ -16255,6 +16261,8 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     }
     [DYYYFullscreenCoordinator rememberInteractionGuide:self];
     }
+
+
 
 
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
@@ -16889,6 +16897,8 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
     return %orig;
 }
 
+
+
 - (void)viewDidLayoutSubviews {
     %orig;
     [DYYYFullscreenCoordinator layoutPlayerContainer:self];
@@ -16921,6 +16931,8 @@ static void DYYYClearBlackEdgeBars(UIView *view, CGFloat screenW, CGFloat screen
 }
 
 %end
+
+
 
 // v250: 只对单个 cell 里的 player VC 拉高。
 
@@ -17665,6 +17677,8 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 }
 
 %end
+
+
 
 // 隐藏图片滑条
 %hook AWEStoryProgressContainerView
@@ -18418,6 +18432,71 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 }
 
 // 写沙盒日志（动态路径，不写死）
+// ============================================================
+// v179: DCV 布局完成后把 RC.view 拉回 852（父改子，不循环）
+// ============================================================
+static void (*v179_orig_dcvLayout)(id, SEL) = NULL;
+
+static void v179_dcvLayout(id self, SEL _cmd) {
+    if (v179_orig_dcvLayout) v179_orig_dcvLayout(self, _cmd);
+    @try {
+        if (![self isKindOfClass:[UIViewController class]]) return;
+        UIViewController *vc = (UIViewController *)self;
+
+        // v414: 原地修复，只要不是主播放页的图文，直接放行。避免卡顿并恢复搜索页全屏。
+        NSString *clsName = NSStringFromClass([vc class]);
+        if (![clsName containsString:@"AwemeDetailCell"] && 
+            ![clsName containsString:@"AwemeDetailTable"]) return;
+
+        // v179fix: 评论面板打开时不动 RC.view（避免评论背景变透明）
+        id ic = nil;
+        @try { ic = [vc valueForKey:@"interactionController"]; } @catch (NSException *e) {}
+        if (ic) {
+            @try {
+                // v339: performSelector 返回 BOOL 原始值（0x1），不能再调 boolValue（会 SIGSEGV）
+                if ([ic respondsToSelector:NSSelectorFromString(@"isCommentVCShowing")]) {
+                    BOOL (*fnVC)(id, SEL) = (BOOL (*)(id, SEL))[ic methodForSelector:NSSelectorFromString(@"isCommentVCShowing")];
+                    BOOL showing = fnVC(ic, NSSelectorFromString(@"isCommentVCShowing"));
+                    if (showing) return;
+                }
+                if ([ic respondsToSelector:NSSelectorFromString(@"isCommentListShowing")]) {
+                    BOOL (*fnList)(id, SEL) = (BOOL (*)(id, SEL))[ic methodForSelector:NSSelectorFromString(@"isCommentListShowing")];
+                    BOOL showing = fnList(ic, NSSelectorFromString(@"isCommentListShowing"));
+                    if (showing) return;
+                }
+            } @catch (NSException *e) {}
+        }
+
+        CGFloat w = [UIScreen mainScreen].bounds.size.width;
+        CGFloat h = [UIScreen mainScreen].bounds.size.height;
+
+        for (UIViewController *child in vc.childViewControllers) {
+            NSString *cn = NSStringFromClass([child class]);
+            if ([cn containsString:@"RichContentContainer"]) {
+                UIView *cv = child.view;
+                if (!cv) continue;
+                CGRect f = cv.frame;
+                if (fabs(f.size.height - h) > 1.0 || fabs(f.origin.y) > 1.0) {
+                    cv.frame = CGRectMake(0, 0, w, h);
+                }
+                cv.clipsToBounds = NO;
+            }
+        }
+    } @catch (NSException *e) {}
+}
+
+%ctor {
+    @autoreleasepool {
+        Class cls = objc_getClass("AWEAwemeDetailCellViewController");
+        if (!cls) { return; }
+        Method m = class_getInstanceMethod(cls, @selector(viewDidLayoutSubviews));
+        if (m) {
+            v179_orig_dcvLayout = (void (*)(id, SEL))method_getImplementation(m);
+            method_setImplementation(m, (IMP)v179_dcvLayout);
+        }
+    }
+}
+
 // v212: 评论面板内 section bg 强制透明（保 DYYY 原版毛玻璃可见）
 static void (*v212_orig_setBg)(id, SEL, id) = NULL;
 
@@ -18903,6 +18982,14 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
+
+
+
+
+
+
+
+
 // ==================== v457: 作品详情页高度统一 852 ====================
 %group DYYYDetailHeightHook
 
@@ -18925,12 +19012,18 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
+
+
 // v632: 参考的详情分页校正，原样接回（不动 UI 高度）
 
 
+
+
 %end
 
 %end
+
+
 
 
 
