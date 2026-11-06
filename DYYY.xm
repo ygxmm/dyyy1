@@ -17659,30 +17659,7 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 static char kDYYYV29DoneKey; // v439
 
-%hook AWEAwemeDetailTableView
 
-- (void)setFrame:(CGRect)frame {
-    %orig(frame);
-}
-
-- (void)layoutSubviews {
-    %orig;
-
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        // 像首页一样简单粗暴：直接把自身高度撑满父视图！彻底消灭 792 和底部安全区。
-        UIView *superview = self.superview;
-        if (superview && superview.bounds.size.height > 0) {
-            if (fabs(self.frame.size.height - superview.bounds.size.height) > 1) {
-                CGRect frame = self.frame;
-                frame.size.height = superview.bounds.size.height;
-                self.frame = frame;
-            }
-        }
-        self.clipsToBounds = YES;
-    }
-}
-
-%end
 
 %hook AWEMixVideoPanelMoreView
 
@@ -18791,6 +18768,21 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 %group DYYYDetailHeightHook
 
 %hook AWEAwemeDetailTableViewController
+- (double)baseTableViewBottomInset {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0;
+    return %orig;
+}
+
+// 这个才是全平台统一计算底部 Insets 的核心原生方法
+- (double)tableViewBottomInsetForAllPlatform {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0;
+    return %orig;
+}
+
+- (double)tableViewBottomInsetForAllPlatform:(id)arg0 {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0;
+    return %orig;
+}
 
 
 
