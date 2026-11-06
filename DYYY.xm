@@ -18922,6 +18922,65 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
+@interface AWEAwemeDetailTableViewController (DYYYPageProbe)
+- (void)updateTableViewLayoutForTargetPageIndex:(long long)index;
+@end
+
+// ===== v652 探针：详情分页器全量几何（写沙盒 Documents/dyyy_ui.log） =====
+static void DYYYProbeDetail(UIViewController *vc) {
+    @autoreleasepool {
+        if (![vc isKindOfClass:[UIViewController class]]) return;
+        SEL tsel = NSSelectorFromString(@"tableView");
+        if (![vc respondsToSelector:tsel]) return;
+        UITableView *table = ((id (*)(id, SEL))[vc methodForSelector:tsel])(vc, tsel);
+        if (![table isKindOfClass:[UITableView class]] || !table.window) return;
+        static NSMutableSet *seen; static dispatch_once_t once;
+        dispatch_once(&once, ^{ seen = [NSMutableSet set]; });
+        NSInteger count = [table numberOfRowsInSection:0];
+        if (count <= 0) return;
+        SEL isel = NSSelectorFromString(@"currentVisibleCellIndex");
+        NSUInteger idx = 0;
+        if ([vc respondsToSelector:isel]) idx = (NSUInteger)((unsigned long long (*)(id, SEL))[vc methodForSelector:isel])(vc, isel);
+        NSString *refer = @"nil";
+        SEL rsel = NSSelectorFromString(@"referString");
+        if ([vc respondsToSelector:rsel]) {
+            id r = ((id (*)(id, SEL))[vc methodForSelector:rsel])(vc, rsel);
+            if ([r isKindOfClass:[NSString class]]) refer = r;
+        }
+        double ch = -1, fh = -1, h0 = -1, hLast = -1, hRow0 = -1;
+        SEL s1 = NSSelectorFromString(@"cellHeight");
+        SEL s2 = NSSelectorFromString(@"fixedCellHeight");
+        SEL s3 = NSSelectorFromString(@"cellHeightAtIndex:");
+        if ([vc respondsToSelector:s1]) ch = ((double (*)(id, SEL))[vc methodForSelector:s1])(vc, s1);
+        if ([vc respondsToSelector:s2]) fh = ((double (*)(id, SEL))[vc methodForSelector:s2])(vc, s2);
+        if ([vc respondsToSelector:s3]) {
+            h0 = ((double (*)(id, SEL, long long))[vc methodForSelector:s3])(vc, s3, 0);
+            hLast = ((double (*)(id, SEL, long long))[vc methodForSelector:s3])(vc, s3, count - 1);
+        }
+        SEL s4 = NSSelectorFromString(@"tableView:heightForRowAtIndexPath:");
+        if ([vc respondsToSelector:s4]) {
+            NSIndexPath *ip0 = [NSIndexPath indexPathForRow:0 inSection:0];
+            hRow0 = ((double (*)(id, SEL, id, id))[vc methodForSelector:s4])(vc, s4, table, ip0);
+        }
+        NSString *sig = [NSString stringWithFormat:@"%@%lu%ld%.0f%.0f", refer, (unsigned long)idx, (long)count, table.contentOffset.y, table.bounds.size.height];
+        if ([seen containsObject:sig]) return;
+        [seen addObject:sig];
+        NSString *line = [NSString stringWithFormat:
+            @"[DETAIL] refer=%@ idx=%lu count=%ld table={%.0fx%.0f} y=%.1f cs=%.0f row0=%.1f rowLast=%.1f | cellH=%.0f fixedH=%.0f hAt0=%.0f hAtLast=%.0f hRow0=%.0f\n",
+            refer, (unsigned long)idx, (long)count, table.bounds.size.width, table.bounds.size.height,
+            table.contentOffset.y, table.contentSize.height,
+            [table rectForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]].size.height,
+            [table rectForRowAtIndexPath:[NSIndexPath indexPathForRow:count - 1 inSection:0]].size.height,
+            ch, fh, h0, hLast, hRow0];
+        NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_ui.log"];
+        NSFileHandle *fhdl = [NSFileHandle fileHandleForWritingAtPath:path];
+        if (fhdl) {
+            @try { [fhdl seekToEndOfFile]; [fhdl writeData:[line dataUsingEncoding:NSUTF8StringEncoding]]; } @catch (NSException *e) {}
+            [fhdl closeFile];
+        }
+    }
+}
+
 // ==================== v457: 作品详情页高度统一 852 ====================
 // v652: 分页器用的三个高度方法（cellHeightAtIndex/fixedCellHeight/cellHeight）
 // 也必须统一到视口，否则分页器按 792 算偏移、行却是 852 →
@@ -18967,8 +19026,8 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 - (void)viewDidLayoutSubviews {
     %orig;
+    DYYYProbeDetail(self);
     // v651: 分页漂移修复——重问行高并按当前视频索引恢复分页偏移。
-    // 194 个视频时每页 60pt 的行高/视口差会累积 ≈14 页错位。
     [DYYYFullscreenCoordinator reconcileDetailPaging:self];
 }
 
