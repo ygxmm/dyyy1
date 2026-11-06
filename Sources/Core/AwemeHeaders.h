@@ -2540,3 +2540,12 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property(nonatomic, copy) NSDictionary *nowPlayingInfo;              // 正在播放信息字典
 + (instancetype)defaultCenter;                                        // 单例入口
 @end
+
+// ===== DYYY 补全的原生布局方法声明 =====
+@interface AWEAwemeDetailTableViewController (DYYYLayoutMethods)
+- (void)applyTableViewLayoutForAllPlatform;
+- (double)tableViewBottomInsetForAllPlatform;
+- (double)tableViewBottomInsetForAllPlatform:(id)a0;
+- (double)baseTableViewBottomInset;
+- (void)adjustTableViewHeightForTargetIndex:(long long)a0;
+@end
