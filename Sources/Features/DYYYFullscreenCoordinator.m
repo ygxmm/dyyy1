@@ -264,7 +264,6 @@
 }
 + (BOOL)layoutNativeInteraction:(UIViewController *)controller {
     if (![NSThread isMainThread]) return NO;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return NO; // 总闸：关了全屏直接装死
     UIView *view = controller.viewIfLoaded;
     UIView *parent = view.superview;
     if (view.window) [[self interactions] addObject:controller];
@@ -371,7 +370,6 @@
 }
 + (void)layoutInteraction:(UIViewController *)controller {
     if (![NSThread isMainThread] || ![self usesRecommendedLayoutForController:controller]) return;
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) return; // 总闸：关了全屏直接装死
     UIView *view = controller.viewIfLoaded;
     UIView *parent = view.superview;
     if (!view.window || ![self view:view spansWidthOf:parent]) return;

@@ -15919,9 +15919,8 @@ static Class tabBarButtonClass = nil;
     }
     gDYYYSetFrameDepth++;
     int _dyyySfGuard __attribute__((unused, cleanup(DYYYSetFrameDepthDec))) = 0;
-    BOOL enableBlur = DYYYGetBoolCached(@"DYYYEnableCommentBlur");
-    BOOL enableFS = DYYYGetBoolCached(@"DYYYEnableFullScreen");
-    if (!enableBlur && !enableFS) {
+    // 彻底尊重原生：只要主全屏关了，不管开没开磨砂，都不准拦截原生的 frame！
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
         %orig(frame);
         return;
     }
@@ -18754,14 +18753,6 @@ static void DYYYMediaApplyCollectionState(AWECommentMediaFeedViewController *c, 
     
     if (!enabled) {
         DYYYMediaResetCollectionState(c);
-        // 强制把内层图集的 Frame 还原，彻底治本！
-        if (c.view && col.superview) {
-            [UIView performWithoutAnimation:^{
-                col.frame = c.view.bounds;
-                [col.collectionViewLayout invalidateLayout];
-                [col layoutIfNeeded];
-            }];
-        }
         if ([objc_getAssociatedObject(c, &kDYYYMediaNativeReanchorKey) boolValue]) {
             [UIView performWithoutAnimation:^{
                 [col.collectionViewLayout invalidateLayout];
