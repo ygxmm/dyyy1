@@ -18482,6 +18482,20 @@ static void v179_dcvLayout(id self, SEL _cmd) {
                 cv.clipsToBounds = NO;
             }
         }
+
+        // v642: 视频容器按同样方式设置——Merge / 播放视频视图也拉到全屏 frame
+        for (UIViewController *child in vc.childViewControllers) {
+            NSString *cn = NSStringFromClass([child class]);
+            if ([cn containsString:@"Merge"] || [cn containsString:@"PlayVideoViewController"]) {
+                UIView *cv = child.view;
+                if (!cv) continue;
+                CGRect f = cv.frame;
+                if (fabs(f.size.height - h) > 1.0 || fabs(f.origin.y) > 1.0) {
+                    cv.frame = CGRectMake(0, 0, w, h);
+                }
+                cv.clipsToBounds = NO;
+            }
+        }
     } @catch (NSException *e) {}
 }
 
