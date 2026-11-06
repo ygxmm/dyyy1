@@ -5532,24 +5532,21 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
         return;
     }
 
-    // v645: 详情页全屏时把进度条归位到首页位置。探针实测：
-    // 首页视频 slider 在容器内 y=197（容器高−3），搜索视频帖为 136（偏上 61pt）。
-    // 整组子视图按同一 delta 下移，保持章节刻度/时间标签与滑块的相对关系。
+    // v648: 整体移动进度容器（用户建议方案）。详情页交互层被收到 792，
+    // 但详情页没有真底栏 → 容器底部应对齐窗口底部（等价 852 布局时的 652~852）。
+    // 只改容器自身的 frame，内部子视图（滑块/时间标签/章节刻度）保持原生局部
+    // 布局：逐帧 updateSliderFrame 写入的是局部值，与容器整体位移互不干扰，
+    // 不再出现「进度条蹦/时间标签跳」。
     UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
     if (![DYYYFullscreenCoordinator usesDetailLayoutForController:vc]) return;
-    UIView *sliderView = nil;
-    for (UIView *sub in self.subviews) {
-        if ([NSStringFromClass(sub.class) containsString:@"ProgressSlider"]) { sliderView = sub; break; }
-    }
-    if (!sliderView) return;
-    CGFloat desiredY = self.bounds.size.height - sliderView.bounds.size.height - 1.0;
-    CGFloat delta = desiredY - sliderView.frame.origin.y;
-    if (delta > 1.0 && delta < self.bounds.size.height) {
-        for (UIView *sub in self.subviews) {
-            CGRect frame = sub.frame;
-            frame.origin.y += delta;
-            sub.frame = frame;
-        }
+    UIWindow *win = self.window;
+    if (!win || !self.superview) return;
+    CGRect inWindow = [self.superview convertRect:self.frame toView:win];
+    CGFloat gap = CGRectGetHeight(win.bounds) - CGRectGetMaxY(inWindow);
+    if (gap > 1.0 && gap < 120.0) {
+        CGRect frame = self.frame;
+        frame.origin.y += gap;
+        self.frame = frame;
     }
 
 }
@@ -5563,19 +5560,6 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
 // progressSliderNormalFrame / progressSliderWakeUpFrame 等决定。
 - (void)updateSliderFrame:(CGRect)a0 height:(double)a1 originY:(double)a2 minColor:(id)a3 maxColor:(id)a4 thumb:(id)a5 thumbSize:(CGRect)a6 {
     %orig(a0, a1, a2, a3, a4, a5, a6);
-    // v647: 写入后按滑块实际 frame 在同坐标空间纠位（不改参数、不猜语义）。
-    // 详情页全屏时把滑块放到容器底部（首页位置＝容器高−h−1），
-    // 每次写入当场纠正，消除逐帧覆盖导致的「从下面蹦」。
-    UIView *bar = self.superview;
-    if (!bar || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-    if (![DYYYFullscreenCoordinator usesDetailLayoutForController:vc]) return;
-    CGRect frame = self.frame;
-    CGFloat desired = bar.bounds.size.height - frame.size.height - 1.0;
-    if (desired > 0 && frame.origin.y < desired - 1.0) {
-        frame.origin.y = desired;
-        self.frame = frame;
-    }
 }
 
 - (void)layoutSubviews {
