@@ -17446,6 +17446,97 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 %end
 
+
+// ==================== 详情页全屏（v646 搬自 Wtrwx/DYYY 原版） ====================
+// Logos 预处理不展开 #import，头文件里的方法声明对 %orig 不可见（915a7f6 的教训），
+// 必须把声明直接写在文件内，否则方法会被当成 %new 导致 _logos_method_ 不生成。
+@interface AWEAwemeDetailTableViewController (DYYYFullscreenV646)
+- (double)baseTableViewBottomInset;
+- (void)viewDidLayoutSubviews;
+- (void)viewDidAppear:(BOOL)animated;
+- (BOOL)prefersStatusBarHidden;
+@end
+
+@interface AFDPureModePageListViewController (DYYYFullscreenV646)
+- (void)viewWillLayoutSubviews;
+@end
+
+@interface TTMetalViewVP (DYYYFullscreenV646)
+- (void)setCenter:(CGPoint)center;
+@end
+
+%hook AWEAwemeDetailTableViewController
+- (CGFloat)baseTableViewBottomInset {
+    CGFloat inset = %orig;
+    return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
+}
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+    [DYYYFullscreenCoordinator reconcileDetailPaging:self];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    [DYYYFullscreenCoordinator reconcileDetailPaging:self];
+}
+
+- (BOOL)prefersStatusBarHidden {
+    if (DYYYGetBool(@"DYYYHideStatusbar")) {
+        return YES;
+    }
+    if (DYYYGetBool(@"DYYYHideStatusBarOnClear") && hideButton && hideButton.isElementsHidden) {
+        return YES;
+    }
+    if (class_getInstanceMethod([self class], @selector(prefersStatusBarHidden)) !=
+        class_getInstanceMethod([%c(AWEAwemeDetailTableViewController) class], @selector(prefersStatusBarHidden))) {
+        return %orig;
+    }
+    return NO;
+}
+%end
+
+// ==================== 纯净模式全屏容器（v646 搬自原版） ====================
+%hook AFDPureModePageListViewController
+- (void)viewWillLayoutSubviews {
+    // 先提供完整视口，再由原生更新 cell 尺寸、分页偏移和进度条。
+    [DYYYFullscreenCoordinator layoutPlayerContainer:self];
+    %orig;
+}
+%end
+
+// ==================== 横屏入口图渲染视图（v646 搬自原版） ====================
+%hook TTMetalViewVP
+- (void)setCenter:(CGPoint)center {
+    BOOL shouldAdjust = NO;
+    UIView *view = (UIView *)self;
+    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+        CGFloat viewWidth = CGRectGetWidth(view.bounds);
+        CGFloat containerWidth = view.superview.bounds.size.width;
+        if (containerWidth > 0 && fabs(viewWidth - containerWidth) <= 1) {
+            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
+            Class playClass = %c(AWEPlayVideoViewController);
+            if (playClass && [vc isKindOfClass:playClass] && [DYYYFullscreenCoordinator usesRecommendedLayoutForController:vc] && [DYYYFullscreenCoordinator isImageContentController:vc]) {
+                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
+                AWEAwemeModel *model = playVC.model;
+                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
+                    shouldAdjust = YES;
+                }
+            }
+        }
+    }
+
+    if (shouldAdjust) {
+        CGFloat offset = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:view];
+        if (offset > 0) {
+            center.y -= offset * 0.5;
+        }
+    }
+
+    %orig(center);
+}
+%end
+
 %hook AFDFastSpeedView
 
 - (void)updateSpeedLockBottomWithText:(NSString *)text Type:(NSInteger)type {
@@ -18742,80 +18833,6 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 %end
 
-%end
-
-// ==================== 详情页全屏（v645 搬自 Wtrwx/DYYY 原版，替换双份「完美全屏逻辑」） ====================
-// 原版只用底边 inset 归零 + 分页对账，不做任何行高强改。
-%hook AWEAwemeDetailTableViewController
-- (CGFloat)baseTableViewBottomInset {
-    CGFloat inset = %orig;
-    return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
-}
-
-- (void)viewDidLayoutSubviews {
-    %orig;
-    [DYYYFullscreenCoordinator reconcileDetailPaging:self];
-}
-
-- (void)viewDidAppear:(BOOL)animated {
-    %orig;
-    [DYYYFullscreenCoordinator reconcileDetailPaging:self];
-}
-
-- (BOOL)prefersStatusBarHidden {
-    if (DYYYGetBool(@"DYYYHideStatusbar")) {
-        return YES;
-    }
-    if (DYYYGetBool(@"DYYYHideStatusBarOnClear") && hideButton && hideButton.isElementsHidden) {
-        return YES;
-    }
-    if (class_getInstanceMethod([self class], @selector(prefersStatusBarHidden)) !=
-        class_getInstanceMethod([%c(AWEAwemeDetailTableViewController) class], @selector(prefersStatusBarHidden))) {
-        return %orig;
-    }
-    return NO;
-}
-%end
-
-// ==================== 纯净模式全屏容器（v645 搬自原版，此前缺失） ====================
-%hook AFDPureModePageListViewController
-- (void)viewWillLayoutSubviews {
-    // 先提供完整视口，再由原生更新 cell 尺寸、分页偏移和进度条。
-    [DYYYFullscreenCoordinator layoutPlayerContainer:self];
-    %orig;
-}
-%end
-
-// ==================== 横屏入口图渲染视图（v645 搬自原版，此前缺失） ====================
-%hook TTMetalViewVP
-- (void)setCenter:(CGPoint)center {
-    BOOL shouldAdjust = NO;
-    UIView *view = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat viewWidth = CGRectGetWidth(view.bounds);
-        CGFloat containerWidth = view.superview.bounds.size.width;
-        if (containerWidth > 0 && fabs(viewWidth - containerWidth) <= 1) {
-            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
-            Class playClass = %c(AWEPlayVideoViewController);
-            if (playClass && [vc isKindOfClass:playClass] && [DYYYFullscreenCoordinator usesRecommendedLayoutForController:vc] && [DYYYFullscreenCoordinator isImageContentController:vc]) {
-                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
-                AWEAwemeModel *model = playVC.model;
-                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
-                    shouldAdjust = YES;
-                }
-            }
-        }
-    }
-
-    if (shouldAdjust) {
-        CGFloat offset = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:view];
-        if (offset > 0) {
-            center.y -= offset * 0.5;
-        }
-    }
-
-    %orig(center);
-}
 %end
 
 %group DYYYMediaAdaptiveLayoutHook
