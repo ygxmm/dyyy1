@@ -18472,7 +18472,9 @@ static void v179_dcvLayout(id self, SEL _cmd) {
 
         for (UIViewController *child in vc.childViewControllers) {
             NSString *cn = NSStringFromClass([child class]);
-            if ([cn containsString:@"RichContentContainer"]) {
+            // v643: 41.0 图文容器改名 RichContentNewListViewController（旧名 RichContentContainer），
+            // 用 "RichContent" 同时覆盖两代类名，让图文与视频走同一套强改路径。
+            if ([cn containsString:@"RichContent"]) {
                 UIView *cv = child.view;
                 if (!cv) continue;
                 CGRect f = cv.frame;
