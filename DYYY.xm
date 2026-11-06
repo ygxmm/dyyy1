@@ -15721,27 +15721,8 @@ static Class tabBarButtonClass = nil;
 
 - (void)layoutSubviews {
     %orig;
-
-    if (!DYYYGetBool(@"DYYYEnableCommentBlur")) {
-        return;
-    }
-
-    UICollectionView *collectionView = (UICollectionView *)self;
-
-    UIView *superview = collectionView.superview;
-    CGRect targetFrame = superview.bounds;
-    if (superview == nil || CGSizeEqualToSize(targetFrame.size, CGSizeZero) || CGRectEqualToRect(collectionView.frame, targetFrame)) {
-        return;
-    }
-
-    collectionView.frame = targetFrame;
-
-    // 恢复评论模糊专属的底部留白（不参与全屏逻辑）
-    CGFloat commentOffset = 166.0;
-    UIEdgeInsets inset = collectionView.contentInset;
-    inset.bottom = commentOffset;
-    collectionView.contentInset = inset;
-    collectionView.scrollIndicatorInsets = inset;
+    // 原代码强行修改了 frame 和 inset.bottom = 166.0，导致关闭全屏时图文底部被强撑，产生黑边。
+    // 直接恢复原生布局，杜绝干扰。
 }
 
 %end
@@ -18848,14 +18829,7 @@ static void DYYYMediaApplyCollectionState(AWECommentMediaFeedViewController *c, 
     CGFloat w = CGRectGetWidth(c.view.bounds);
     CGFloat h = CGRectGetHeight(c.view.bounds);
     if (w <= 0.0 || h <= 0.0) return;
-    
-    // 关键修复：只有开启全屏时，才强制高度铺满（h）。
-    // 关闭全屏时，交给原生逻辑，避免挤压底部文字导致黑边。
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        // 关闭全屏时，退化为占据宽度的自然高度，让抖音自己去算底部留白
-        h = 0; 
-    }
-    
+        
     CGSize target = CGSizeMake(w, h);
     CGRect targetFrame = CGRectMake(0.0, 0.0, w, h);
     BOOL wasExpanded = [objc_getAssociatedObject(col, &kDYYYMediaCollectionExpandedKey) boolValue];
@@ -19050,6 +19024,11 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 // 统一从 window 取，拿不到就直接放行原生，保证 contentSize 绝对正确。
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
+    UITableView *table = (UITableView *)a0;
+    // 优先使用 table.window 保证在布局早期获取到真实的 852，避免预加载计算错误
+    if (table.window && table.window.bounds.size.height > 0) {
+        return table.window.bounds.size.height;
+    }
     UIWindow *win = [DYYYUtils getActiveWindow];
     return win ? win.bounds.size.height : %orig;
 }
