@@ -18754,6 +18754,14 @@ static void DYYYMediaApplyCollectionState(AWECommentMediaFeedViewController *c, 
     
     if (!enabled) {
         DYYYMediaResetCollectionState(c);
+        // 强制把内层图集的 Frame 还原，彻底治本！
+        if (c.view && col.superview) {
+            [UIView performWithoutAnimation:^{
+                col.frame = c.view.bounds;
+                [col.collectionViewLayout invalidateLayout];
+                [col layoutIfNeeded];
+            }];
+        }
         if ([objc_getAssociatedObject(c, &kDYYYMediaNativeReanchorKey) boolValue]) {
             [UIView performWithoutAnimation:^{
                 [col.collectionViewLayout invalidateLayout];
