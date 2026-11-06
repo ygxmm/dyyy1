@@ -112,8 +112,9 @@
     if (![NSThread isMainThread] || !DYYYGetBool(@"DYYYEnableFullScreen") || ![self usesDetailLayoutForController:controller]) return inset;
     UIView *view = controller.viewIfLoaded;
     if (!view.window || CGRectIsEmpty(view.bounds)) return inset;
-    // 行高只以本页原生视口为准；未加载时保留原生值，显示后统一修正缓存。
-    return inset > 0 ? 0 : inset;
+    // 原代码这里强行 return 0，破坏了抖音原生的分页吸附和边缘回弹机制。
+    // 直接返回原生给的 inset，翻页逻辑即恢复完美。
+    return inset;
 }
 + (CGFloat)heightForDetailRow:(CGFloat)height table:(UITableView *)table controller:(UIViewController *)controller {
     if (![NSThread isMainThread] || !DYYYGetBool(@"DYYYEnableFullScreen") || ![self usesDetailLayoutForController:controller]) return height;

@@ -40,34 +40,7 @@
 #import "AwemeHeaders.h"
 #import "DYYYFullscreenCoordinator.h"
 
-// ===== 临时探针：诊断完删除 =====
-static void DYYYProbe(NSString *tag, NSString *fmt, ...) {
-    static NSMutableDictionary *lastMap; static dispatch_once_t once;
-    dispatch_once(&once, ^{ lastMap = [NSMutableDictionary new]; });
-    NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
-    @synchronized (lastMap) {
-        NSNumber *last = lastMap[tag];
-        if (last && now - last.doubleValue < 0.1) return;
-        lastMap[tag] = @(now);
-    }
-    va_list ap; va_start(ap, fmt);
-    NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
-    va_end(ap);
-    NSString *line = [NSString stringWithFormat:@"%.3f [%@] %@\n", now, tag, msg];
-    static dispatch_queue_t q; static dispatch_once_t once2;
-    dispatch_once(&once2, ^{ q = dispatch_queue_create("dyyy.probe", DISPATCH_QUEUE_SERIAL); });
-    dispatch_async(q, ^{
-        NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/DYYYProbe.log"];
-        NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil];
-        if ([attrs fileSize] > 2 * 1024 * 1024) return;
-        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
-        if (!fh) { [line writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil]; return; }
-        @try { [fh seekToEndOfFile];
-               [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
-               [fh closeFile]; } @catch (...) {}
-    });
-}
-// ===== 探针结束 =====
+
 
 
 #import "DYYYConstants.h"
@@ -19023,6 +18996,8 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 // ==================== v457: 作品详情页高度统一 852 ====================
 
 
+
+
 %group DYYYDetailHeightHook
 
 %hook AWEAwemeDetailTableViewController
@@ -19045,32 +19020,12 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
     return win ? win.bounds.size.height : %orig;
 }
 
+// 修复原代码 Bug：不再用 table.bounds（早期是792）去覆盖原生的 852。
+// 统一从 window 取，拿不到就直接放行原生，保证 contentSize 绝对正确。
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
-    double orig = %orig;
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
     UIWindow *win = [DYYYUtils getActiveWindow];
-    return win ? win.bounds.size.height : orig;
-}
-
-// 探针：放行原生的 60 inset，测试是否是全屏强行归0导致翻页错位
-- (double)baseTableViewBottomInset {
-    double orig = %orig;
-    DYYYProbe(@"inset", @"orig=%.1f", orig);
-    return orig; 
-}
-
-// 探针：捕获抖音内部翻页的目标索引与状态
-- (void)updateTableViewLayoutForTargetPageIndex:(NSInteger)index {
-    UITableView *t = [self tableView];
-    DYYYProbe(@"updPage.BEFORE", @"idx=%ld off=%.1f csz=%.1f", (long)index, t.contentOffset.y, t.contentSize.height);
-    %orig;
-    DYYYProbe(@"updPage.AFTER", @"idx=%ld off=%.1f csz=%.1f", (long)index, t.contentOffset.y, t.contentSize.height);
-}
-
-// 探针：捕获滚动停止时的最终位置
-- (void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView {
-    DYYYProbe(@"scrollEnd", @"off=%.1f csz=%.1f", scrollView.contentOffset.y, scrollView.contentSize.height);
-    %orig;
+    return win ? win.bounds.size.height : %orig;
 }
 
 %end
@@ -19078,6 +19033,5 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 %end
 
 %ctor {
-    DYYYProbe(@"BOOT", @"DYYY loaded, scroll probe active");
     %init(DYYYDetailHeightHook);
 }
