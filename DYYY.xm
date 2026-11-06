@@ -16280,8 +16280,7 @@ static void DYYYUIProbeLog(id vc) {
 - (double)p_stackContainerViewBottomOffset {
     double offset = %orig;
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return offset;
-    if (![DYYYFullscreenCoordinator usesDetailLayoutForController:self] &&
-        ![DYYYFullscreenCoordinator isCreatorDetailController:self]) return offset;
+    if (![DYYYFullscreenCoordinator usesDetailLayoutForController:self]) return offset;
     // v644: 详情页里只归位异常负值（视频帖 -59.5 → 首页/图文同款 0.5），
     // 正常值（0.5 等）原样放行。
     return offset < -1.0 ? 0.5 : offset;
