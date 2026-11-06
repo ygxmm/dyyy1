@@ -19057,32 +19057,43 @@ static void DYYYProbeDetailBrief(UIViewController *vc) {
     %orig;
     DYYYProbeDetailBrief(self);
 
-    // v658: 表格撑到全屏视口后，按之前存下的目标索引补位。
-    // 只在进入后 2s 窗口内生效；用户一开始拖动就放弃，避免和手势打架。
+    // v659: 表格 792 状态 = 分页索引的「正确世界」——持续记录当前索引
+    // （用户滑动后也能刷新）。表格跳到 852 后按最后记录的索引持续补位，
+    // 抵消原生用错误索引重新对位；3s 窗口 + 用户拖动即放弃。
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
     static char kDYYYCoverIdxKey;
     static char kDYYYCoverDeadlineKey;
+    UITableView *table2 = [self tableView];
+    if (!table2.window || table2.bounds.size.height <= 0) return;
+    BOOL dragging = table2.tracking || table2.dragging || table2.decelerating;
+    if (table2.bounds.size.height < 800) {
+        // 792 状态：采集正确索引（拖动中也刷新——以最新位置为准）
+        SEL isel = NSSelectorFromString(@"currentVisibleCellIndex");
+        if (![self respondsToSelector:isel]) return;
+        unsigned long long idx = ((unsigned long long (*)(id, SEL))[self methodForSelector:isel])(self, isel);
+        NSInteger count = [table2 numberOfRowsInSection:0];
+        if (count <= 0 || idx >= (unsigned long long)count) return;
+        objc_setAssociatedObject(self, &kDYYYCoverIdxKey, @((long long)idx), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(self, &kDYYYCoverDeadlineKey, @(CACurrentMediaTime() + 3.0), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
     NSNumber *pendingIdx = objc_getAssociatedObject(self, &kDYYYCoverIdxKey);
     NSNumber *deadline = objc_getAssociatedObject(self, &kDYYYCoverDeadlineKey);
     if (!pendingIdx || !deadline) return;
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    UITableView *table = [self tableView];
-    if (!table.window) return;
-    if (table.tracking || table.dragging || table.decelerating) {
-        objc_setAssociatedObject(self, &kDYYYCoverIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return;
-    }
     if (CACurrentMediaTime() > deadline.doubleValue) {
         objc_setAssociatedObject(self, &kDYYYCoverIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         return;
     }
-    if (table.bounds.size.height < 800) return;
-    long long idx = pendingIdx.longLongValue;
-    NSInteger count = [table numberOfRowsInSection:0];
-    if (idx < 0 || idx >= count) return;
-    CGFloat targetY = idx * table.bounds.size.height;
-    if (fabs(table.contentOffset.y - targetY) > 0.5) {
-        table.contentOffset = CGPointMake(0, targetY);
+    if (dragging) {
         objc_setAssociatedObject(self, &kDYYYCoverIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
+    long long idx = pendingIdx.longLongValue;
+    NSInteger count = [table2 numberOfRowsInSection:0];
+    if (idx < 0 || idx >= count) return;
+    CGFloat targetY = idx * table2.bounds.size.height;
+    if (fabs(table2.contentOffset.y - targetY) > 0.5) {
+        table2.contentOffset = CGPointMake(0, targetY);
     }
 }
 
@@ -19099,20 +19110,14 @@ static void DYYYProbeDetailBrief(UIViewController *vc) {
 
 - (void)updateTableViewLayoutForTargetPageIndex:(long long)index {
     %orig(index);
-    // v658: 原生在表格还是 792 时下发目标索引（此时按 792 滚动是对的），
-    // 但表格随后撑到 852，偏移不换算 → 视觉索引掉 N 页。这里把目标索引
-    // 存下来，等表格到全屏视口后在 viewDidLayoutSubviews 里补位。
+    // v659: 只按当前表格高度立即对位；目标索引的记录改由布局钩子在
+    // 792 状态下持续采集（原生在 852 后还会用错误索引再调本方法）。
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    static char kDYYYCoverIdxKey;
-    static char kDYYYCoverDeadlineKey;
-    objc_setAssociatedObject(self, &kDYYYCoverIdxKey, @(index), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(self, &kDYYYCoverDeadlineKey, @(CACurrentMediaTime() + 2.0), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     UITableView *table = [self tableView];
-    if (table.window && table.bounds.size.height >= 800) {
-        CGFloat targetY = index * table.bounds.size.height;
-        if (fabs(table.contentOffset.y - targetY) > 0.5) {
-            table.contentOffset = CGPointMake(0, targetY);
-        }
+    if (!table.window || table.bounds.size.height <= 0) return;
+    CGFloat targetY = index * table.bounds.size.height;
+    if (fabs(table.contentOffset.y - targetY) > 0.5) {
+        table.contentOffset = CGPointMake(0, targetY);
     }
 }
 
