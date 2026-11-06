@@ -119,7 +119,7 @@
 + (CGFloat)heightForDetailRow:(CGFloat)height table:(UITableView *)table controller:(UIViewController *)controller {
     if (![NSThread isMainThread] || !DYYYGetBool(@"DYYYEnableFullScreen") || ![self usesDetailLayoutForController:controller]) return height;
     // 行高与 UITableView 分页视口使用同一尺寸，预加载时也不扣第二次底栏。
-    return height > 0 && table.bounds.size.height > 0 ? table.bounds.size.height : height;
+    UIWindow *win = table.window; return win && win.bounds.size.height > 0 ? win.bounds.size.height : height;
 }
 + (void)reconcileDetailPaging:(UIViewController *)controller {
     if (![NSThread isMainThread] || !DYYYGetBool(@"DYYYEnableFullScreen") || ![self usesDetailLayoutForController:controller]) return;

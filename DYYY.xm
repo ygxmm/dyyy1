@@ -15739,7 +15739,7 @@ static Class tabBarButtonClass = nil;
     CGFloat commentOffset = 166.0;
 
     UIEdgeInsets inset = collectionView.contentInset;
-    inset.bottom = commentOffset;
+    // 强制加 166 导致错位，已删除
     collectionView.contentInset = inset;
     collectionView.scrollIndicatorInsets = inset;
 }
