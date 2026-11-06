@@ -18819,6 +18819,18 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 %hook AWEAwemeDetailTableViewController
 
+// 核心：直接调用原生方法，让抖音自己去适配内层高度
+- (void)viewDidLayoutSubviews {
+    %orig;
+    BOOL enableFS = DYYYGetBoolCached(@"DYYYEnableFullScreen");
+    if ([self respondsToSelector:@selector(changeModernFullScreen:)]) {
+        [self changeModernFullScreen:enableFS];
+    }
+    if ([self respondsToSelector:@selector(setPureMode:)]) {
+        [self setPureMode:enableFS];
+    }
+}
+
 - (double)cellHeightAtIndex:(long long)index {
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
     UIWindow *win = [DYYYUtils getActiveWindow];
