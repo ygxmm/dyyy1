@@ -17434,6 +17434,16 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     }
 }
 
+// 评论磨砂时锁定首页容器位置，防止评论面板把 feed 顶起来（v645 搬自原版）
+- (void)setFrame:(CGRect)frame {
+    if (DYYYGetBool(@"DYYYEnableCommentBlur")) {
+        if (frame.origin.y != 0) {
+            return;
+        }
+    }
+    %orig(frame);
+}
+
 %end
 
 %hook AFDFastSpeedView
@@ -18734,35 +18744,6 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 %end
 
-%group DYYYMediaAdaptiveLayoutHook
-
-%hook AWECommentABTestSettings
-
-+ (BOOL)enableCommentAdaptiveWindowResponsiveLayout {
-    if (gDYYYMediaSuppressAdaptiveLayout) return NO;
-    return %orig;
-}
-
-%end
-
-%end
-
-%ctor {
-    gDYYYMediaManagedViews = [NSHashTable weakObjectsHashTable];
-    gDYYYMediaControllers = [NSHashTable weakObjectsHashTable];
-    %init(DYYYMediaMainHook);
-    Class dyyyAbTest = NSClassFromString(@"AWECommentABTestSettings");
-    if ([dyyyAbTest respondsToSelector:@selector(enableCommentAdaptiveWindowResponsiveLayout)]) {
-        %init(DYYYMediaAdaptiveLayoutHook);
-    }
-}
-
-
-
-
-
-
-
 // ==================== 详情页全屏（v645 搬自 Wtrwx/DYYY 原版，替换双份「完美全屏逻辑」） ====================
 // 原版只用底边 inset 归零 + 分页对账，不做任何行高强改。
 %hook AWEAwemeDetailTableViewController
@@ -18837,14 +18818,32 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 }
 %end
 
-// ==================== 评论磨砂时锁定首页容器位置（v645 搬自原版） ====================
-%hook AWEStoryContainerCollectionView
-- (void)setFrame:(CGRect)frame {
-    if (DYYYGetBool(@"DYYYEnableCommentBlur")) {
-        if (frame.origin.y != 0) {
-            return;
-        }
-    }
-    %orig(frame);
+%group DYYYMediaAdaptiveLayoutHook
+
+%hook AWECommentABTestSettings
+
++ (BOOL)enableCommentAdaptiveWindowResponsiveLayout {
+    if (gDYYYMediaSuppressAdaptiveLayout) return NO;
+    return %orig;
 }
+
 %end
+
+%end
+
+%ctor {
+    gDYYYMediaManagedViews = [NSHashTable weakObjectsHashTable];
+    gDYYYMediaControllers = [NSHashTable weakObjectsHashTable];
+    %init(DYYYMediaMainHook);
+    Class dyyyAbTest = NSClassFromString(@"AWECommentABTestSettings");
+    if ([dyyyAbTest respondsToSelector:@selector(enableCommentAdaptiveWindowResponsiveLayout)]) {
+        %init(DYYYMediaAdaptiveLayoutHook);
+    }
+}
+
+
+
+
+
+
+
