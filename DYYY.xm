@@ -17463,6 +17463,10 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 - (void)viewDidLayoutSubviews;
 - (void)viewDidAppear:(BOOL)animated;
 - (BOOL)prefersStatusBarHidden;
+- (double)cellHeightAtIndex:(long long)index;
+- (double)fixedCellHeight;
+- (double)cellHeight;
+- (double)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath;
 @end
 
 @interface AFDPureModePageListViewController (DYYYFullscreenV646)
@@ -17493,6 +17497,37 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
     %orig;
     [DYYYFullscreenCoordinator reconcileDetailPaging:self];
     [DYYYFullscreenCoordinator reconcileCreatorPaging:self];
+}
+
+// v648: 40.8/40.9 的原生行高对图文帖不返回视口高度（视频帖才返回），
+// 分页器按行高算偏移，行高不统一时滑到图文不满屏、主页末条往前翻错位。
+// 统一按当前分页视口高度返回，恢复 v645 验证过的行高统一方案（限定全屏开关内）。
+- (double)cellHeightAtIndex:(long long)index {
+    double height = %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return height;
+    UITableView *table = [self tableView];
+    return (table && table.window && table.bounds.size.height > 0) ? table.bounds.size.height : height;
+}
+
+- (double)fixedCellHeight {
+    double height = %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return height;
+    UITableView *table = [self tableView];
+    return (table && table.window && table.bounds.size.height > 0) ? table.bounds.size.height : height;
+}
+
+- (double)cellHeight {
+    double height = %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return height;
+    UITableView *table = [self tableView];
+    return (table && table.window && table.bounds.size.height > 0) ? table.bounds.size.height : height;
+}
+
+- (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
+    double height = %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return height;
+    UITableView *table = (UITableView *)a0;
+    return (table && table.window && table.bounds.size.height > 0) ? table.bounds.size.height : height;
 }
 
 - (BOOL)prefersStatusBarHidden {
