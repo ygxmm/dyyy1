@@ -19,9 +19,14 @@ jobs:
 
       - name: Download iOS SDKs
         run: |
-          if [ ! -d "$HOME/theos/sdks/iPhoneOS16.5.sdk" ]; then
-  git clone --depth 1 https://github.com/theos/sdks.git $HOME/theos/sdks
-fi
+          if [ -z "$(ls $HOME/theos/sdks 2>/dev/null)" ]; then
+            cd $HOME/theos/sdks
+            curl -sL -o sdks.zip https://github.com/theos/sdks/archive/refs/heads/master.zip
+            TMPDIR=$(mktemp -d)
+            unzip -q sdks.zip -d "$TMPDIR"
+            mv "$TMPDIR"/sdks-master/*.sdk "$HOME/theos/sdks/"
+            rm -rf sdks.zip "$TMPDIR"
+          fi
           ls $HOME/theos/sdks
 
       - name: Install Dependencies
