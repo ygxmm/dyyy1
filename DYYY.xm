@@ -16205,6 +16205,23 @@ static void DYYYUIProbeLog(id vc) {
         if ([vc respondsToSelector:s3]) lrOff = ((double (*)(id, SEL))[vc methodForSelector:s3])(vc, s3);
         if ([vc respondsToSelector:s4]) infoH = ((double (*)(id, SEL))[vc methodForSelector:s4])(vc, s4);
 
+        double ctrlOff = -999, ctrlYOff = -999;
+        SEL c1 = NSSelectorFromString(@"controlOffset");
+        SEL c2 = NSSelectorFromString(@"controlYOffset");
+        if ([vc respondsToSelector:c1]) ctrlOff = ((double (*)(id, SEL))[vc methodForSelector:c1])(vc, c1);
+        if ([vc respondsToSelector:c2]) ctrlYOff = ((double (*)(id, SEL))[vc methodForSelector:c2])(vc, c2);
+
+        NSString *progressFrame = @"none";
+        NSMutableArray *queue = [NSMutableArray arrayWithObject:view];
+        for (NSUInteger qi = 0; qi < queue.count && qi < 200; qi++) {
+            UIView *pv = queue[qi];
+            if ([NSStringFromClass(pv.class) containsString:@"AWEPlayInteractionProgressContainerView"]) {
+                progressFrame = NSStringFromRect([pv convertRect:pv.bounds toView:view.window]);
+                break;
+            }
+            [queue addObjectsFromArray:pv.subviews];
+        }
+
         int awemeType = -1;
         SEL ms = NSSelectorFromString(@"model");
         if ([vc respondsToSelector:ms]) {
@@ -16223,10 +16240,10 @@ static void DYYYUIProbeLog(id vc) {
 
         int imageFlag = [DYYYFullscreenCoordinator isImageContentController:vc] ? 1 : 0;
         NSString *line = [NSString stringWithFormat:
-            @"[UI] refer=%@ container=%@ inter=%.0fx%.0f@%.0f super=%@ h=%.0f win=%.0f type=%d image=%d leftOff=%.1f stackOff=%.1f lrOff=%.1f infoH=%.1f chain=%@\n",
+            @"[UI] refer=%@ container=%@ inter=%.0fx%.0f@%.0f super=%@ h=%.0f win=%.0f type=%d image=%d leftOff=%.1f stackOff=%.1f lrOff=%.1f infoH=%.1f ctrl=%.1f/%.1f prog=%@ chain=%@\n",
             refer, container, view.frame.size.width, view.frame.size.height, view.frame.origin.y,
             superCls, superH, view.window.bounds.size.height, awemeType,
-            imageFlag, leftOff, stackOff, lrOff, infoH,
+            imageFlag, leftOff, stackOff, lrOff, infoH, ctrlOff, ctrlYOff, progressFrame,
             [chain componentsJoinedByString:@">"]];
         NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_ui.log"];
         NSFileManager *fm = [NSFileManager defaultManager];
