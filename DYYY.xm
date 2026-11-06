@@ -17662,50 +17662,23 @@ static char kDYYYV29DoneKey; // v439
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
-        %orig(frame);
+    %orig(frame);
 }
 
 - (void)layoutSubviews {
     %orig;
 
-    // v447: 性能优化——isKindOfClass + 类缓存，替代 NSStringFromClass + containsString
-    // 逻辑等价：原来按类名字符串匹配，现在按类继承链匹配，命中范围一致
-
-    // v528: 全屏时行高已经是屏幕高（852），cell 与 table 等高，没有内容需要溢出。
-    // 之前长期保持 clipsToBounds=NO，会让每帧渲染远超屏幕的内容，配合 852 行高
-    // 造成主线程长时间满载（实测冻屏 3 分钟以上）。这里恢复裁剪以降低渲染负载。
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        self.clipsToBounds = YES;
-    }
-
-    // v439: 直接把自身 bottom 约束改 0 撑满（替代 _m_v29 的 BFS 方案）
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        // 已经是屏幕高度就不用动
-        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-        if (self.bounds.size.height >= screenH - 1.0) return;
-        // 已经改过就不再改
-        if (objc_getAssociatedObject(self, &kDYYYV29DoneKey)) return;
-        // v446: 约束现成，直接改，不等 IC 创建
-        // 时序安全：在 table 自己的 layoutSubviews 里改，不主动触发 layout，不打断 IC 创建
-        // 改 self 上下三层的 bottom 约束（table / superview / 祖父）
-        BOOL changed = NO;
-        NSMutableArray *pools = [NSMutableArray arrayWithObject:self.constraints];
-        if (self.superview) [pools addObject:self.superview.constraints];
-        if (self.superview.superview) [pools addObject:self.superview.superview.constraints];
-        for (NSArray *pool in pools) {
-            for (NSLayoutConstraint *c in pool) {
-                if (c.firstItem != self && c.secondItem != self) continue;
-                if (c.firstAttribute != NSLayoutAttributeBottom &&
-                    c.secondAttribute != NSLayoutAttributeBottom) continue;
-                if (fabs(c.constant) > 1.0) {
-                    c.constant = 0;
-                    changed = YES;
-                }
+        // 像首页一样简单粗暴：直接把自身高度撑满父视图！彻底消灭 792 和底部安全区。
+        UIView *superview = self.superview;
+        if (superview && superview.bounds.size.height > 0) {
+            if (fabs(self.frame.size.height - superview.bounds.size.height) > 1) {
+                CGRect frame = self.frame;
+                frame.size.height = superview.bounds.size.height;
+                self.frame = frame;
             }
         }
-        if (changed) {
-            objc_setAssociatedObject(self, &kDYYYV29DoneKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
+        self.clipsToBounds = YES;
     }
 }
 
