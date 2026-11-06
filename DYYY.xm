@@ -5501,8 +5501,63 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
 
 %end
 
+static void DYYYProbeProgressTree(UIView *container) {
+    if (!container.window) return;
+    static NSMutableSet *seenTree;
+    static dispatch_once_t onceTree;
+    dispatch_once(&onceTree, ^{ seenTree = [NSMutableSet set]; });
+    NSMutableArray *rows = [NSMutableArray array];
+    NSMutableString *sig = [NSMutableString string];
+    NSMutableArray *q = [NSMutableArray arrayWithObject:container];
+    for (NSUInteger i = 0; i < q.count && i < 40; i++) {
+        UIView *v = q[i];
+        NSString *cls = NSStringFromClass(v.class);
+        [rows addObject:[NSString stringWithFormat:@"%@{%.0f,%.0f,%.0fx%.0f}", cls,
+            v.frame.origin.x, v.frame.origin.y, v.frame.size.width, v.frame.size.height]];
+        [sig appendFormat:@"%@%.0f;", cls, v.frame.origin.y];
+        [q addObjectsFromArray:v.subviews];
+    }
+    // 进度控制器偏移（挂在滑块的 progressSliderDelegate 上）
+    NSString *ctrlOffsets = @"none";
+    for (UIView *v in container.subviews) {
+        if (![NSStringFromClass(v.class) containsString:@"ProgressSlider"]) continue;
+        SEL dsel = NSSelectorFromString(@"progressSliderDelegate");
+        if (![v respondsToSelector:dsel]) break;
+        id pc = ((id (*)(id, SEL))[v methodForSelector:dsel])(v, dsel);
+        if (!pc) break;
+        NSMutableArray *vals = [NSMutableArray array];
+        for (NSString *n in @[@"sliderYOffset", @"posAdjustY"]) {
+            SEL s = NSSelectorFromString(n);
+            if ([pc respondsToSelector:s]) {
+                double val = ((double (*)(id, SEL))[pc methodForSelector:s])(pc, s);
+                [vals addObject:[NSString stringWithFormat:@"%@=%.1f", n, val]];
+            }
+        }
+        for (NSString *n in @[@"progressSliderNormalFrame", @"progressSliderWakeUpFrame"]) {
+            SEL s = NSSelectorFromString(n);
+            if ([pc respondsToSelector:s]) {
+                CGRect r = ((CGRect (*)(id, SEL))[pc methodForSelector:s])(pc, s);
+                [vals addObject:[NSString stringWithFormat:@"%@={%.0f,%.0f,%.0fx%.0f}", n, r.origin.x, r.origin.y, r.size.width, r.size.height]];
+            }
+        }
+        ctrlOffsets = vals.count ? [vals componentsJoinedByString:@" "] : @"empty";
+        break;
+    }
+    if ([seenTree containsObject:sig]) return;
+    [seenTree addObject:sig];
+    NSString *line = [NSString stringWithFormat:@"[TREE] winH=%.0f ctrl(%@) | %@\n",
+                      container.window.bounds.size.height, ctrlOffsets, [rows componentsJoinedByString:@" | "]];
+    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_ui.log"];
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+    if (fh) {
+        @try { [fh seekToEndOfFile]; [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]]; } @catch (NSException *e) {}
+        [fh closeFile];
+    }
+}
+
 %hook AWEPlayInteractionProgressContainerView
 - (void)layoutSubviews {
+    DYYYProbeProgressTree((UIView *)self);
     %orig;
     DYYYApplyFloatClearProgressStateToView(self);
 
