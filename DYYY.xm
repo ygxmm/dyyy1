@@ -15735,6 +15735,13 @@ static Class tabBarButtonClass = nil;
     }
 
     collectionView.frame = targetFrame;
+
+    // 恢复评论模糊专属的底部留白（不参与全屏逻辑）
+    CGFloat commentOffset = 166.0;
+    UIEdgeInsets inset = collectionView.contentInset;
+    inset.bottom = commentOffset;
+    collectionView.contentInset = inset;
+    collectionView.scrollIndicatorInsets = inset;
 }
 
 %end
