@@ -18819,18 +18819,7 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 %hook AWEAwemeDetailTableViewController
 
-// 核心：直接调用原生方法，让抖音自己去适配内层高度
-- (void)viewDidLayoutSubviews {
-    %orig;
-    BOOL enableFS = DYYYGetBoolCached(@"DYYYEnableFullScreen");
-    if ([self respondsToSelector:@selector(changeModernFullScreen:)]) {
-        [self changeModernFullScreen:enableFS];
-    }
-    if ([self respondsToSelector:@selector(setPureMode:)]) {
-        // 使用 objc_msgSend 绕过头文件未声明的编译报错
-        ((void (*)(id, SEL, BOOL))objc_msgSend)(self, @selector(setPureMode:), enableFS);
-    }
-}
+
 
 - (double)cellHeightAtIndex:(long long)index {
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
@@ -18870,3 +18859,38 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 %ctor {
     %init(DYYYDetailHeightHook);
 }
+
+
+// ==================== 完美搬用首页全屏布局逻辑 ====================
+// 让详情页里的图文容器/视频容器，跟着外层 Cell 一起撑满
+
+%hook AWEAwemeDetailCellViewController
+- (void)viewDidLayoutSubviews {
+    %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    UIView *parent = self.view.superview;
+    if (parent && parent.bounds.size.height > 0) {
+        if (fabs(self.view.frame.size.height - parent.bounds.size.height) > 1) {
+            CGRect frame = self.view.frame;
+            frame.size.height = parent.bounds.size.height;
+            self.view.frame = frame;
+        }
+    }
+}
+%end
+
+%hook RichContentContainerViewController
+- (void)viewDidLayoutSubviews {
+    %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    UIView *parent = self.view.superview;
+    if (parent && parent.bounds.size.height > 0) {
+        if (fabs(self.view.frame.size.height - parent.bounds.size.height) > 1) {
+            CGRect frame = self.view.frame;
+            frame.size.height = parent.bounds.size.height;
+            self.view.frame = frame;
+        }
+    }
+}
+%end
+// ===============================================================
