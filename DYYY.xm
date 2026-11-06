@@ -18769,3 +18769,72 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
+
+
+// ==================== 完美全屏逻辑（唯一版本） ====================
+%hook AWEAwemeDetailTableViewController
+
+- (CGFloat)baseTableViewBottomInset {
+    CGFloat inset = %orig;
+    return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
+}
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+    [DYYYFullscreenCoordinator reconcileDetailPaging:self];
+
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        NSString *refer = nil;
+        @try { refer = [self valueForKey:@"referString"]; } @catch (NSException *e) {}
+        
+        BOOL useFullHeight = [refer isEqualToString:@"general_search"] || 
+                             [refer isEqualToString:@"search_result"] || 
+                             [refer isEqualToString:@"search_ecommerce"] ||
+                             [refer isEqualToString:@"general_search_scan"] ||
+                             refer == nil;
+                             
+        if (useFullHeight) {
+            UITableView *table = [self tableView];
+            if (table && table.contentInset.top != 28) {
+                UIEdgeInsets inset = table.contentInset;
+                inset.top = 28;
+                table.contentInset = inset;
+            }
+        }
+    }
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    [DYYYFullscreenCoordinator reconcileDetailPaging:self];
+}
+
+- (double)cellHeightAtIndex:(long long)index {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    return win ? win.bounds.size.height : %orig;
+}
+
+- (double)fixedCellHeight {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    return win ? win.bounds.size.height : %orig;
+}
+
+- (double)cellHeight {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    return win ? win.bounds.size.height : %orig;
+}
+
+- (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
+    UITableView *table = (UITableView *)a0;
+    if (table.window && table.window.bounds.size.height > 0) {
+        return table.window.bounds.size.height;
+    }
+    UIWindow *win = [DYYYUtils getActiveWindow];
+    return win ? win.bounds.size.height : %orig;
+}
+
+%end
