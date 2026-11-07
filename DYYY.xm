@@ -17153,6 +17153,21 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
 
 %hook AWEFeedTableViewController
 
+// v732: 和详情页同一套口径——首页也实现 AWESmartSlidePageSnapDecisionStrategyDataSource，
+// 分页吸附器的页高同样要回答整屏；底部 inset 也答 0。这样 792/852 两套网格根本不会产生。
+- (double)smartSlidePageSnapCellHeightForIndex:(long long)index {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        CGFloat h = [UIScreen mainScreen].bounds.size.height;
+        if (h > 400.0) return h;
+    }
+    return %orig;
+}
+
+- (double)tableViewBottomInsetForAllPlatform {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
+    return %orig;
+}
+
 - (void)setCurrentPlayIndex:(NSInteger)index {
     %orig(index);
     DYYYHandleCommittedSpeedAwemeChanged([self currentAweme]);
