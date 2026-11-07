@@ -18460,6 +18460,10 @@ static void v179_dcvLayout(id self, SEL _cmd) {
         if (![self isKindOfClass:[UIViewController class]]) return;
         UIViewController *vc = (UIViewController *)self;
 
+        // v726: 这套「强拉全屏」（图文容器 + Merge/PlayVideo）也归总开关管。
+        // 关掉全屏时必须原样走原生，不再改任何 frame。
+        if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+
         // v414: 原地修复，只要不是主播放页的图文，直接放行。避免卡顿并恢复搜索页全屏。
         NSString *clsName = NSStringFromClass([vc class]);
         if (![clsName containsString:@"AwemeDetailCell"] && 
