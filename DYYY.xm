@@ -19114,17 +19114,20 @@ static CGPoint DYYYDetailAdjustOffset(UITableView *table, CGPoint offset) {
     @try { vc = [table valueForKey:@"containerVC"]; } @catch (NSException *e) {}
     NSNumber *idxNum = vc ? objc_getAssociatedObject(vc, &kDYYYOpenIdxKey) : nil;
     if (!idxNum) return offset;
-    CGFloat h = table.rowHeight;
-    if (h < 400.0) return offset;
+    // 用"目标高度"而不是当前 rowHeight：写入发生时表往往还是 792，
+    // 但换算基准要看它最终会变成多高。
+    CGFloat target = 0;
+    UIView *sv = table.superview;
+    if (sv && sv.bounds.size.height > 0) target = sv.bounds.size.height;
+    if (target < 400.0) target = [UIScreen mainScreen].bounds.size.height;
+    if (target < 400.0) return offset;
     CGFloat y = offset.y;
     if (y <= 1.0) return offset;
-    // 已经是表高的整数倍 → 放行
-    if (fabs(y / h - (CGFloat)llround(y / h)) < 0.02) return offset;
-    // 「表高 − 60」的整数倍（典型 792 基）→ 换算成表高基
-    CGFloat base = h - 60.0;
+    if (fabs(y / target - (CGFloat)llround(y / target)) < 0.02) return offset;   // 已是表高基
+    CGFloat base = target - 60.0;                                                // 792
     if (base > 100.0 && fabs(y / base - (CGFloat)llround(y / base)) < 0.02) {
         CGFloat pages = (CGFloat)llround(y / base);
-        return CGPointMake(offset.x, pages * h);
+        return CGPointMake(offset.x, pages * target);
     }
     return offset;
 }
