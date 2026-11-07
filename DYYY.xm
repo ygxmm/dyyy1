@@ -17013,9 +17013,19 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
         CGFloat now = self.bounds.size.height;
         if (last && fabs(last.doubleValue - now) > 0.5 && last.doubleValue > 400.0) {
             CGFloat pages = self.contentOffset.y / last.doubleValue;
-            if (fabs(pages - round(pages)) < 0.02) {
-                objc_setAssociatedObject(self, &kDYYYFeedLastHeightKey, @(now), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                self.contentOffset = CGPointMake(0, round(pages) * now);
+            objc_setAssociatedObject(self, &kDYYYFeedLastHeightKey, @(now), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            if (fabs(pages - round(pages)) < 0.05) {
+                // v730: 只改偏移不够——旧行还留在 792 的位置上（快照里 3960=5×792），
+                // 新行按 852 排，两套网格混在一起。这里按页位重新量一次行（一次性）。
+                [UIView performWithoutAnimation:^{
+                    self.contentOffset = CGPointMake(0, round(pages) * now);
+                }];
+                UITableView *table = (UITableView *)self;
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (!table.window) return;
+                    [table beginUpdates];
+                    [table endUpdates];
+                });
                 return;
             }
         }
