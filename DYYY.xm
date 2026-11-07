@@ -16981,6 +16981,17 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
                     if (fabs(f.size.height - (screenH - 60.0)) > 1.0) continue;
                     f.size.height = screenH;
                     l3.frame = f;
+                    // 该容器里的 59pt 纯黑条每次布局都清一次（原生会重新显示它，
+                    // 之前加了“每 cell 只做一次”的标记，第二次就不管了）
+                    for (UIView *strip in l3.subviews) {
+                        if (![strip isMemberOfClass:[UIView class]] || !strip.hidden) {
+                            if (![strip isMemberOfClass:[UIView class]]) continue;
+                        }
+                        CGRect sf = strip.frame;
+                        if (fabs(sf.origin.y) > 0.5 || fabs(sf.size.width - screenW) > 1.0) continue;
+                        if (sf.size.height < 40.0 || sf.size.height > 80.0) continue;
+                        strip.hidden = YES;
+                    }
                 }
             }
         }
