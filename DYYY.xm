@@ -17742,17 +17742,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 static char kDYYYV29DoneKey; // v439
 
-// v693: 最终的钉子——打开期间任何偏移写入都按 initialIndex × 屏幕高落。
-// 692 的"回答式"覆盖不到直接写 bounds 的路径；实测从第 8 条开始每页漂 60pt（792 基）。
-static char kDYYYOpendAtKey;
-static char kDYYYOpenIdxKey;
-
-static void DYYYMarkDetailOpening(UITableView *table, long long index) {
-    if (!table) return;
-    objc_setAssociatedObject(table, &kDYYYOpendAtKey, @(CACurrentMediaTime()), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    if (index > 0) objc_setAssociatedObject(table, &kDYYYOpenIdxKey, @(index), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
 // v705 探针：只记录、不改值——看 margin 归零后到底还有谁在写偏移
 static char kDYYYOpendAtKey;
 static char kDYYYOpenIdxKey;
