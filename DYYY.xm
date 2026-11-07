@@ -5183,17 +5183,44 @@ static BOOL DYYYInsideCommentPanel(UIView *view) {
     if (!DYYYGetBoolCached(@"DYYYEnableCommentBlur") || !DYYYInsideCommentPanel(view)) return;
     CGRect frame = view.frame;
     if (fabs(frame.origin.y) <= 1.0 && frame.size.height <= 60.0) {
-        view.hidden = YES;
+        // v713: 只把顶部这条改成透明，不隐藏（隐藏会让后面更空、更黑）
+        view.backgroundColor = [UIColor clearColor];
+        view.layer.backgroundColor = [UIColor clearColor].CGColor;
+        for (UIView *sub in view.subviews) {
+            sub.backgroundColor = [UIColor clearColor];
+        }
     }
 }
 
 %end
+
+// v713: 顶部 40pt 还有 header cell 自己的底色，一并清透明（同样只在评论面板内）
+static void DYYYClearCommentHeaderStrip(UIView *root, NSUInteger depth) {
+    if (depth > 3) return;
+    for (UIView *sub in root.subviews) {
+        NSString *cls = NSStringFromClass([sub class]);
+        if ([cls containsString:@"CommentPanelHeader"]) {
+            sub.backgroundColor = [UIColor clearColor];
+            sub.layer.backgroundColor = [UIColor clearColor].CGColor;
+            for (UIView *inner in sub.subviews) {
+                inner.backgroundColor = [UIColor clearColor];
+            }
+            continue;
+        }
+        DYYYClearCommentHeaderStrip(sub, depth + 1);
+    }
+}
 
 %hook AWEBaseListViewController
 - (void)viewDidLayoutSubviews {
     %orig;
 
     [self applyBlurEffectIfNeeded];
+
+    if (DYYYGetBoolCached(@"DYYYEnableCommentBlur") &&
+        [self isKindOfClass:NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController")]) {
+        DYYYClearCommentHeaderStrip(((UIView *)self).viewIfLoaded, 0);
+    }
 }
 
 %new
