@@ -19032,6 +19032,29 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
     return nativeH;
 }
 
+// v690b: 打开瞬间按 initialIndex 把落点归位一次（在页面显示前，看不见）。
+// 只处理"已经吸附到 852 网格、但索引不对"的情况——也就是 14×792 被吸附成 13×852 这种。
+static void DYYYDetailAlignOpenOffset(UIViewController *vc) {
+    if (![NSThread isMainThread] || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    UITableView *table = DYYYDetailTable(vc);
+    if (!table || !table.window || table.tracking || table.dragging) return;
+    long long idx = -1;
+    @try {
+        id v = [vc valueForKey:@"initialIndex"];
+        if ([v respondsToSelector:@selector(longLongValue)]) idx = [v longLongValue];
+    } @catch (NSException *e) {}
+    if (idx <= 0) return;
+    CGFloat h = table.bounds.size.height;
+    if (h < 400.0) return;
+    NSInteger count = [table numberOfRowsInSection:0];
+    if (count <= 0 || idx >= count) return;
+    CGFloat target = (CGFloat)idx * h;
+    if (fabs(table.contentOffset.y - target) <= 1.0) return;
+    [UIView performWithoutAnimation:^{
+        [table setContentOffset:CGPointMake(0, target) animated:NO];
+    }];
+}
+
 // ==================== 详情页 Hook ====================
 %group DYYYDetailHeightHook
 
@@ -19054,6 +19077,7 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
     // 页面显示前再确认一次（原生可能在别处把约束改回去），并标记"正在打开"。
     DYYYDetailZeroBottomConstraint(self);
     DYYYMarkDetailTableOpening(DYYYDetailTable(self));
+    DYYYDetailAlignOpenOffset(self);
 }
 
 - (void)viewWillLayoutSubviews {
