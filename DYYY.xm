@@ -17732,16 +17732,21 @@ static char kDYYYV29DoneKey; // v439
 // 也就没有"往前翻"和"被拽回来"。
 static char kDYYYOpendAtKey;
 
+static void DYYYMarkDetailTableOpening(UITableView *table) {
+    if (!table) return;
+    objc_setAssociatedObject(table, &kDYYYOpendAtKey, @(CACurrentMediaTime()), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
 static CGPoint DYYYAdjustDetailOffset(UITableView *table, CGPoint offset) {
     if (!table || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return offset;
     if (!table.window || table.tracking || table.dragging) return offset;
     NSTimeInterval now = CACurrentMediaTime();
+    // v690: 窗口必须以「页面打开」为起点。之前用首次写入当起点，
+    // 而详情控制器是预加载的——等真正点开时早就过了窗口期，换算没跑，
+    // 14×792 被分页吸附成 13×852，就出现"点 15 开 14"。
     NSNumber *openedAt = objc_getAssociatedObject(table, &kDYYYOpendAtKey);
-    if (!openedAt) {
-        openedAt = @(now);
-        objc_setAssociatedObject(table, &kDYYYOpendAtKey, openedAt, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    if (now - openedAt.doubleValue > 2.0) return offset;
+    if (!openedAt) return offset;
+    if (now - openedAt.doubleValue > 3.0) return offset;
     CGFloat target = [UIScreen mainScreen].bounds.size.height;
     if (target < 400.0) return offset;
     CGFloat y = offset.y;
@@ -19046,8 +19051,9 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
 
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
-    // 页面显示前再确认一次（原生可能在别处把约束改回去）。
+    // 页面显示前再确认一次（原生可能在别处把约束改回去），并标记"正在打开"。
     DYYYDetailZeroBottomConstraint(self);
+    DYYYMarkDetailTableOpening(DYYYDetailTable(self));
 }
 
 - (void)viewWillLayoutSubviews {
