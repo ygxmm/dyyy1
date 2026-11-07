@@ -17751,14 +17751,14 @@ static CGPoint DYYYAdjustDetailOffset(UITableView *table, CGPoint offset) {
     NSNumber *openedAt = objc_getAssociatedObject(table, &kDYYYOpendAtKey);
     if (!openedAt) return offset;
     if (now - openedAt.doubleValue > 3.0) return offset;
+    CGFloat target = [UIScreen mainScreen].bounds.size.height;
+    if (target < 400.0) return offset;
     // v691: 打开期间直接把偏移钉到 initialIndex × 屏幕高——
     // 原生按 769/792 算出来的值（14×769=10766）会被分页吸附成 13×852，就是这个"往前翻一格"。
     NSNumber *openIdx = objc_getAssociatedObject(table, &kDYYYOpenIdxKey);
     if (openIdx.integerValue > 0) {
         return CGPointMake(offset.x, (CGFloat)openIdx.integerValue * target);
     }
-    CGFloat target = [UIScreen mainScreen].bounds.size.height;
-    if (target < 400.0) return offset;
     CGFloat y = offset.y;
     if (y <= 1.0) return offset;
     if (fabs(y / target - (CGFloat)llround(y / target)) < 0.02) return offset;
