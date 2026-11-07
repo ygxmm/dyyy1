@@ -19063,7 +19063,8 @@ static void DYYYDetailRecordInitialIndex(UIViewController *vc) {
     %orig;
     // 原生可能在出现动画结束后才写完初始偏移 → 稍后再补两次。
     __weak UIViewController *weakVC = self;
-    for (double delay in @[@0.35, @1.0, @2.0]) {
+    for (NSNumber *delayNum in @[@0.35, @1.0, @2.0]) {
+        double delay = delayNum.doubleValue;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             UIViewController *vc = weakVC;
             if (!vc) return;
