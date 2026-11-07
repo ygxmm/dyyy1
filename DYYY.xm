@@ -17004,6 +17004,22 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
 
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         DYYYStretchPagerTableToSuperview(self, 0.0);
+
+        // v729: 放大/缩小会让表在 792 ↔ 852 之间变高，偏移却留在旧网格上
+        // （快照实测：bounds.y=14256=18×792，而行已经是 852，屏幕正好卡在两行之间）。
+        // 高度一变就把偏移按页重算到新网格，只做这一条。
+        static char kDYYYFeedLastHeightKey;
+        NSNumber *last = objc_getAssociatedObject(self, &kDYYYFeedLastHeightKey);
+        CGFloat now = self.bounds.size.height;
+        if (last && fabs(last.doubleValue - now) > 0.5 && last.doubleValue > 400.0) {
+            CGFloat pages = self.contentOffset.y / last.doubleValue;
+            if (fabs(pages - round(pages)) < 0.02) {
+                objc_setAssociatedObject(self, &kDYYYFeedLastHeightKey, @(now), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                self.contentOffset = CGPointMake(0, round(pages) * now);
+                return;
+            }
+        }
+        objc_setAssociatedObject(self, &kDYYYFeedLastHeightKey, @(now), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     } else if (gCurrentTabBarHeight > 0) {
         UIWindow *keyWindow = [DYYYUtils getActiveWindow];
         if (keyWindow && keyWindow.safeAreaInsets.bottom == 0) {
