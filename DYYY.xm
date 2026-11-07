@@ -5164,63 +5164,11 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
 
 %end
 
-// v712: 评论面板顶部那条 40pt 的黑条，就是 section 背景。只隐藏这一条（面板内、y=0、高 40），
-// 不动磨砂、不动其他 section。
-static BOOL DYYYInsideCommentPanel(UIView *view) {
-    Class panelCls = NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController");
-    if (!panelCls) return NO;
-    for (UIResponder *r = view.nextResponder; r; r = r.nextResponder) {
-        if ([r isKindOfClass:panelCls]) return YES;
-    }
-    return NO;
-}
-
-%hook AWEBaseListSectionBackgroundView
-
-- (void)layoutSubviews {
-    %orig;
-    UIView *view = (UIView *)self;
-    if (!DYYYGetBoolCached(@"DYYYEnableCommentBlur") || !DYYYInsideCommentPanel(view)) return;
-    CGRect frame = view.frame;
-    if (fabs(frame.origin.y) <= 1.0 && frame.size.height <= 60.0) {
-        // v713: 只把顶部这条改成透明，不隐藏（隐藏会让后面更空、更黑）
-        view.backgroundColor = [UIColor clearColor];
-        view.layer.backgroundColor = [UIColor clearColor].CGColor;
-        for (UIView *sub in view.subviews) {
-            sub.backgroundColor = [UIColor clearColor];
-        }
-    }
-}
-
-%end
-
-// v713: 顶部 40pt 还有 header cell 自己的底色，一并清透明（同样只在评论面板内）
-static void DYYYClearCommentHeaderStrip(UIView *root, NSUInteger depth) {
-    if (depth > 3) return;
-    for (UIView *sub in root.subviews) {
-        NSString *cls = NSStringFromClass([sub class]);
-        if ([cls containsString:@"CommentPanelHeader"]) {
-            sub.backgroundColor = [UIColor clearColor];
-            sub.layer.backgroundColor = [UIColor clearColor].CGColor;
-            for (UIView *inner in sub.subviews) {
-                inner.backgroundColor = [UIColor clearColor];
-            }
-            continue;
-        }
-        DYYYClearCommentHeaderStrip(sub, depth + 1);
-    }
-}
-
 %hook AWEBaseListViewController
 - (void)viewDidLayoutSubviews {
     %orig;
 
     [self applyBlurEffectIfNeeded];
-
-    if (DYYYGetBoolCached(@"DYYYEnableCommentBlur") &&
-        [self isKindOfClass:NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController")]) {
-        DYYYClearCommentHeaderStrip(((UIViewController *)self).viewIfLoaded, 0);
-    }
 }
 
 %new
@@ -5228,8 +5176,13 @@ static void DYYYClearCommentHeaderStrip(UIView *root, NSUInteger depth) {
     if (DYYYGetBool(@"DYYYEnableCommentBlur") && [self isKindOfClass:NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController")]) {
         float userTransparency = [[[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYCommentBlurTransparent"] floatValue];
         if (userTransparency <= 0 || userTransparency > 1) userTransparency = 0.9;
+        // v714: 面板底色不能被清空——清空后磨砂的 backdrop 是空的，顶部 73pt 会渲染成黑条
+        // （实测 272→345pt 深灰，切后台重绘才消失）。这里保存原底色，注完磨砂再还回去。
+        UIColor *originalBackground = self.view.backgroundColor;
         [DYYYUtils applyBlurEffectToView:self.view transparency:userTransparency blurViewTag:999];
-
+        if (originalBackground) {
+            self.view.backgroundColor = originalBackground;
+        }
     }
 }
 
