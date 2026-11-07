@@ -19069,7 +19069,9 @@ static void DYYYDetailFixInitialOffset(UIViewController *vc) {
         objc_getAssociatedObject(vc, &kDYYYOpenBusyKey) == nil) {
         objc_setAssociatedObject(vc, &kDYYYOpenNativeKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(vc, &kDYYYOpenBusyKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        ((void (*)(id, SEL, long long))[vc methodForSelector:usel])(vc, usel, idx);
+        [UIView performWithoutAnimation:^{
+            ((void (*)(id, SEL, long long))[vc methodForSelector:usel])(vc, usel, idx);
+        }];
         objc_setAssociatedObject(vc, &kDYYYOpenBusyKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         if (fabs(table.contentOffset.y / h - (CGFloat)idx) <= 0.5) {
             objc_setAssociatedObject(vc, &kDYYYOpenIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -19078,7 +19080,9 @@ static void DYYYDetailFixInitialOffset(UIViewController *vc) {
     }
     if (objc_getAssociatedObject(vc, &kDYYYOpenFallbackKey) == nil) {
         objc_setAssociatedObject(vc, &kDYYYOpenFallbackKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [table setContentOffset:CGPointMake(0, (CGFloat)idx * h) animated:NO];
+        [UIView performWithoutAnimation:^{
+            [table setContentOffset:CGPointMake(0, (CGFloat)idx * h) animated:NO];
+        }];
     }
 }
 
@@ -19106,12 +19110,23 @@ static void DYYYDetailRecordInitialIndex(UIViewController *vc) {
 
 %hook AWEAwemeDetailTableViewController
 
+- (void)viewWillAppear:(BOOL)animated {
+    %orig;
+    // v679: 在页面出现之前把几何一次性做对——此时纠正不会被看见，
+    // 之前放在布局回调里，会在推入动画途中把页面"拽"一下。
+    DYYYDetailZeroBottomConstraint(self);
+    UITableView *table = DYYYDetailTable(self);
+    [table layoutIfNeeded];
+    DYYYDetailSyncTableHeight(self);
+    DYYYDetailRecordInitialIndex(self);
+    DYYYDetailFixInitialOffset(self);
+}
+
 - (void)viewWillLayoutSubviews {
     %orig;
     DYYYDetailZeroBottomConstraint(self);
     DYYYDetailSyncTableHeight(self);
     DYYYDetailRecordInitialIndex(self);
-    DYYYDetailFixInitialOffset(self);
 }
 
 // 有的入口通过这个方法下发起始索引，提前记下来。
@@ -19128,7 +19143,6 @@ static void DYYYDetailRecordInitialIndex(UIViewController *vc) {
     DYYYDetailZeroBottomConstraint(self);
     DYYYDetailSyncTableHeight(self);
     DYYYDetailRecordInitialIndex(self);
-    DYYYDetailFixInitialOffset(self);
 }
 
 - (void)viewDidAppear:(BOOL)animated {
