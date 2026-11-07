@@ -19155,6 +19155,18 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
     return %orig;
 }
 
+// v703: 头文件里 tableViewBottomMargin 就是「表格比屏幕矮多少」的来源（原版 83、我们这 60）。
+// 直接答 0，让它内部所有按页高的计算（含初始偏移）都用整屏 852。
+- (double)tableViewBottomMargin {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
+    return %orig;
+}
+
+- (double)tableViewBottomInsetForAllPlatform {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
+    return %orig;
+}
+
 - (double)baseTableViewBottomInset {
     double inset = %orig;
     return [DYYYFullscreenCoordinator bottomInsetForDetail:inset controller:self];
