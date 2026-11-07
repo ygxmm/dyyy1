@@ -16208,6 +16208,28 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         if (!CGRectIntersectsRect(earlyRect, earlyView.window.bounds)) return;
     }
 
+    // v723: 探针确认那条 59pt 黑条挂在 AWEPlayInteractionViewController 上（nearestVC），
+    // 只有视频帖有交互层、图文没有，所以只有视频看得到。这里只扫它的直接子视图，开销极小。
+    {
+        CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
+        for (UIView *sub in earlyView.subviews) {
+            if (![sub isMemberOfClass:[UIView class]] || sub.hidden) continue;
+            CGRect f = sub.frame;
+            if (fabs(f.origin.y) > 0.5 || fabs(f.size.width - screenW) > 1.0) continue;
+            if (f.size.height < 40.0 || f.size.height > 80.0) continue;
+            CGColorRef cg = sub.backgroundColor.CGColor;
+            if (!cg) continue;
+            const CGFloat *comp = CGColorGetComponents(cg);
+            size_t n = CGColorGetNumberOfComponents(cg);
+            CGFloat r = 0, g = 0, b = 0, a = 1;
+            if (n >= 4) { r = comp[0]; g = comp[1]; b = comp[2]; a = comp[3]; }
+            else if (n == 2) { r = comp[0]; g = comp[0]; b = comp[0]; a = comp[1]; }
+            if (r < 0.05 && g < 0.05 && b < 0.05 && a > 0.95) {
+                sub.hidden = YES;
+            }
+        }
+    }
+
     {
     // v637: 完全照搬参考的交互层全屏逻辑（去掉 DYYYFloatingButtonCoordinator 依赖）。
     if (!self.viewIfLoaded.window) return;
