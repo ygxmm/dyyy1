@@ -17731,10 +17731,14 @@ static char kDYYYV29DoneKey; // v439
 // 所以在写入这一刻换算成 idx × 852。只做这一件事，页面不会停在错位置，
 // 也就没有"往前翻"和"被拽回来"。
 static char kDYYYOpendAtKey;
+static char kDYYYOpenIdxKey;
 
-static void DYYYMarkDetailTableOpening(UITableView *table) {
+static void DYYYMarkDetailTableOpening(UITableView *table, long long index) {
     if (!table) return;
     objc_setAssociatedObject(table, &kDYYYOpendAtKey, @(CACurrentMediaTime()), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (index > 0) {
+        objc_setAssociatedObject(table, &kDYYYOpenIdxKey, @(index), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
 }
 
 static CGPoint DYYYAdjustDetailOffset(UITableView *table, CGPoint offset) {
@@ -17747,6 +17751,12 @@ static CGPoint DYYYAdjustDetailOffset(UITableView *table, CGPoint offset) {
     NSNumber *openedAt = objc_getAssociatedObject(table, &kDYYYOpendAtKey);
     if (!openedAt) return offset;
     if (now - openedAt.doubleValue > 3.0) return offset;
+    // v691: 打开期间直接把偏移钉到 initialIndex × 屏幕高——
+    // 原生按 769/792 算出来的值（14×769=10766）会被分页吸附成 13×852，就是这个"往前翻一格"。
+    NSNumber *openIdx = objc_getAssociatedObject(table, &kDYYYOpenIdxKey);
+    if (openIdx.integerValue > 0) {
+        return CGPointMake(offset.x, (CGFloat)openIdx.integerValue * target);
+    }
     CGFloat target = [UIScreen mainScreen].bounds.size.height;
     if (target < 400.0) return offset;
     CGFloat y = offset.y;
@@ -19076,7 +19086,12 @@ static void DYYYDetailAlignOpenOffset(UIViewController *vc) {
     %orig;
     // 页面显示前再确认一次（原生可能在别处把约束改回去），并标记"正在打开"。
     DYYYDetailZeroBottomConstraint(self);
-    DYYYMarkDetailTableOpening(DYYYDetailTable(self));
+    long long openIdx = -1;
+    @try {
+        id v = [self valueForKey:@"initialIndex"];
+        if ([v respondsToSelector:@selector(longLongValue)]) openIdx = [v longLongValue];
+    } @catch (NSException *e) {}
+    DYYYMarkDetailTableOpening(DYYYDetailTable(self), openIdx);
     DYYYDetailAlignOpenOffset(self);
 }
 
