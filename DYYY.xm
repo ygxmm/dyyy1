@@ -17727,47 +17727,10 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 static char kDYYYV29DoneKey; // v439
 
-// 规则 3：打开阶段的偏移写入换算。原生按「表高 − 60」算好偏移再写给表，
-// 在写入时直接换算成表高基——页面不会先停在错位置，也就不会出现"拉拽"。
-static char kDYYYOpendAtKey;
-
-static CGPoint DYYYAdjustDetailOffset(UITableView *table, CGPoint offset) {
-    if (!table || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return offset;
-    if (!table.window || table.tracking || table.dragging) return offset;
-    NSTimeInterval now = CACurrentMediaTime();
-    NSNumber *openedAt = objc_getAssociatedObject(table, &kDYYYOpendAtKey);
-    if (!openedAt) {
-        openedAt = @(now);
-        objc_setAssociatedObject(table, &kDYYYOpendAtKey, openedAt, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    if (now - openedAt.doubleValue > 2.0) return offset;
-    CGFloat target = 0;
-    UIView *sv = table.superview;
-    if (sv && sv.bounds.size.height > 0) target = sv.bounds.size.height;
-    if (target < 400.0) target = [UIScreen mainScreen].bounds.size.height;
-    if (target < 400.0) return offset;
-    CGFloat y = offset.y;
-    if (y <= 1.0) return offset;
-    if (fabs(y / target - (CGFloat)llround(y / target)) < 0.02) return offset;
-    CGFloat base = target - 60.0;
-    if (base > 100.0 && fabs(y / base - (CGFloat)llround(y / base)) < 0.02) {
-        return CGPointMake(offset.x, (CGFloat)llround(y / base) * target);
-    }
-    return offset;
-}
-
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
         %orig(frame);
-}
-
-- (void)setContentOffset:(CGPoint)offset {
-    %orig(DYYYAdjustDetailOffset((UITableView *)self, offset));
-}
-
-- (void)setContentOffset:(CGPoint)offset animated:(BOOL)animated {
-    %orig(DYYYAdjustDetailOffset((UITableView *)self, offset), animated);
 }
 
 - (void)layoutSubviews {
@@ -17781,8 +17744,6 @@ static CGPoint DYYYAdjustDetailOffset(UITableView *table, CGPoint offset) {
     // 造成主线程长时间满载（实测冻屏 3 分钟以上）。这里恢复裁剪以降低渲染负载。
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         self.clipsToBounds = YES;
-        // v675: 与首页同一条表高规则；详情表会被底栏压到 792，这里每轮布局顶回 852。
-        DYYYStretchPagerTableToSuperview((UITableView *)self, 0.5);
     }
 
 }
@@ -18973,15 +18934,14 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
-// ==================== 详情页几何（v682 收口） ====================
-// 只保留三条规则，不再往上叠：
-//   1) 表 = 满屏：底栏 60pt 约束归零，布局后仍矮时补高；
-//   2) 行高 = 表高：原生返回「表高 − 60」时归一，其它值放行；
-//   3) 打开阶段的偏移写入按表高换算（792 基 → 852 基），不做任何事后纠正。
-// 之前那些「写完之后再改」的补位全部删掉——拉拽感就是它们造成的。
+// ==================== 详情页几何（v688 收口） ====================
+// 只做两件事，别的一概不碰：
+//   1) 底栏 60pt 的 bottom 约束归零（每轮布局重做，原生会改回去）；
+//   2) 行高归一化：原生给「屏幕高 − 60」（792）时返回屏幕高（852）。
+//      真正提供行高的是 AWEDetailFeedListContainer（代理背后的 target），不是 VC。
+// 不改偏移、不改 frame、不做任何事后补位——拉拽和掉帧都来自那些动作。
 
 static char kDYYYDetailConstraintKey;
-static char kDYYYDetailRowsFixedKey;
 
 static UITableView *DYYYDetailTable(UIViewController *vc) {
     if (!vc) return nil;
@@ -19020,45 +18980,6 @@ static void DYYYDetailZeroBottomConstraint(UIViewController *vc) {
     }
 }
 
-// 规则 1b：约束没覆盖到时，布局后直接把表补到满屏。
-static void DYYYDetailSyncTableHeight(UIViewController *vc) {
-    if (![NSThread isMainThread] || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    UITableView *table = DYYYDetailTable(vc);
-    if (!table || !table.window || !CGAffineTransformIsIdentity(table.transform)) return;
-    if (table.tracking || table.dragging || table.decelerating) return;
-    CGFloat target = 0;
-    UIView *sv = table.superview;
-    if (sv && sv.bounds.size.height > 0) target = sv.bounds.size.height;
-    else if (vc.viewIfLoaded) target = vc.viewIfLoaded.bounds.size.height;
-    if (target < 500.0) return;
-    if (fabs(target - [UIScreen mainScreen].bounds.size.height) > 1.0) return;
-    if (table.frame.size.height >= target - 0.5) return;
-    if (table.frame.size.height < target * 0.5) return;   // 转场早期半成品不动
-    CGRect frame = table.frame;
-    frame.size.height = target;
-    table.frame = frame;
-
-    // v683: 第一行往往是在表还是 792 时建出来的，探针里 cell0=792、cell1/2=852 就是这个。
-    // 只把「当前可见的几行」重测一次（不是 beginUpdates/endUpdates 全表重排），
-    // 这样第一屏也是满高，且不会像全表重排那样卡顿。
-    if (objc_getAssociatedObject(table, &kDYYYDetailRowsFixedKey) == nil) {
-        objc_setAssociatedObject(table, &kDYYYDetailRowsFixedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (!table.window) return;
-            NSArray *visible = [table indexPathsForVisibleRows];
-            if (visible.count == 0) return;
-            BOOL stale = NO;
-            for (NSIndexPath *ip in visible) {
-                if ([table rectForRowAtIndexPath:ip].size.height < table.bounds.size.height - 0.5) { stale = YES; break; }
-            }
-            if (!stale) return;
-            [UIView performWithoutAnimation:^{
-                [table reloadRowsAtIndexPaths:visible withRowAnimation:UITableViewRowAnimationNone];
-            }];
-        });
-    }
-}
-
 // 规则 2：行高归一化。只把「表高 − 60」（典型 792）改成表高，其它值原样返回。
 static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
     if (!table || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return nativeH;
@@ -19071,45 +18992,6 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
     return nativeH;
 }
 
-// ===== v685 探针：详情页几何（写沙盒 Documents/dyyy_ui.log，最多 60 行） =====
-static void DYYYGeomProbeLine(NSString *line) {
-    if (line.length == 0) return;
-    static NSMutableSet *seen; static dispatch_once_t once;
-    dispatch_once(&once, ^{ seen = [NSMutableSet set]; });
-    @synchronized (seen) {
-        if (seen.count > 60 || [seen containsObject:line]) return;
-        [seen addObject:line];
-    }
-    @autoreleasepool {
-        NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_ui.log"];
-        if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
-            [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil];
-        }
-        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
-        if (!fh) return;
-        @try {
-            [fh seekToEndOfFile];
-            [fh writeData:[[line stringByAppendingString:@"\n"] dataUsingEncoding:NSUTF8StringEncoding]];
-        } @catch (NSException *e) {}
-        [fh closeFile];
-    }
-}
-
-static void DYYYGeomProbe(UIViewController *vc, NSString *tag) {
-    UITableView *t = DYYYDetailTable(vc);
-    if (!t) { DYYYGeomProbeLine([NSString stringWithFormat:@"[GEOM] %@ table=nil", tag]); return; }
-    NSInteger rows = [t numberOfRowsInSection:0];
-    CGFloat row0 = 0, row1y = 0;
-    if (rows > 0) {
-        row0 = [t rectForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]].size.height;
-        if (rows > 1) row1y = CGRectGetMinY([t rectForRowAtIndexPath:[NSIndexPath indexPathForRow:1 inSection:0]]);
-    }
-    DYYYGeomProbeLine([NSString stringWithFormat:
-        @"[GEOM] %@ frameH=%.0f boundsH=%.0f boundsY=%.1f rowH=%.1f est=%.1f rows=%ld row0=%.0f row1y=%.0f off=%.1f",
-        tag, t.frame.size.height, t.bounds.size.height, t.bounds.origin.y,
-        t.rowHeight, t.estimatedRowHeight, (long)rows, row0, row1y, t.contentOffset.y]);
-}
-
 // ==================== 详情页 Hook ====================
 %group DYYYDetailHeightHook
 
@@ -19120,39 +19002,27 @@ static void DYYYGeomProbe(UIViewController *vc, NSString *tag) {
 - (void)viewDidLoad {
     %orig;
     DYYYDetailZeroBottomConstraint(self);
-    [DYYYDetailTable(self) layoutIfNeeded];
-    DYYYDetailSyncTableHeight(self);
-    DYYYGeomProbe(self, @"viewDidLoad");
 }
 
 - (void)setupDetailTableView {
     %orig;
     DYYYDetailZeroBottomConstraint(self);
-    [DYYYDetailTable(self) layoutIfNeeded];
-    DYYYDetailSyncTableHeight(self);
-    DYYYGeomProbe(self, @"setupTable");
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
     // 页面显示前再确认一次（原生可能在别处把约束改回去）。
     DYYYDetailZeroBottomConstraint(self);
-    [DYYYDetailTable(self) layoutIfNeeded];
-    DYYYDetailSyncTableHeight(self);
-    DYYYGeomProbe(self, @"willAppear");
 }
 
 - (void)viewWillLayoutSubviews {
     %orig;
     DYYYDetailZeroBottomConstraint(self);
-    DYYYDetailSyncTableHeight(self);
 }
 
 - (void)viewDidLayoutSubviews {
     %orig;
     DYYYDetailZeroBottomConstraint(self);
-    DYYYDetailSyncTableHeight(self);
-    DYYYGeomProbe(self, @"didLayout");
 }
 
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
