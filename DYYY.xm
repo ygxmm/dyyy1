@@ -16972,13 +16972,16 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
         CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
         CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
-        for (UIView *level1 in ((UIView *)self).subviews) {
-            for (UIView *level2 in level1.subviews) {
-                CGRect f = level2.frame;
-                if (fabs(f.origin.y) > 0.5 || fabs(f.size.width - screenW) > 1.0) continue;
-                if (fabs(f.size.height - (screenH - 60.0)) > 1.0) continue;
-                f.size.height = screenH;
-                level2.frame = f;
+        // cell > contentView > UIView(852) > UIView(792)：目标容器在第三层，之前只扫到第二层
+        for (UIView *l1 in ((UIView *)self).subviews) {
+            for (UIView *l2 in l1.subviews) {
+                for (UIView *l3 in l2.subviews) {
+                    CGRect f = l3.frame;
+                    if (fabs(f.origin.y) > 0.5 || fabs(f.size.width - screenW) > 1.0) continue;
+                    if (fabs(f.size.height - (screenH - 60.0)) > 1.0) continue;
+                    f.size.height = screenH;
+                    l3.frame = f;
+                }
             }
         }
     }
