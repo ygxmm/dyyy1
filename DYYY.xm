@@ -5200,12 +5200,28 @@ static BOOL DYYYInsideCommentPanel(UIView *view) {
 
 %new
 - (void)applyBlurEffectIfNeeded {
-    if (DYYYGetBool(@"DYYYEnableCommentBlur") && [self isKindOfClass:NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController")]) {
-        float userTransparency = [[[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYCommentBlurTransparent"] floatValue];
-        if (userTransparency <= 0 || userTransparency > 1) userTransparency = 0.9;
-        [DYYYUtils applyBlurEffectToView:self.view transparency:userTransparency blurViewTag:999];
-
+    if (!DYYYGetBool(@"DYYYEnableCommentBlur")) return;
+    if (![self isKindOfClass:NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController")]) return;
+    float userTransparency = [[[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYCommentBlurTransparent"] floatValue];
+    if (userTransparency <= 0 || userTransparency > 1) userTransparency = 0.9;
+    // v710: 面板本身就带 UIVisualEffectView。之前我们又插一个、还把底色清空，
+    // 打开瞬间新模糊还没渲染出背景 → 顶部一条黑。现在只调原生那个的透明度，
+    // 不新增视图、不动底色，黑条没有出现的条件。
+    UIVisualEffectView *blur = nil;
+    for (UIView *sub in ((UIView *)self).subviews) {
+        if ([sub isKindOfClass:[UIVisualEffectView class]]) { blur = (UIVisualEffectView *)sub; break; }
     }
+    if (blur) {
+        blur.alpha = userTransparency;
+        return;
+    }
+    UIBlurEffect *effect = [UIBlurEffect effectWithStyle:[DYYYUtils isDarkMode] ? UIBlurEffectStyleDark : UIBlurEffectStyleLight];
+    UIVisualEffectView *created = [[UIVisualEffectView alloc] initWithEffect:effect];
+    created.frame = ((UIView *)self).bounds;
+    created.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    created.alpha = userTransparency;
+    created.tag = 999;
+    [((UIView *)self) insertSubview:created atIndex:0];
 }
 
 %end
