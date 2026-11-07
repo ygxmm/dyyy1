@@ -18913,6 +18913,9 @@ static char kDYYYOpenIdxKey;
 static char kDYYYOpenDeadlineKey;
 static char kDYYYOpenAppliedKey;
 static char kDYYYOpenBusyKey;
+static char kDYYYOpenNativeKey;
+static char kDYYYOpenFallbackKey;
+static char kDYYYHeightConvertedKey;
 
 static long long DYYYVCLLValue(UIViewController *vc, NSString *key) {
     @try {
@@ -18969,14 +18972,19 @@ static void DYYYDetailSyncTableHeight(UIViewController *vc) {
 
     // 表从 792 抬到 852 的瞬间，把按 792 排好的偏移换算成 852 基，
     // 判据：旧高度下正好整页对齐、新高度下不对齐。
-    CGFloat off = table.contentOffset.y;
-    if (off > 1.0 && height > 400.0) {
-        CGFloat pages = off / height;
-        CGFloat nearest = (CGFloat)llround(pages);
-        BOOL alignedOld = fabs(pages - nearest) < 0.02;
-        BOOL alignedNew = fabs(off / target - (CGFloat)llround(off / target)) < 0.02;
-        if (alignedOld && !alignedNew) {
-            table.contentOffset = CGPointMake(0, nearest * target);
+    // v676: 换算每张表只做一次。之前表会在 852/792 之间来回摆，每摆一次就乘一次
+    // 852/792（≈+7.6%），表现出来就是"打开一个上移 60，再打开又上移 60"。
+    if (objc_getAssociatedObject(table, &kDYYYHeightConvertedKey) == nil) {
+        CGFloat off = table.contentOffset.y;
+        if (off > 1.0 && height > 400.0) {
+            CGFloat pages = off / height;
+            CGFloat nearest = (CGFloat)llround(pages);
+            BOOL alignedOld = fabs(pages - nearest) < 0.02;
+            BOOL alignedNew = fabs(off / target - (CGFloat)llround(off / target)) < 0.02;
+            if (alignedOld && !alignedNew) {
+                table.contentOffset = CGPointMake(0, nearest * target);
+                objc_setAssociatedObject(table, &kDYYYHeightConvertedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }
         }
     }
 
@@ -19021,19 +19029,25 @@ static void DYYYDetailFixInitialOffset(UIViewController *vc) {
     CGFloat off = table.contentOffset.y;
     if (fabs(off / h - (CGFloat)idx) <= 0.5) return;
 
-    NSNumber *applied = objc_getAssociatedObject(vc, &kDYYYOpenAppliedKey);
-    if (applied.integerValue >= 4) return;
-    objc_setAssociatedObject(vc, &kDYYYOpenAppliedKey, @(applied.integerValue + 1), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
-    // 优先原生接口：会同时更新偏移、currentVisibleCellIndex 和播放器。
+    // v676: 原生接口和兜底各只做一次——重复调用会按"当前索引→目标索引"累加，
+    // 每调一次就多走一格，表现出来同样是"打开一个上移 60"。
     SEL usel = NSSelectorFromString(@"updateTableViewLayoutForTargetPageIndex:");
-    if ([vc respondsToSelector:usel] && objc_getAssociatedObject(vc, &kDYYYOpenBusyKey) == nil) {
+    if ([vc respondsToSelector:usel] &&
+        objc_getAssociatedObject(vc, &kDYYYOpenNativeKey) == nil &&
+        objc_getAssociatedObject(vc, &kDYYYOpenBusyKey) == nil) {
+        objc_setAssociatedObject(vc, &kDYYYOpenNativeKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(vc, &kDYYYOpenBusyKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         ((void (*)(id, SEL, long long))[vc methodForSelector:usel])(vc, usel, idx);
         objc_setAssociatedObject(vc, &kDYYYOpenBusyKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        if (fabs(table.contentOffset.y / h - (CGFloat)idx) <= 0.5) return;
+        if (fabs(table.contentOffset.y / h - (CGFloat)idx) <= 0.5) {
+            objc_setAssociatedObject(vc, &kDYYYOpenIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            return;
+        }
     }
-    [table setContentOffset:CGPointMake(0, (CGFloat)idx * h) animated:NO];
+    if (objc_getAssociatedObject(vc, &kDYYYOpenFallbackKey) == nil) {
+        objc_setAssociatedObject(vc, &kDYYYOpenFallbackKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [table setContentOffset:CGPointMake(0, (CGFloat)idx * h) animated:NO];
+    }
 }
 
 static void DYYYDetailRecordInitialIndex(UIViewController *vc) {
