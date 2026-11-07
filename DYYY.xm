@@ -55,6 +55,9 @@
 
 // setFrame 钩子重入闸：钩子内部会改 frame，可能触发新一轮布局并重入本方法
 static __thread int gDYYYSetFrameDepth = 0;
+
+// v687: 详情行高归一化（定义在文件后部，这里先声明）
+static double DYYYDetailRowHeight(UITableView *table, double nativeH);
 static void DYYYSetFrameDepthDec(int *p) { (void)p; gDYYYSetFrameDepth--; }
 
 
@@ -16856,6 +16859,38 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 // v250: 只对单个 cell 里的 player VC 拉高。
 
 
+// v687: 探针里 delegate 是 BSTTableViewDelegateOptProxy，它转发给 AWEDetailFeedListContainer——
+// 真正提供行高的是这个容器（UITableViewDataSource + UITableViewDelegate），不是 VC。
+// 之前一直在 VC 上加钩子，等于打错了人；这里直接钩它。
+%hook AWEDetailFeedListContainer
+
+- (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
+    double nativeH = %orig;
+    if ([a0 isKindOfClass:[UITableView class]]) {
+        return DYYYDetailRowHeight((UITableView *)a0, nativeH);
+    }
+    return nativeH;
+}
+
+- (double)heightForRowAtIndexPath:(id)a0 {
+    double nativeH = %orig;
+    id tv = nil;
+    @try { tv = [(id)self valueForKey:@"tableView"]; } @catch (NSException *e) {}
+    if ([tv isKindOfClass:[UITableView class]]) {
+        return DYYYDetailRowHeight((UITableView *)tv, nativeH);
+    }
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && screenH > 400.0) {
+        if (fabs(nativeH - screenH) <= 0.5) return nativeH;
+        if (fabs(nativeH - (screenH - 60.0)) <= 0.5) return screenH;
+    }
+    return nativeH;
+}
+
+%end
+
+
+
 // v675: 首页与详情共用同一条表高规则——布局后把分页表撑到父视图满高。
 // minRatio: 详情页传 0.5（转场/布局早期的半成品不动），首页传 0（保持原行为）。
 static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRatio) {
@@ -19147,37 +19182,6 @@ static void DYYYGeomProbe(UIViewController *vc, NSString *tag) {
 
 %end
 
-
-
-// v687: 探针里 delegate 是 BSTTableViewDelegateOptProxy，它转发给 AWEDetailFeedListContainer——
-// 真正提供行高的是这个容器（UITableViewDataSource + UITableViewDelegate），不是 VC。
-// 之前一直在 VC 上加钩子，等于打错了人；这里直接钩它。
-%hook AWEDetailFeedListContainer
-
-- (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
-    double nativeH = %orig;
-    if ([a0 isKindOfClass:[UITableView class]]) {
-        return DYYYDetailRowHeight((UITableView *)a0, nativeH);
-    }
-    return nativeH;
-}
-
-- (double)heightForRowAtIndexPath:(id)a0 {
-    double nativeH = %orig;
-    id tv = nil;
-    @try { tv = [self valueForKey:@"tableView"]; } @catch (NSException *e) {}
-    if ([tv isKindOfClass:[UITableView class]]) {
-        return DYYYDetailRowHeight((UITableView *)tv, nativeH);
-    }
-    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && screenH > 400.0) {
-        if (fabs(nativeH - screenH) <= 0.5) return nativeH;
-        if (fabs(nativeH - (screenH - 60.0)) <= 0.5) return screenH;
-    }
-    return nativeH;
-}
-
-%end
 
 
 %hook AWEAwemePlayVideoViewController
