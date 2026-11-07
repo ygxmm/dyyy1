@@ -16856,14 +16856,27 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 // v250: 只对单个 cell 里的 player VC 拉高。
 
 
+// v675: 首页与详情共用同一条表高规则——布局后把分页表撑到父视图满高。
+// minRatio: 详情页传 0.5（转场/布局早期的半成品不动），首页传 0（保持原行为）。
+static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRatio) {
+    if (!table || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    UIView *sv = table.superview;
+    if (!sv) return;
+    CGFloat target = sv.bounds.size.height;
+    if (target < 400.0) return;
+    CGRect frame = table.frame;
+    if (fabs(frame.size.height - target) < 0.5) return;
+    if (minRatio > 0.0 && frame.size.height < target * minRatio) return;
+    frame.size.height = target;
+    table.frame = frame;
+}
+
 %hook AWEFeedTableView
 - (void)layoutSubviews {
     %orig;
 
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGRect frame = self.frame;
-        frame.size.height = self.superview.frame.size.height;
-        self.frame = frame;
+        DYYYStretchPagerTableToSuperview(self, 0.0);
     } else if (gCurrentTabBarHeight > 0) {
         UIWindow *keyWindow = [DYYYUtils getActiveWindow];
         if (keyWindow && keyWindow.safeAreaInsets.bottom == 0) {
@@ -17696,6 +17709,8 @@ static char kDYYYV29DoneKey; // v439
     // 造成主线程长时间满载（实测冻屏 3 分钟以上）。这里恢复裁剪以降低渲染负载。
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         self.clipsToBounds = YES;
+        // v675: 与首页同一条表高规则；详情表会被底栏压到 792，这里每轮布局顶回 852。
+        DYYYStretchPagerTableToSuperview((UITableView *)self, 0.5);
     }
 
 }
