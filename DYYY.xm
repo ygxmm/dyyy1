@@ -19149,6 +19149,37 @@ static void DYYYGeomProbe(UIViewController *vc, NSString *tag) {
 
 
 
+// v687: 探针里 delegate 是 BSTTableViewDelegateOptProxy，它转发给 AWEDetailFeedListContainer——
+// 真正提供行高的是这个容器（UITableViewDataSource + UITableViewDelegate），不是 VC。
+// 之前一直在 VC 上加钩子，等于打错了人；这里直接钩它。
+%hook AWEDetailFeedListContainer
+
+- (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
+    double nativeH = %orig;
+    if ([a0 isKindOfClass:[UITableView class]]) {
+        return DYYYDetailRowHeight((UITableView *)a0, nativeH);
+    }
+    return nativeH;
+}
+
+- (double)heightForRowAtIndexPath:(id)a0 {
+    double nativeH = %orig;
+    id tv = nil;
+    @try { tv = [self valueForKey:@"tableView"]; } @catch (NSException *e) {}
+    if ([tv isKindOfClass:[UITableView class]]) {
+        return DYYYDetailRowHeight((UITableView *)tv, nativeH);
+    }
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && screenH > 400.0) {
+        if (fabs(nativeH - screenH) <= 0.5) return nativeH;
+        if (fabs(nativeH - (screenH - 60.0)) <= 0.5) return screenH;
+    }
+    return nativeH;
+}
+
+%end
+
+
 %hook AWEAwemePlayVideoViewController
 
 %end
