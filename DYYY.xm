@@ -16967,35 +16967,6 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
         [hideButton hideUIElements];
     }
     %orig;
-    // v717: 黑条的根因不是那条 59pt 视图，而是它所在的容器只有「屏高 − 60」（792）。
-    // 把该容器撑到整屏，黑条没有立足空间，也不需要再去清理任何东西。
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-        CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
-        // cell > contentView > UIView(852) > UIView(792)：目标容器在第三层，之前只扫到第二层
-        for (UIView *l1 in ((UIView *)self).subviews) {
-            for (UIView *l2 in l1.subviews) {
-                for (UIView *l3 in l2.subviews) {
-                    CGRect f = l3.frame;
-                    if (fabs(f.origin.y) > 0.5 || fabs(f.size.width - screenW) > 1.0) continue;
-                    if (fabs(f.size.height - (screenH - 60.0)) > 1.0) continue;
-                    f.size.height = screenH;
-                    l3.frame = f;
-                    // 该容器里的 59pt 纯黑条每次布局都清一次（原生会重新显示它，
-                    // 之前加了“每 cell 只做一次”的标记，第二次就不管了）
-                    for (UIView *strip in l3.subviews) {
-                        if (![strip isMemberOfClass:[UIView class]] || !strip.hidden) {
-                            if (![strip isMemberOfClass:[UIView class]]) continue;
-                        }
-                        CGRect sf = strip.frame;
-                        if (fabs(sf.origin.y) > 0.5 || fabs(sf.size.width - screenW) > 1.0) continue;
-                        if (sf.size.height < 40.0 || sf.size.height > 80.0) continue;
-                        strip.hidden = YES;
-                    }
-                }
-            }
-        }
-    }
 }
 
 - (void)setModel:(id)model {
