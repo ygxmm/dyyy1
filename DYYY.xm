@@ -16194,7 +16194,9 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
     // v723: 探针确认那条 59pt 黑条挂在 AWEPlayInteractionViewController 上（nearestVC），
     // 只有视频帖有交互层、图文没有，所以只有视频看得到。这里只扫它的直接子视图，开销极小。
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+    // v727: 这条 59pt 黑条只在「评论区磨砂」开启时出现（磨砂掀掉面板底色后露出交互层的黑色遮挡块），
+    // 所以归属磨砂开关，而不是全屏开关。
+    if (DYYYGetBoolCached(@"DYYYEnableCommentBlur")) {
         CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
         for (UIView *sub in earlyView.subviews) {
             if (![sub isMemberOfClass:[UIView class]] || sub.hidden) continue;
