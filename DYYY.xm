@@ -18921,6 +18921,16 @@ static void DYYYEarlyZeroDetailTableConstraint(UIViewController *vc) {
     }
 }
 
+// v661: 详情页统一高度 = 窗口高度。翻页器在点击瞬间就询问这些方法，
+// 此时表格尚未布局（bounds=0/792），不能依赖 table.bounds；直接给窗口高度，
+// 让原生从第一条指令起就按 852 计算每页偏移。
+static CGFloat DYYYDetailPageHeight(UITableView *table) {
+    UIWindow *win = table.window;
+    if (!win) win = [UIApplication sharedApplication].keyWindow;
+    if (win && win.bounds.size.height > 0) return win.bounds.size.height;
+    return [UIScreen mainScreen].bounds.size.height;
+}
+
 // ===== v656 探针：详情分页几何（写沙盒 Documents/dyyy_ui.log） =====
 static void DYYYProbeDetailBrief(UIViewController *vc) {
     @autoreleasepool {
@@ -18975,12 +18985,31 @@ static void DYYYProbeDetailBrief(UIViewController *vc) {
 }
 
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
-    double height = %orig;
-    UITableView *table = (UITableView *)a0;
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && [table isKindOfClass:[UITableView class]] && table.bounds.size.height > 0) {
-        return table.bounds.size.height;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && [a0 isKindOfClass:[UITableView class]]) {
+        return DYYYDetailPageHeight((UITableView *)a0);
     }
-    return height;
+    return %orig;
+}
+
+- (double)cellHeight {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        return DYYYDetailPageHeight([self tableView]);
+    }
+    return %orig;
+}
+
+- (double)fixedCellHeight {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        return DYYYDetailPageHeight([self tableView]);
+    }
+    return %orig;
+}
+
+- (double)cellHeightAtIndex:(long long)index {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        return DYYYDetailPageHeight([self tableView]);
+    }
+    return %orig;
 }
 
 - (double)baseTableViewBottomInset {
