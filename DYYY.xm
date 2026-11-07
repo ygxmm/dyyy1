@@ -17698,6 +17698,14 @@ static char kDYYYV29DoneKey; // v439
         %orig(frame);
 }
 
+- (void)setContentOffset:(CGPoint)offset {
+    %orig(DYYYDetailAdjustOffset((UITableView *)self, offset));
+}
+
+- (void)setContentOffset:(CGPoint)offset animated:(BOOL)animated {
+    %orig(DYYYDetailAdjustOffset((UITableView *)self, offset), animated);
+}
+
 - (void)layoutSubviews {
     %orig;
 
@@ -19097,6 +19105,30 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
     return nativeH;
 }
 
+// v680: 在"写偏移"的入口换算，而不是写完之后再改——这样页面永远不会先停在
+// 错位置再被拽回来。只在这一页还有待归位的 initialIndex 时生效。
+static CGPoint DYYYDetailAdjustOffset(UITableView *table, CGPoint offset) {
+    if (!table || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return offset;
+    if (!table.window || table.tracking || table.dragging) return offset;
+    id vc = nil;
+    @try { vc = [table valueForKey:@"containerVC"]; } @catch (NSException *e) {}
+    NSNumber *idxNum = vc ? objc_getAssociatedObject(vc, &kDYYYOpenIdxKey) : nil;
+    if (!idxNum) return offset;
+    CGFloat h = table.rowHeight;
+    if (h < 400.0) return offset;
+    CGFloat y = offset.y;
+    if (y <= 1.0) return offset;
+    // 已经是表高的整数倍 → 放行
+    if (fabs(y / h - (CGFloat)llround(y / h)) < 0.02) return offset;
+    // 「表高 − 60」的整数倍（典型 792 基）→ 换算成表高基
+    CGFloat base = h - 60.0;
+    if (base > 100.0 && fabs(y / base - (CGFloat)llround(y / base)) < 0.02) {
+        CGFloat pages = (CGFloat)llround(y / base);
+        return CGPointMake(offset.x, pages * h);
+    }
+    return offset;
+}
+
 static void DYYYDetailRecordInitialIndex(UIViewController *vc) {
     if (objc_getAssociatedObject(vc, &kDYYYOpenIdxKey) != nil) return;
     long long init = DYYYVCLLValue(vc, @"initialIndex");
@@ -19147,17 +19179,14 @@ static void DYYYDetailRecordInitialIndex(UIViewController *vc) {
 
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
-    // 原生可能在出现动画结束后才写完初始偏移 → 稍后再补两次。
+    // v680: 不再在这里补偏移（那是"拽一下"的来源）。
+    // 偏移在写入入口就按表高换算了，这里只兜一次极端的落空情况，且关动画。
     __weak UIViewController *weakVC = self;
-    for (NSNumber *delayNum in @[@0.35, @1.2]) {
-        double delay = delayNum.doubleValue;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            UIViewController *vc = weakVC;
-            if (!vc) return;
-            DYYYDetailSyncTableHeight(vc);
-            DYYYDetailFixInitialOffset(vc);
-        });
-    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        UIViewController *vc = weakVC;
+        if (!vc) return;
+        DYYYDetailSyncTableHeight(vc);
+    });
 }
 
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
