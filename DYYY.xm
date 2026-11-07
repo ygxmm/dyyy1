@@ -17795,10 +17795,49 @@ static CGPoint DYYYLogDetailOffset(UITableView *table, CGPoint offset) {
     return offset;
 }
 
+// v706 探针：谁把详情表高度约束成 792 —— 记录约束的 constant 与 frame 写入的回溯
+static NSString *DYYYProbeStack(void) {
+    NSArray *symbols = [NSThread callStackSymbols];
+    NSMutableArray *hits = [NSMutableArray array];
+    for (NSString *sym in symbols) {
+        if ([sym containsString:@"AWEAwemeDetail"] || [sym containsString:@"AWEDetailFeed"] ||
+            [sym containsString:@"BSTTableView"] || [sym containsString:@"Layout"] ||
+            [sym containsString:@"DYYY"]) {
+            [hits addObject:[sym stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]]];
+            if (hits.count >= 6) break;
+        }
+    }
+    return [hits componentsJoinedByString:@" <- "];
+}
+
+%hook NSLayoutConstraint
+
+- (void)setConstant:(CGFloat)constant {
+    static Class detailTableCls; static dispatch_once_t once;
+    dispatch_once(&once, ^{ detailTableCls = NSClassFromString(@"AWEAwemeDetailTableView"); });
+    if (detailTableCls && fabs(constant) > 0.5) {
+        id first = self.firstItem;
+        id second = self.secondItem;
+        if ([first isKindOfClass:detailTableCls] || [second isKindOfClass:detailTableCls]) {
+            DYYYOffProbe([NSString stringWithFormat:@"[CON] constant=%.1f first=%@ attr=%ld second=%@ attr=%ld :: %@",
+                constant, NSStringFromClass([first class]), (long)self.firstAttribute,
+                second ? NSStringFromClass([second class]) : @"nil", (long)self.secondAttribute,
+                DYYYProbeStack()]);
+        }
+    }
+    %orig(constant);
+}
+
+%end
+
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
-        %orig(frame);
+    CGFloat h = CGRectGetHeight(frame);
+    if (fabs(h - 792.0) < 1.0 || (h > 700.0 && h < 800.0)) {
+        DYYYOffProbe([NSString stringWithFormat:@"[FRAME] h=%.1f w=%.0f :: %@", h, CGRectGetWidth(frame), DYYYProbeStack()]);
+    }
+    %orig(frame);
 }
 
 - (void)setContentOffset:(CGPoint)offset {
