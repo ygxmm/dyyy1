@@ -19034,6 +19034,46 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
     return nativeH;
 }
 
+// ===== v685 探针：详情页几何（写沙盒 Documents/dyyy_ui.log，最多 60 行） =====
+static void DYYYGeomProbeLine(NSString *line) {
+    if (line.length == 0) return;
+    static NSMutableSet *seen; static dispatch_once_t once;
+    dispatch_once(&once, ^{ seen = [NSMutableSet set]; });
+    @synchronized (seen) {
+        if (seen.count > 60 || [seen containsObject:line]) return;
+        [seen addObject:line];
+    }
+    @autoreleasepool {
+        NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_ui.log"];
+        if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+            [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil];
+        }
+        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+        if (!fh) return;
+        @try {
+            [fh seekToEndOfFile];
+            [fh writeData:[[line stringByAppendingString:@"
+"] dataUsingEncoding:NSUTF8StringEncoding]];
+        } @catch (NSException *e) {}
+        [fh closeFile];
+    }
+}
+
+static void DYYYGeomProbe(UIViewController *vc, NSString *tag) {
+    UITableView *t = DYYYDetailTable(vc);
+    if (!t) { DYYYGeomProbeLine([NSString stringWithFormat:@"[GEOM] %@ table=nil", tag]); return; }
+    NSInteger rows = [t numberOfRowsInSection:0];
+    CGFloat row0 = 0, row1y = 0;
+    if (rows > 0) {
+        row0 = [t rectForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]].size.height;
+        if (rows > 1) row1y = CGRectGetMinY([t rectForRowAtIndexPath:[NSIndexPath indexPathForRow:1 inSection:0]]);
+    }
+    DYYYGeomProbeLine([NSString stringWithFormat:
+        @"[GEOM] %@ frameH=%.0f boundsH=%.0f boundsY=%.1f rowH=%.1f est=%.1f rows=%ld row0=%.0f row1y=%.0f off=%.1f",
+        tag, t.frame.size.height, t.bounds.size.height, t.bounds.origin.y,
+        t.rowHeight, t.estimatedRowHeight, (long)rows, row0, row1y, t.contentOffset.y]);
+}
+
 // ==================== 详情页 Hook ====================
 %group DYYYDetailHeightHook
 
@@ -19046,6 +19086,7 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
     DYYYDetailZeroBottomConstraint(self);
     [DYYYDetailTable(self) layoutIfNeeded];
     DYYYDetailSyncTableHeight(self);
+    DYYYGeomProbe(self, @"viewDidLoad");
 }
 
 - (void)setupDetailTableView {
@@ -19053,6 +19094,7 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
     DYYYDetailZeroBottomConstraint(self);
     [DYYYDetailTable(self) layoutIfNeeded];
     DYYYDetailSyncTableHeight(self);
+    DYYYGeomProbe(self, @"setupTable");
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -19061,6 +19103,7 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
     DYYYDetailZeroBottomConstraint(self);
     [DYYYDetailTable(self) layoutIfNeeded];
     DYYYDetailSyncTableHeight(self);
+    DYYYGeomProbe(self, @"willAppear");
 }
 
 - (void)viewWillLayoutSubviews {
@@ -19073,6 +19116,7 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
     %orig;
     DYYYDetailZeroBottomConstraint(self);
     DYYYDetailSyncTableHeight(self);
+    DYYYGeomProbe(self, @"didLayout");
 }
 
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
