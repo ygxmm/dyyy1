@@ -16961,12 +16961,40 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
 }
 %end
 
+// v715: 探针确认那条黑条就是 cell 里的一个 UIView：frame={0,0,393,59}、纯黑、hidden=NO，
+// 挂在 UITableViewCellContentView > UIView(852) > UIView(792) 下面。
+// 它是在我们的 didAddSubview: 钩子生效之前就加进去的，所以 v377 那次从没清到它。
+// 这里在 cell 布局时直接扫自己的一层子视图（数量很少，开销可忽略）。
+static void DYYYClearTopBlackStrip(UIView *root) {
+    CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
+    for (UIView *sub in root.subviews) {
+        if (![sub isMemberOfClass:[UIView class]]) continue;
+        CGRect f = sub.frame;
+        if (fabs(f.origin.x) > 0.5 || fabs(f.origin.y) > 0.5) continue;
+        if (fabs(f.size.width - screenW) > 1.0) continue;
+        if (f.size.height < 40.0 || f.size.height > 80.0) continue;
+        CGColorRef cg = sub.backgroundColor.CGColor;
+        if (!cg) continue;
+        const CGFloat *comp = CGColorGetComponents(cg);
+        size_t n = CGColorGetNumberOfComponents(cg);
+        CGFloat r = 0, g = 0, b = 0, a = 1;
+        if (n >= 4) { r = comp[0]; g = comp[1]; b = comp[2]; a = comp[3]; }
+        else if (n == 2) { r = comp[0]; g = comp[0]; b = comp[0]; a = comp[1]; }
+        if (r < 0.05 && g < 0.05 && b < 0.05 && a > 0.95) {
+            sub.backgroundColor = [UIColor clearColor];
+            sub.layer.backgroundColor = [UIColor clearColor].CGColor;
+            sub.hidden = YES;
+        }
+    }
+}
+
 %hook AWEFeedViewCell
 - (void)layoutSubviews {
     if (hideButton && hideButton.isElementsHidden) {
         [hideButton hideUIElements];
     }
     %orig;
+    DYYYClearTopBlackStrip((UIView *)self);
 }
 
 - (void)setModel:(id)model {
