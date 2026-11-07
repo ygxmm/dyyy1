@@ -19027,7 +19027,9 @@ static void DYYYDetailSyncTableHeight(UIViewController *vc) {
 // 规则 2：行高归一化。只把「表高 − 60」（典型 792）改成表高，其它值原样返回。
 static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
     if (!table || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return nativeH;
-    CGFloat target = table.bounds.size.height;
+    // v686: 基准用「屏幕高度」而不是「表当前 bounds」。探针里 row0 一会儿 852 一会儿 792，
+    // 就是因为量行时表可能还是 792，拿它当 target 会把 792 原样放行。
+    CGFloat target = [UIScreen mainScreen].bounds.size.height;
     if (target < 400.0 || !isfinite(nativeH)) return nativeH;
     if (fabs(nativeH - target) <= 0.5) return nativeH;
     if (fabs(nativeH - (target - 60.0)) <= 0.5) return target;
