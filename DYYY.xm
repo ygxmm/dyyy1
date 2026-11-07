@@ -19163,6 +19163,28 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
 %end
 
 
+// v722: 打开评论区时视频被收成小窗，高度取自这个半屏转场方法。
+// 全屏模式下直接回答整屏高度，视频不再收缩，顶部也不会空出一条黑块。
+%group DYYYCommentPartialScreenGroup
+
+%hook AWECommentPanelContainerSwiftImpl_CommentContainerInnerViewController
+
+- (double)commentPartialScreenEnterTransition_innerContextProviderContentVCHeight {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        return [UIScreen mainScreen].bounds.size.height;
+    }
+    return %orig;
+}
+
+%end
+
+%end
+
+
 %ctor {
     %init(DYYYDetailHeightHook);
+    Class commentPanelClass = objc_getClass("AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController");
+    if (commentPanelClass && [commentPanelClass isSubclassOfClass:[UIViewController class]]) {
+        %init(DYYYCommentPartialScreenGroup, AWECommentPanelContainerSwiftImpl_CommentContainerInnerViewController = commentPanelClass);
+    }
 }
