@@ -17777,23 +17777,24 @@ static void DYYYOffProbe(NSString *line) {
 
 static CGPoint DYYYPinDetailOffset(UITableView *table, CGPoint offset) {
     if (!table || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return offset;
+    if (!table.window || table.tracking || table.dragging) return offset;
     NSNumber *openedAt = objc_getAssociatedObject(table, &kDYYYOpendAtKey);
-    if (!openedAt) return offset;
-    if (CACurrentMediaTime() - openedAt.doubleValue > 2.5) return offset;
-    NSArray *symbols = [NSThread callStackSymbols];
-    NSMutableArray *hits = [NSMutableArray array];
-    for (NSString *sym in symbols) {
-        if ([sym containsString:@"AWEAwemeDetail"] || [sym containsString:@"AWEDetailFeed"] ||
-            [sym containsString:@"BSTTableView"] || [sym containsString:@"SmartSlide"] ||
-            [sym containsString:@"DYYY"]) {
-            [hits addObject:[sym stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]]];
-            if (hits.count >= 5) break;
-        }
+    NSNumber *openIdx = objc_getAssociatedObject(table, &kDYYYOpenIdxKey);
+    if (!openedAt || openIdx.integerValue <= 0) return offset;
+    if (CACurrentMediaTime() - openedAt.doubleValue > 1.5) {
+        objc_setAssociatedObject(table, &kDYYYOpendAtKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(table, &kDYYYOpenIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return offset;
     }
-    DYYYOffProbe([NSString stringWithFormat:@"[OFF] y=%.0f idx=%@ :: %@",
-        offset.y, objc_getAssociatedObject(table, &kDYYYOpenIdxKey) ?: @(-1),
-        [hits componentsJoinedByString:@" <- "]]);
-    return offset;
+    CGFloat target = [UIScreen mainScreen].bounds.size.height;
+    if (target < 400.0) return offset;
+    CGFloat pinnedY = (CGFloat)openIdx.integerValue * target;
+    if (fabs(offset.y - pinnedY) <= 1.0) {
+        objc_setAssociatedObject(table, &kDYYYOpendAtKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(table, &kDYYYOpenIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return offset;
+    }
+    return CGPointMake(offset.x, pinnedY);
 }
 
 %hook AWEAwemeDetailTableView
