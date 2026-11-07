@@ -17759,10 +17759,21 @@ static CGPoint DYYYPinDetailOffset(UITableView *table, CGPoint offset) {
     NSNumber *openedAt = objc_getAssociatedObject(table, &kDYYYOpendAtKey);
     NSNumber *openIdx = objc_getAssociatedObject(table, &kDYYYOpenIdxKey);
     if (!openedAt || openIdx.integerValue <= 0) return offset;
-    if (CACurrentMediaTime() - openedAt.doubleValue > 3.0) return offset;
+    if (CACurrentMediaTime() - openedAt.doubleValue > 1.2) {
+        objc_setAssociatedObject(table, &kDYYYOpendAtKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(table, &kDYYYOpenIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return offset;
+    }
     CGFloat target = [UIScreen mainScreen].bounds.size.height;
     if (target < 400.0) return offset;
-    return CGPointMake(offset.x, (CGFloat)openIdx.integerValue * target);
+    CGFloat pinnedY = (CGFloat)openIdx.integerValue * target;
+    // v697: 已经写到位就收手，别在打开后的每一帧继续改偏移（那是卡顿来源）。
+    if (fabs(offset.y - pinnedY) <= 1.0) {
+        objc_setAssociatedObject(table, &kDYYYOpendAtKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(table, &kDYYYOpenIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return offset;
+    }
+    return CGPointMake(offset.x, pinnedY);
 }
 
 %hook AWEAwemeDetailTableView
