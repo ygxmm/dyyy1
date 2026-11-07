@@ -16961,12 +16961,44 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
 }
 %end
 
+// v719: 只隐藏、不改 frame。上一版在 layoutSubviews 里改 frame 触发二次布局 → 卡死。
+// 探针已确认黑条是「整宽、顶部、40~80 高、纯黑、裸 UIView」，挂在 cell 内第三层容器下。
+static void DYYYHideBlackStripInView(UIView *view, NSUInteger depth) {
+    if (depth > 3) return;
+    CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
+    for (UIView *sub in view.subviews) {
+        if ([sub isMemberOfClass:[UIView class]] && !sub.hidden) {
+            CGRect f = sub.frame;
+            if (fabs(f.origin.x) <= 0.5 && fabs(f.origin.y) <= 0.5 &&
+                fabs(f.size.width - screenW) <= 1.0 &&
+                f.size.height >= 40.0 && f.size.height <= 80.0) {
+                CGColorRef cg = sub.backgroundColor.CGColor;
+                if (cg) {
+                    const CGFloat *comp = CGColorGetComponents(cg);
+                    size_t n = CGColorGetNumberOfComponents(cg);
+                    CGFloat r = 0, g = 0, b = 0, a = 1;
+                    if (n >= 4) { r = comp[0]; g = comp[1]; b = comp[2]; a = comp[3]; }
+                    else if (n == 2) { r = comp[0]; g = comp[0]; b = comp[0]; a = comp[1]; }
+                    if (r < 0.05 && g < 0.05 && b < 0.05 && a > 0.95) {
+                        sub.hidden = YES;
+                        continue;
+                    }
+                }
+            }
+        }
+        DYYYHideBlackStripInView(sub, depth + 1);
+    }
+}
+
 %hook AWEFeedViewCell
 - (void)layoutSubviews {
     if (hideButton && hideButton.isElementsHidden) {
         [hideButton hideUIElements];
     }
     %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        DYYYHideBlackStripInView((UIView *)self, 0);
+    }
 }
 
 - (void)setModel:(id)model {
