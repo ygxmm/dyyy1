@@ -22,10 +22,11 @@ jobs:
           if [ -z "$(ls $HOME/theos/sdks 2>/dev/null)" ]; then
             cd $HOME/theos/sdks
             curl -sL -o sdks.zip https://github.com/theos/sdks/archive/refs/heads/master.zip
-            TMPDIR=$(mktemp -d)
-            unzip -q sdks.zip -d "$TMPDIR"
-            mv "$TMPDIR"/sdks-master/*.sdk "$HOME/theos/sdks/"
-            rm -rf sdks.zip "$TMPDIR"
+            # macOS 自带 unzip 创建 SDK 内符号链接会报 Permission denied；
+            # 改用系统自带 bsdtar（libarchive），失败再退回 ditto。
+            bsdtar -xf sdks.zip 2>/dev/null || ditto -x -k sdks.zip .
+            mv sdks-master/*.sdk "$HOME/theos/sdks/" 2>/dev/null || true
+            rm -rf sdks.zip sdks-master
           fi
           ls $HOME/theos/sdks
 
