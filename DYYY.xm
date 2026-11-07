@@ -16961,82 +16961,27 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
 }
 %end
 
-// v715: 探针确认那条黑条就是 cell 里的一个 UIView：frame={0,0,393,59}、纯黑、hidden=NO，
-// 挂在 UITableViewCellContentView > UIView(852) > UIView(792) 下面。
-// 它是在我们的 didAddSubview: 钩子生效之前就加进去的，所以 v377 那次从没清到它。
-// 这里在 cell 布局时直接扫自己的一层子视图（数量很少，开销可忽略）。
-static char kDYYYBlackStripKilledKey;
-static char kDYYYBlackStripLoggedKey;
-
-static void DYYYBlackStripLog(NSString *line) {
-    static NSMutableSet *seen; static dispatch_once_t once;
-    dispatch_once(&once, ^{ seen = [NSMutableSet set]; });
-    @synchronized (seen) {
-        if (seen.count > 30 || [seen containsObject:line]) return;
-        [seen addObject:line];
-    }
-    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_ui.log"];
-    if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
-        [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil];
-    }
-    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
-    if (!fh) return;
-    @try {
-        [fh seekToEndOfFile];
-        [fh writeData:[[line stringByAppendingString:@"\n"] dataUsingEncoding:NSUTF8StringEncoding]];
-    } @catch (NSException *e) {}
-    [fh closeFile];
-}
-
-// 递归找「整宽、顶部、40~80 高、纯黑」的裸 UIView，记录祖先链并清掉
-static BOOL DYYYFindBlackStrip(UIView *view, NSUInteger depth, NSString *chain) {
-    if (depth > 5) return NO;
-    CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
-    for (UIView *sub in view.subviews) {
-        CGRect f = sub.frame;
-        BOOL geomMatch = [sub isMemberOfClass:[UIView class]]
-            && fabs(f.origin.x) <= 0.5 && fabs(f.origin.y) <= 0.5
-            && fabs(f.size.width - screenW) <= 1.0
-            && f.size.height >= 40.0 && f.size.height <= 80.0;
-        if (geomMatch) {
-            CGColorRef cg = sub.backgroundColor.CGColor;
-            if (cg) {
-                const CGFloat *comp = CGColorGetComponents(cg);
-                size_t n = CGColorGetNumberOfComponents(cg);
-                CGFloat r = 0, g = 0, b = 0, a = 1;
-                if (n >= 4) { r = comp[0]; g = comp[1]; b = comp[2]; a = comp[3]; }
-                else if (n == 2) { r = comp[0]; g = comp[0]; b = comp[0]; a = comp[1]; }
-                if (r < 0.05 && g < 0.05 && b < 0.05 && a > 0.95) {
-                    NSString *next = [NSString stringWithFormat:@"%@ > %@(%.0f)", chain, NSStringFromClass([view class]), view.frame.size.height];
-                    DYYYBlackStripLog([NSString stringWithFormat:@"[BLACK] h=%.0f chain=%@", f.size.height, next]);
-                    sub.backgroundColor = [UIColor clearColor];
-                    sub.layer.backgroundColor = [UIColor clearColor].CGColor;
-                    sub.hidden = YES;
-                    return YES;
-                }
-            }
-        }
-        if (DYYYFindBlackStrip(sub, depth + 1, [NSString stringWithFormat:@"%@ > %@(%.0f)", chain, NSStringFromClass([view class]), view.frame.size.height])) {
-            return YES;
-        }
-    }
-    return NO;
-}
-
-static void DYYYClearTopBlackStrip(UIView *root) {
-    if (objc_getAssociatedObject(root, &kDYYYBlackStripKilledKey)) return;
-    if (DYYYFindBlackStrip(root, 0, @"cell")) {
-        objc_setAssociatedObject(root, &kDYYYBlackStripKilledKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-}
-
 %hook AWEFeedViewCell
 - (void)layoutSubviews {
     if (hideButton && hideButton.isElementsHidden) {
         [hideButton hideUIElements];
     }
     %orig;
-    DYYYClearTopBlackStrip((UIView *)self);
+    // v717: 黑条的根因不是那条 59pt 视图，而是它所在的容器只有「屏高 − 60」（792）。
+    // 把该容器撑到整屏，黑条没有立足空间，也不需要再去清理任何东西。
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+        CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
+        for (UIView *level1 in ((UIView *)self).subviews) {
+            for (UIView *level2 in level1.subviews) {
+                CGRect f = level2.frame;
+                if (fabs(f.origin.y) > 0.5 || fabs(f.size.width - screenW) > 1.0) continue;
+                if (fabs(f.size.height - (screenH - 60.0)) > 1.0) continue;
+                f.size.height = screenH;
+                level2.frame = f;
+            }
+        }
+    }
 }
 
 - (void)setModel:(id)model {
