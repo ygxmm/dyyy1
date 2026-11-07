@@ -17753,10 +17753,71 @@ static void DYYYMarkDetailOpening(UITableView *table, long long index) {
     if (index > 0) objc_setAssociatedObject(table, &kDYYYOpenIdxKey, @(index), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
+// v705 探针：只记录、不改值——看 margin 归零后到底还有谁在写偏移
+static char kDYYYOpendAtKey;
+static char kDYYYOpenIdxKey;
+
+static void DYYYOffProbe(NSString *line) {
+    if (line.length == 0) return;
+    static NSMutableSet *seen; static dispatch_once_t once;
+    dispatch_once(&once, ^{ seen = [NSMutableSet set]; });
+    @synchronized (seen) {
+        if (seen.count > 40 || [seen containsObject:line]) return;
+        [seen addObject:line];
+    }
+    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_ui.log"];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+        [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil];
+    }
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+    if (!fh) return;
+    @try {
+        [fh seekToEndOfFile];
+        [fh writeData:[[line stringByAppendingString:@"\n"] dataUsingEncoding:NSUTF8StringEncoding]];
+    } @catch (NSException *e) {}
+    [fh closeFile];
+}
+
+static void DYYYMarkDetailOpening(UITableView *table, long long index) {
+    if (!table) return;
+    objc_setAssociatedObject(table, &kDYYYOpendAtKey, @(CACurrentMediaTime()), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (index > 0) objc_setAssociatedObject(table, &kDYYYOpenIdxKey, @(index), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static CGPoint DYYYLogDetailOffset(UITableView *table, CGPoint offset) {
+    if (!table || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return offset;
+    NSNumber *openedAt = objc_getAssociatedObject(table, &kDYYYOpendAtKey);
+    if (!openedAt) return offset;
+    if (CACurrentMediaTime() - openedAt.doubleValue > 2.5) return offset;
+    NSArray *symbols = [NSThread callStackSymbols];
+    NSMutableArray *hits = [NSMutableArray array];
+    for (NSString *sym in symbols) {
+        if ([sym containsString:@"AWEAwemeDetail"] || [sym containsString:@"AWEDetailFeed"] ||
+            [sym containsString:@"BSTTableView"] || [sym containsString:@"SmartSlide"] ||
+            [sym containsString:@"DYYY"]) {
+            [hits addObject:[sym stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]]];
+            if (hits.count >= 5) break;
+        }
+    }
+    DYYYOffProbe([NSString stringWithFormat:@"[OFF] y=%.0f h=%.0f idx=%@ :: %@",
+        offset.y, table.bounds.size.height,
+        objc_getAssociatedObject(table, &kDYYYOpenIdxKey) ?: @(-1),
+        [hits componentsJoinedByString:@" <- "]]);
+    return offset;
+}
+
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
         %orig(frame);
+}
+
+- (void)setContentOffset:(CGPoint)offset {
+    %orig(DYYYLogDetailOffset((UITableView *)self, offset));
+}
+
+- (void)setContentOffset:(CGPoint)offset animated:(BOOL)animated {
+    %orig(DYYYLogDetailOffset((UITableView *)self, offset), animated);
 }
 
 - (void)layoutSubviews {
@@ -19039,8 +19100,14 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
 
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
-    // 页面显示前再确认一次，并记下目标索引供写入时钉住。
+    // 页面显示前再确认一次，并标记探针窗口。
     DYYYDetailZeroBottomConstraint(self);
+    long long openIdx = -1;
+    @try {
+        id v = [self valueForKey:@"initialIndex"];
+        if ([v respondsToSelector:@selector(longLongValue)]) openIdx = [v longLongValue];
+    } @catch (NSException *e) {}
+    DYYYMarkDetailOpening(DYYYDetailTable(self), openIdx);
 }
 
 - (void)viewWillLayoutSubviews {
