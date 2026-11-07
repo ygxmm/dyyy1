@@ -16999,37 +16999,27 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
 }
 
 %hook AWEFeedTableView
+
+// v731: 与详情页同一套逻辑——信息流表也永远不允许出现「屏高 − 60」的高度。
+// 只要它真的变成过 792，那一轮建出来的行就按 792 排版，和后来的 852 混成两套网格，
+// 于是放大缩小、拖进度条都会错位。在写入入口夹住，行从第一次起就都是 852。
+- (void)setFrame:(CGRect)frame {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+        CGFloat h = CGRectGetHeight(frame);
+        if (screenH > 400.0 && fabs(h - (screenH - 60.0)) <= 1.0) {
+            frame.size.height = screenH;
+        }
+    }
+    %orig(frame);
+}
+
 - (void)layoutSubviews {
     %orig;
 
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         DYYYStretchPagerTableToSuperview(self, 0.0);
 
-        // v729: 放大/缩小会让表在 792 ↔ 852 之间变高，偏移却留在旧网格上
-        // （快照实测：bounds.y=14256=18×792，而行已经是 852，屏幕正好卡在两行之间）。
-        // 高度一变就把偏移按页重算到新网格，只做这一条。
-        static char kDYYYFeedLastHeightKey;
-        NSNumber *last = objc_getAssociatedObject(self, &kDYYYFeedLastHeightKey);
-        CGFloat now = self.bounds.size.height;
-        if (last && fabs(last.doubleValue - now) > 0.5 && last.doubleValue > 400.0) {
-            CGFloat pages = self.contentOffset.y / last.doubleValue;
-            objc_setAssociatedObject(self, &kDYYYFeedLastHeightKey, @(now), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            if (fabs(pages - round(pages)) < 0.05) {
-                // v730: 只改偏移不够——旧行还留在 792 的位置上（快照里 3960=5×792），
-                // 新行按 852 排，两套网格混在一起。这里按页位重新量一次行（一次性）。
-                [UIView performWithoutAnimation:^{
-                    self.contentOffset = CGPointMake(0, round(pages) * now);
-                }];
-                UITableView *table = (UITableView *)self;
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    if (!table.window) return;
-                    [table beginUpdates];
-                    [table endUpdates];
-                });
-                return;
-            }
-        }
-        objc_setAssociatedObject(self, &kDYYYFeedLastHeightKey, @(now), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     } else if (gCurrentTabBarHeight > 0) {
         UIWindow *keyWindow = [DYYYUtils getActiveWindow];
         if (keyWindow && keyWindow.safeAreaInsets.bottom == 0) {
