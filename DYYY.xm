@@ -70,7 +70,8 @@
 //      AWEAwemeDetailTableViewCell -enableFullScreenPlay: → YES
 //   3. 交互层（HUD）
 //      AWEPlayInteractionViewController -viewDidLayoutSubviews
-//                                                  → 隐藏顶部 59pt 纯黑条（状态栏遮挡块）
+//                                                  → 隐藏顶部 59pt 纯黑条（交互层遮挡块，
+//                                                    归「评论区磨砂」DYYYEnableCommentBlur 管）
 //      p_stackContainerViewBottomOffset            → 详情页异常负值归位
 //   4. 播放器容器
 //      AWEDPlayerViewController_Merge / AWEDPlayerFeedPlayerViewController
