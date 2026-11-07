@@ -18991,6 +18991,14 @@ static void DYYYDetailSyncTableHeight(UIViewController *vc) {
     CGRect frame = table.frame;
     frame.size.height = target;
     table.frame = frame;
+
+    // v677: 行是在表还 792 时建的，抬高后要重新问一次行高，否则 cell 仍是 792。
+    // 每张表只重建一次，避免每轮布局都 begin/endUpdates（v668 的卡死就是这么来的）。
+    if (objc_getAssociatedObject(table, &kDYYYDetailReloadedKey) == nil) {
+        objc_setAssociatedObject(table, &kDYYYDetailReloadedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [table beginUpdates];
+        [table endUpdates];
+    }
 }
 
 // 规则 3：把打开落点归位到 initialIndex。
@@ -19050,6 +19058,19 @@ static void DYYYDetailFixInitialOffset(UIViewController *vc) {
     }
 }
 
+// v677: 行高归一化——只在原生用"表高 - 60"（典型 792）时才改成表高。
+// 不做无条件 852：表还没撑满时返回窗口高度会制造"行 852 / 偏移 792"的错位。
+static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
+    if (!table || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return nativeH;
+    CGFloat target = table.bounds.size.height;
+    if (target < 400.0 || !isfinite(nativeH)) return nativeH;
+    if (fabs(nativeH - target) <= 0.5) return nativeH;
+    if (fabs(nativeH - (target - 60.0)) <= 0.5) return target;
+    return nativeH;
+}
+
+static char kDYYYDetailReloadedKey;
+
 static void DYYYDetailRecordInitialIndex(UIViewController *vc) {
     if (objc_getAssociatedObject(vc, &kDYYYOpenIdxKey) != nil) return;
     long long init = DYYYVCLLValue(vc, @"initialIndex");
@@ -19101,6 +19122,24 @@ static void DYYYDetailRecordInitialIndex(UIViewController *vc) {
             DYYYDetailFixInitialOffset(vc);
         });
     }
+}
+
+- (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
+    double nativeH = %orig;
+    if ([a0 isKindOfClass:[UITableView class]]) return DYYYDetailRowHeight((UITableView *)a0, nativeH);
+    return nativeH;
+}
+
+- (double)cellHeight {
+    return DYYYDetailRowHeight([self tableView], %orig);
+}
+
+- (double)fixedCellHeight {
+    return DYYYDetailRowHeight([self tableView], %orig);
+}
+
+- (double)cellHeightAtIndex:(long long)index {
+    return DYYYDetailRowHeight([self tableView], %orig);
 }
 
 - (double)baseTableViewBottomInset {
