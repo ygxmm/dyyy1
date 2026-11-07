@@ -18958,6 +18958,20 @@ static void DYYYSyncDetailTableHeight(UIViewController *vc) {
     CGFloat height = table.frame.size.height;
     if (height >= target - 0.5) return;
     if (height < target * 0.5) return;
+
+    // v672: 表从 792 抬到 852 的瞬间，把按 792 排好的偏移换算成 852 基，
+    // 避免"先停在错条目，再跳一下"。判据：旧高度下正好整页对齐、新高度下不对齐。
+    CGFloat off = table.contentOffset.y;
+    if (off > 1.0 && height > 400.0) {
+        CGFloat pages = off / height;
+        CGFloat nearest = (CGFloat)llround(pages);
+        BOOL alignedOld = fabs(pages - nearest) < 0.02;
+        BOOL alignedNew = fabs(off / target - (CGFloat)llround(off / target)) < 0.02;
+        if (alignedOld && !alignedNew) {
+            table.contentOffset = CGPointMake(0, nearest * target);
+        }
+    }
+
     CGRect frame = table.frame;
     frame.size.height = target;
     table.frame = frame;
