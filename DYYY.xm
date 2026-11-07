@@ -19039,9 +19039,25 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
 
 %hook AWEAwemeDetailTableViewController
 
+// v684: 关键的一处——行的实际高度是在表还 792 时量出来的（探针里 row0=792、row1=852），
+// 所以要在「建表 / 建行之前」就把表撑到满屏，而不是等 viewWillAppear。
+- (void)viewDidLoad {
+    %orig;
+    DYYYDetailZeroBottomConstraint(self);
+    [DYYYDetailTable(self) layoutIfNeeded];
+    DYYYDetailSyncTableHeight(self);
+}
+
+- (void)setupDetailTableView {
+    %orig;
+    DYYYDetailZeroBottomConstraint(self);
+    [DYYYDetailTable(self) layoutIfNeeded];
+    DYYYDetailSyncTableHeight(self);
+}
+
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
-    // 页面显示前就把表撑到满屏并让约束生效，行随后按 852 建，不需要任何事后补位。
+    // 页面显示前再确认一次（原生可能在别处把约束改回去）。
     DYYYDetailZeroBottomConstraint(self);
     [DYYYDetailTable(self) layoutIfNeeded];
     DYYYDetailSyncTableHeight(self);
