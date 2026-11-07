@@ -19037,10 +19037,9 @@ static void DYYYReconcileOpenIndex(UIViewController *vc) {
         return;
     }
     if (count <= 0) return;                        // 数据还没到，先别放弃
-    if (idx >= count) {
-        objc_setAssociatedObject(vc, &kDYYYOpenIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return;
-    }
+    // v673: 详情列表是分页加载的（日志里 rows 会 21→33→69→81→93 地长）。
+    // 目标索引还没加载出来时必须等，不能当成非法索引把校正清掉——之前就是这么丢的。
+    if (idx >= count) return;
 
     CGFloat off = t.contentOffset.y;
     if (fabs(off / h - (CGFloat)idx) <= 0.5) return;   // 已经对上（或只差半条以内）
@@ -19134,7 +19133,7 @@ static void DYYYProbeDetailGeometry(UIViewController *vc, UITableView *table) {
         long long init = DYYYVCLLValue(self, @"initialIndex");
         if (init > 0) {
             objc_setAssociatedObject(self, &kDYYYOpenIdxKey, @(init), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            objc_setAssociatedObject(self, &kDYYYOpenDeadlineKey, @(CACurrentMediaTime() + 5.0), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(self, &kDYYYOpenDeadlineKey, @(CACurrentMediaTime() + 8.0), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
     }
     DYYYReconcileOpenIndex(self);
@@ -19145,7 +19144,7 @@ static void DYYYProbeDetailGeometry(UIViewController *vc, UITableView *table) {
     %orig;
     if (index > 0 && objc_getAssociatedObject(self, &kDYYYOpenIdxKey) == nil) {
         objc_setAssociatedObject(self, &kDYYYOpenIdxKey, @(index), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(self, &kDYYYOpenDeadlineKey, @(CACurrentMediaTime() + 5.0), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(self, &kDYYYOpenDeadlineKey, @(CACurrentMediaTime() + 8.0), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 }
 
