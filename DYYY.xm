@@ -16996,8 +16996,15 @@ static void DYYYHideBlackStripInView(UIView *view, NSUInteger depth) {
         [hideButton hideUIElements];
     }
     %orig;
+    // 节流：每张 cell 最多 0.5s 扫一次，避免每帧递归拖慢滚动
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        DYYYHideBlackStripInView((UIView *)self, 0);
+        static char kDYYYStripScanKey;
+        NSTimeInterval now = CACurrentMediaTime();
+        NSNumber *last = objc_getAssociatedObject(self, &kDYYYStripScanKey);
+        if (!last || now - last.doubleValue > 0.5) {
+            objc_setAssociatedObject(self, &kDYYYStripScanKey, @(now), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            DYYYHideBlackStripInView((UIView *)self, 0);
+        }
     }
 }
 
