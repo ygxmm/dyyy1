@@ -17679,10 +17679,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 static char kDYYYV29DoneKey; // v439
 
-// v663: 前向声明——DYYYDetailPageHeight 的实现位于文件后部（v661 段落），
-// 而 v662 的 AWEAwemeDetailTableView / 表格约束归位块先用到它，缺声明会编译失败。
-static CGFloat DYYYDetailPageHeight(UITableView *table);
-
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
@@ -17702,15 +17698,6 @@ static CGFloat DYYYDetailPageHeight(UITableView *table);
         self.clipsToBounds = YES;
     }
 
-    // v660: 约束归零已提前到 AWEAwemeDetailTableViewController 的
-    // viewWillLayoutSubviews（首次布局前）。
-    // v662: 每次布局重申 rowHeight，防原生改回 792。
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        CGFloat targetH = DYYYDetailPageHeight((UITableView *)self);
-        UITableView *selfTable = (UITableView *)self;
-        if (fabs(selfTable.rowHeight - targetH) > 0.5) selfTable.rowHeight = targetH;
-        if (fabs(selfTable.estimatedRowHeight - targetH) > 0.5) selfTable.estimatedRowHeight = targetH;
-    }
 }
 
 %end
@@ -18899,8 +18886,10 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
-// v660: 在首次布局前把详情表格的 bottom 约束归零 —— 翻页器一开始就按
-// 852 计算每页偏移，点击直接滚到目标×852，无 792→852 过渡、无补位校正。
+// v668: 回到原版 Wtrwx/DYYY 的最小方案 —— 不硬改行高，交给原生按表格自身高度算；
+// 表格撑满后由 reconcileDetailPaging 用 currentVisibleCellIndex 重新下发分页，
+// 偏移 / 播放器 / cell 三者始终一致。
+// 之前的坑：只把 rowHeight 改成 852，原生算初始偏移时用的还是 792 → 打开错条。
 static void DYYYEarlyZeroDetailTableConstraint(UIViewController *vc) {
     if (![NSThread isMainThread]) return;
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
@@ -18930,86 +18919,6 @@ static void DYYYEarlyZeroDetailTableConstraint(UIViewController *vc) {
     if (changed) {
         objc_setAssociatedObject(table, &kDYYYV29DoneKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    // v662: rowHeight 属性存在时 UITableView 根本不调用 delegate 的
-    // heightForRowAtIndexPath（原生设了 792）→ contentSize 一直按 792 算。
-    // 直接把属性改成窗口高度，从第一次布局起内容就是 852。
-    CGFloat targetH = DYYYDetailPageHeight(table);
-    if (fabs(table.rowHeight - targetH) > 0.5) table.rowHeight = targetH;
-    if (fabs(table.estimatedRowHeight - targetH) > 0.5) table.estimatedRowHeight = targetH;
-}
-
-// v661: 详情页统一高度 = 窗口高度。翻页器在点击瞬间就询问这些方法，
-// 此时表格尚未布局（bounds=0/792），不能依赖 table.bounds；直接给窗口高度，
-// 让原生从第一条指令起就按 852 计算每页偏移。
-static CGFloat DYYYDetailPageHeight(UITableView *table) {
-    UIWindow *win = table.window;
-    if (!win) win = [UIApplication sharedApplication].keyWindow;
-    if (win && win.bounds.size.height > 0) return win.bounds.size.height;
-    return [UIScreen mainScreen].bounds.size.height;
-}
-
-// ===== v665：打开落点校正 =====
-// 实测：原生在表格还按 792 排版时就算好了初始偏移（idx × 792），
-// 而行高被我们统一成 852 → 落点 = idx × 792 / 852，条目越多偏得越远。
-// 这里记下原生下发的起始索引，等表格真正撑到 852 后按 idx × 行高补位。
-static char kDYYYOpenIdxKey;
-static char kDYYYOpenDeadlineKey;
-static char kDYYYOpenAppliedKey;
-
-static long long DYYYVCLLValue(UIViewController *vc, NSString *key) {
-    @try {
-        id v = [vc valueForKey:key];
-        if ([v respondsToSelector:@selector(longLongValue)]) return [v longLongValue];
-    } @catch (NSException *e) {}
-    return -1;
-}
-
-static void DYYYReconcileOpenIndex(UIViewController *vc) {
-    NSNumber *idxNum = objc_getAssociatedObject(vc, &kDYYYOpenIdxKey);
-    NSNumber *dlNum = objc_getAssociatedObject(vc, &kDYYYOpenDeadlineKey);
-    if (!idxNum || !dlNum) return;
-    SEL tsel = NSSelectorFromString(@"tableView");
-    if (![vc respondsToSelector:tsel]) return;
-    id tv = ((id (*)(id, SEL))[vc methodForSelector:tsel])(vc, tsel);
-    if (![tv isKindOfClass:[UITableView class]]) return;
-    UITableView *t = (UITableView *)tv;
-    if (t.window == nil) return;
-
-    // 手指按下/拖动 = 用户接管，放弃；decelerating 可能只是原生自己的初始滚动，等它停下
-    if (t.tracking || t.dragging) {
-        objc_setAssociatedObject(vc, &kDYYYOpenIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return;
-    }
-    if (t.decelerating) return;
-    if (CACurrentMediaTime() > dlNum.doubleValue) {
-        objc_setAssociatedObject(vc, &kDYYYOpenIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return;
-    }
-
-    CGFloat h = t.rowHeight;
-    if (h < 400.0) return;
-    if (t.bounds.size.height + 1.0 < h) return;   // 还没撑满全屏
-
-    long long idx = idxNum.longLongValue;
-    NSInteger count = [t numberOfRowsInSection:0];
-    if (idx <= 0) {
-        objc_setAssociatedObject(vc, &kDYYYOpenIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return;
-    }
-    if (count <= 0) return;                        // 数据还没到，先别放弃
-    if (idx >= count) {
-        objc_setAssociatedObject(vc, &kDYYYOpenIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return;
-    }
-
-    CGFloat off = t.contentOffset.y;
-    if (fabs(off / h - (CGFloat)idx) <= 0.5) return;   // 已经对上（或只差半条以内）
-
-    NSNumber *applied = objc_getAssociatedObject(vc, &kDYYYOpenAppliedKey);
-    if (applied.integerValue >= 4) return;
-    objc_setAssociatedObject(vc, &kDYYYOpenAppliedKey, @(applied.integerValue + 1), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
-    [t setContentOffset:CGPointMake(0, (CGFloat)idx * h) animated:NO];
 }
 
 // ==================== v457: 作品详情页高度统一 852 ====================
@@ -19017,77 +18926,22 @@ static void DYYYReconcileOpenIndex(UIViewController *vc) {
 
 %hook AWEAwemeDetailTableViewController
 
-
 - (void)viewWillLayoutSubviews {
     %orig;
-    // v660: 首次布局前归零 bottom 约束 → 表格尽快撑到 852。
+    // 把底栏那 60pt 的 bottom 约束归零，表格撑满整屏。
     DYYYEarlyZeroDetailTableConstraint(self);
-
-    // v665: 记下原生下发的起始索引（此时表格可能还没撑满，等下一轮再补位）。
-    if (objc_getAssociatedObject(self, &kDYYYOpenIdxKey) == nil) {
-        long long init = DYYYVCLLValue(self, @"initialIndex");
-        if (init > 0) {
-            objc_setAssociatedObject(self, &kDYYYOpenIdxKey, @(init), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            objc_setAssociatedObject(self, &kDYYYOpenDeadlineKey, @(CACurrentMediaTime() + 2.5), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-    }
-    DYYYReconcileOpenIndex(self);
-}
-
-// 有的入口是通过这个方法下发起始索引的，一并记录。
-- (void)pi_setupWithInitialIndex:(long long)index {
-    %orig;
-    if (index > 0 && objc_getAssociatedObject(self, &kDYYYOpenIdxKey) == nil) {
-        objc_setAssociatedObject(self, &kDYYYOpenIdxKey, @(index), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(self, &kDYYYOpenDeadlineKey, @(CACurrentMediaTime() + 2.5), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
 }
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    DYYYReconcileOpenIndex(self);
+    // 原版的关键一步：行高缓存还是 792 时重建行，并让原生按 currentVisibleCellIndex
+    // 重新下发分页偏移（内部调用 updateTableViewLayoutForTargetPageIndex:）。
+    [DYYYFullscreenCoordinator reconcileDetailPaging:self];
 }
 
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
-    // 原生可能在出现动画结束后才写完初始偏移 → 稍后再补一次。
-    __weak UIViewController *weakVC = self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        UIViewController *vc = weakVC;
-        if (vc) DYYYReconcileOpenIndex(vc);
-    });
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        UIViewController *vc = weakVC;
-        if (vc) DYYYReconcileOpenIndex(vc);
-    });
-}
-
-- (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && [a0 isKindOfClass:[UITableView class]]) {
-        return DYYYDetailPageHeight((UITableView *)a0);
-    }
-    return %orig;
-}
-
-- (double)cellHeight {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        return DYYYDetailPageHeight([self tableView]);
-    }
-    return %orig;
-}
-
-- (double)fixedCellHeight {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        return DYYYDetailPageHeight([self tableView]);
-    }
-    return %orig;
-}
-
-- (double)cellHeightAtIndex:(long long)index {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        return DYYYDetailPageHeight([self tableView]);
-    }
-    return %orig;
+    [DYYYFullscreenCoordinator reconcileDetailPaging:self];
 }
 
 - (double)baseTableViewBottomInset {
