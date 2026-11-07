@@ -5219,7 +5219,7 @@ static void DYYYClearCommentHeaderStrip(UIView *root, NSUInteger depth) {
 
     if (DYYYGetBoolCached(@"DYYYEnableCommentBlur") &&
         [self isKindOfClass:NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController")]) {
-        DYYYClearCommentHeaderStrip(((UIView *)self).viewIfLoaded, 0);
+        DYYYClearCommentHeaderStrip(((UIViewController *)self).viewIfLoaded, 0);
     }
 }
 
