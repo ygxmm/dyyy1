@@ -19180,6 +19180,20 @@ static void DYYYDetailRecordInitialIndex(UIViewController *vc) {
     DYYYDetailRecordInitialIndex(self);
 }
 
+// v681: 原生在页面出现后还会自己调一次偏移（adjustContentOffsetInDidAppear），
+// 它按的还是 792 基的几何，会把我们已经摆好的落点拽回去——就是这个"强拉回来"。
+- (void)adjustContentOffsetInDidAppear {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        UITableView *table = DYYYDetailTable(self);
+        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+        BOOL fullHeight = table && table.window && table.bounds.size.height >= screenH - 1.0;
+        if (fullHeight && objc_getAssociatedObject(self, &kDYYYOpenIdxKey) != nil) {
+            return;   // 落点已经归位，跳过原生这次二次调整
+        }
+    }
+    %orig;
+}
+
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
     // v680: 不再在这里补偏移（那是"拽一下"的来源）。
