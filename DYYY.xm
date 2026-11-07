@@ -5164,72 +5164,21 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
 
 %end
 
-// v709: 评论区顶部黑条来自面板里那条 40pt 的 AWEBaseListSectionBackgroundView（section 背景），
-// 磨砂把面板本身变透明后它就露出来了。磨砂开启时把它的底色清掉。
-static BOOL DYYYInsideCommentPanel(UIView *view) {
-    Class panelCls = NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController");
-    if (!panelCls) return NO;
-    for (UIResponder *r = view.nextResponder; r; r = r.nextResponder) {
-        if ([r isKindOfClass:panelCls]) return YES;
-    }
-    return NO;
-}
-
-%hook AWEBaseListSectionBackgroundView
-
-- (void)layoutSubviews {
-    %orig;
-    UIView *view = (UIView *)self;
-    if (DYYYGetBoolCached(@"DYYYEnableCommentBlur") && DYYYInsideCommentPanel(view)) {
-        view.backgroundColor = [UIColor clearColor];
-        view.layer.backgroundColor = [UIColor clearColor].CGColor;
-        for (UIView *sub in view.subviews) {
-            sub.backgroundColor = [UIColor clearColor];
-        }
-    }
-}
-
-%end
-
 %hook AWEBaseListViewController
-- (void)viewDidAppear:(BOOL)animated {
+- (void)viewDidLayoutSubviews {
     %orig;
-    // v711: 磨砂只在面板「出现之后」应用。之前在 viewDidLayoutSubviews 里做，
-    // 打开动画途中就在改背景/插模糊，backdrop 还没渲染出来 → 顶部一条黑。
-    if (DYYYGetBool(@"DYYYEnableCommentBlur") &&
-        [self isKindOfClass:NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController")]) {
-        __weak UIViewController *weakSelf = self;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            UIViewController *vc = weakSelf;
-            if (vc) [(id)vc applyBlurEffectIfNeeded];
-        });
-    }
+
+    [self applyBlurEffectIfNeeded];
 }
 
 %new
 - (void)applyBlurEffectIfNeeded {
-    if (!DYYYGetBool(@"DYYYEnableCommentBlur")) return;
-    if (![self isKindOfClass:NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController")]) return;
-    float userTransparency = [[[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYCommentBlurTransparent"] floatValue];
-    if (userTransparency <= 0 || userTransparency > 1) userTransparency = 0.9;
-    // v710: 面板本身就带 UIVisualEffectView。之前我们又插一个、还把底色清空，
-    // 打开瞬间新模糊还没渲染出背景 → 顶部一条黑。现在只调原生那个的透明度，
-    // 不新增视图、不动底色，黑条没有出现的条件。
-    UIVisualEffectView *blur = nil;
-    for (UIView *sub in ((UIView *)self).subviews) {
-        if ([sub isKindOfClass:[UIVisualEffectView class]]) { blur = (UIVisualEffectView *)sub; break; }
+    if (DYYYGetBool(@"DYYYEnableCommentBlur") && [self isKindOfClass:NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController")]) {
+        float userTransparency = [[[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYCommentBlurTransparent"] floatValue];
+        if (userTransparency <= 0 || userTransparency > 1) userTransparency = 0.9;
+        [DYYYUtils applyBlurEffectToView:self.view transparency:userTransparency blurViewTag:999];
+
     }
-    if (blur) {
-        blur.alpha = userTransparency;
-        return;
-    }
-    UIBlurEffect *effect = [UIBlurEffect effectWithStyle:[DYYYUtils isDarkMode] ? UIBlurEffectStyleDark : UIBlurEffectStyleLight];
-    UIVisualEffectView *created = [[UIVisualEffectView alloc] initWithEffect:effect];
-    created.frame = ((UIView *)self).bounds;
-    created.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    created.alpha = userTransparency;
-    created.tag = 999;
-    [((UIView *)self) insertSubview:created atIndex:0];
 }
 
 %end
