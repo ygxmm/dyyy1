@@ -17699,7 +17699,14 @@ static char kDYYYV29DoneKey; // v439
     }
 
     // v660: 约束归零已提前到 AWEAwemeDetailTableViewController 的
-    // viewWillLayoutSubviews（首次布局前），这里不再处理。
+    // viewWillLayoutSubviews（首次布局前）。
+    // v662: 每次布局重申 rowHeight，防原生改回 792。
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        CGFloat targetH = DYYYDetailPageHeight((UITableView *)self);
+        UITableView *selfTable = (UITableView *)self;
+        if (fabs(selfTable.rowHeight - targetH) > 0.5) selfTable.rowHeight = targetH;
+        if (fabs(selfTable.estimatedRowHeight - targetH) > 0.5) selfTable.estimatedRowHeight = targetH;
+    }
 }
 
 %end
@@ -18919,6 +18926,12 @@ static void DYYYEarlyZeroDetailTableConstraint(UIViewController *vc) {
     if (changed) {
         objc_setAssociatedObject(table, &kDYYYV29DoneKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
+    // v662: rowHeight 属性存在时 UITableView 根本不调用 delegate 的
+    // heightForRowAtIndexPath（原生设了 792）→ contentSize 一直按 792 算。
+    // 直接把属性改成窗口高度，从第一次布局起内容就是 852。
+    CGFloat targetH = DYYYDetailPageHeight(table);
+    if (fabs(table.rowHeight - targetH) > 0.5) table.rowHeight = targetH;
+    if (fabs(table.estimatedRowHeight - targetH) > 0.5) table.estimatedRowHeight = targetH;
 }
 
 // v661: 详情页统一高度 = 窗口高度。翻页器在点击瞬间就询问这些方法，
