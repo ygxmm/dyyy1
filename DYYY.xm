@@ -17742,41 +17742,10 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 static char kDYYYV29DoneKey; // v439
 
-// v693: 最终的钉子——打开期间任何偏移写入都按 initialIndex × 屏幕高落。
-// 692 的"回答式"覆盖不到直接写 bounds 的路径；实测从第 8 条开始每页漂 60pt（792 基）。
-static char kDYYYOpendAtKey;
-static char kDYYYOpenIdxKey;
-
-static void DYYYMarkDetailOpening(UITableView *table, long long index) {
-    if (!table) return;
-    objc_setAssociatedObject(table, &kDYYYOpendAtKey, @(CACurrentMediaTime()), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    if (index > 0) objc_setAssociatedObject(table, &kDYYYOpenIdxKey, @(index), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
-static CGPoint DYYYPinDetailOffset(UITableView *table, CGPoint offset) {
-    if (!table || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return offset;
-    if (!table.window || table.tracking || table.dragging) return offset;
-    NSNumber *openedAt = objc_getAssociatedObject(table, &kDYYYOpendAtKey);
-    NSNumber *openIdx = objc_getAssociatedObject(table, &kDYYYOpenIdxKey);
-    if (!openedAt || openIdx.integerValue <= 0) return offset;
-    if (CACurrentMediaTime() - openedAt.doubleValue > 3.0) return offset;
-    CGFloat target = [UIScreen mainScreen].bounds.size.height;
-    if (target < 400.0) return offset;
-    return CGPointMake(offset.x, (CGFloat)openIdx.integerValue * target);
-}
-
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
         %orig(frame);
-}
-
-- (void)setContentOffset:(CGPoint)offset {
-    %orig(DYYYPinDetailOffset((UITableView *)self, offset));
-}
-
-- (void)setContentOffset:(CGPoint)offset animated:(BOOL)animated {
-    %orig(DYYYPinDetailOffset((UITableView *)self, offset), animated);
 }
 
 - (void)layoutSubviews {
@@ -19036,32 +19005,39 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
     return target;
 }
 
-// v694: 光标位置钉住了，但控制器的 currentVisibleCellIndex 还停在旧值，
-// 自动播放是按那个索引触发的 → 这里在出现后让它按目标索引重排一次（位置不变，只同步状态）。
-static char kDYYYOpenSyncedKey;
+// v695: 按头文件里的正式接口来——分页布局由 AWEDetailFeedListContainer 负责
+// （它同时是 dataSource/delegate，自己就实现了 updateTableViewLayoutForTargetPageIndex:）。
+// 只调一次：让它按 initialIndex 重新下发分页，偏移/当前索引/播放器一起对齐。
+static char kDYYYOpenIdxKey;
+static char kDYYYOpenAppliedKey;
 
-static void DYYYDetailSyncControllerIndex(UIViewController *vc) {
+static void DYYYDetailApplyOpenIndex(UIViewController *vc) {
     if (![NSThread isMainThread] || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    if (objc_getAssociatedObject(vc, &kDYYYOpenSyncedKey)) return;
+    if (objc_getAssociatedObject(vc, &kDYYYOpenAppliedKey)) return;
     NSNumber *idxNum = objc_getAssociatedObject(vc, &kDYYYOpenIdxKey);
     UITableView *table = DYYYDetailTable(vc);
     if (!idxNum || !table || !table.window) return;
+    if (table.tracking || table.dragging || table.decelerating) return;
     long long idx = idxNum.longLongValue;
     if (idx <= 0) return;
-    NSUInteger cur = 0;
-    @try {
-        id v = [vc valueForKey:@"currentVisibleCellIndex"];
-        if ([v respondsToSelector:@selector(unsignedLongValue)]) cur = [v unsignedLongValue];
-    } @catch (NSException *e) {}
-    if ((long long)cur == idx) {
-        objc_setAssociatedObject(vc, &kDYYYOpenSyncedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    CGFloat h = table.bounds.size.height;
+    if (h < 400.0) return;
+    NSInteger count = [table numberOfRowsInSection:0];
+    if (count <= 0 || idx >= count) return;
+
+    if (fabs(table.contentOffset.y - (CGFloat)idx * h) <= 1.0) {
+        objc_setAssociatedObject(vc, &kDYYYOpenAppliedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         return;
     }
-    SEL usel = NSSelectorFromString(@"updateTableViewLayoutForTargetPageIndex:");
-    if (![vc respondsToSelector:usel]) return;
-    objc_setAssociatedObject(vc, &kDYYYOpenSyncedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    SEL sel = NSSelectorFromString(@"updateTableViewLayoutForTargetPageIndex:");
+    id owner = table.dataSource;
+    if (![owner respondsToSelector:sel]) owner = vc;
+    if (![owner respondsToSelector:sel]) return;
+
+    objc_setAssociatedObject(vc, &kDYYYOpenAppliedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [UIView performWithoutAnimation:^{
-        ((void (*)(id, SEL, long long))[vc methodForSelector:usel])(vc, usel, idx);
+        ((void (*)(id, SEL, long long))[owner methodForSelector:sel])(owner, sel, idx);
     }];
 }
 
@@ -19084,19 +19060,23 @@ static void DYYYDetailSyncControllerIndex(UIViewController *vc) {
 
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
-    DYYYDetailSyncControllerIndex(self);
+    DYYYDetailApplyOpenIndex(self);
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
     // 页面显示前再确认一次，并记下目标索引供写入时钉住。
     DYYYDetailZeroBottomConstraint(self);
-    long long openIdx = -1;
-    @try {
-        id v = [self valueForKey:@"initialIndex"];
-        if ([v respondsToSelector:@selector(longLongValue)]) openIdx = [v longLongValue];
-    } @catch (NSException *e) {}
-    DYYYMarkDetailOpening(DYYYDetailTable(self), openIdx);
+    if (objc_getAssociatedObject(self, &kDYYYOpenIdxKey) == nil) {
+        long long openIdx = -1;
+        @try {
+            id v = [self valueForKey:@"initialIndex"];
+            if ([v respondsToSelector:@selector(longLongValue)]) openIdx = [v longLongValue];
+        } @catch (NSException *e) {}
+        if (openIdx > 0) {
+            objc_setAssociatedObject(self, &kDYYYOpenIdxKey, @(openIdx), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
 }
 
 - (void)viewWillLayoutSubviews {
@@ -19107,7 +19087,7 @@ static void DYYYDetailSyncControllerIndex(UIViewController *vc) {
 - (void)viewDidLayoutSubviews {
     %orig;
     DYYYDetailZeroBottomConstraint(self);
-    DYYYDetailSyncControllerIndex(self);
+    DYYYDetailApplyOpenIndex(self);
 }
 
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
