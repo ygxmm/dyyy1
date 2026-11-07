@@ -19036,6 +19036,35 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
     return target;
 }
 
+// v694: 光标位置钉住了，但控制器的 currentVisibleCellIndex 还停在旧值，
+// 自动播放是按那个索引触发的 → 这里在出现后让它按目标索引重排一次（位置不变，只同步状态）。
+static char kDYYYOpenSyncedKey;
+
+static void DYYYDetailSyncControllerIndex(UIViewController *vc) {
+    if (![NSThread isMainThread] || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    if (objc_getAssociatedObject(vc, &kDYYYOpenSyncedKey)) return;
+    NSNumber *idxNum = objc_getAssociatedObject(vc, &kDYYYOpenIdxKey);
+    UITableView *table = DYYYDetailTable(vc);
+    if (!idxNum || !table || !table.window) return;
+    long long idx = idxNum.longLongValue;
+    if (idx <= 0) return;
+    NSUInteger cur = 0;
+    @try {
+        id v = [vc valueForKey:@"currentVisibleCellIndex"];
+        if ([v respondsToSelector:@selector(unsignedLongValue)]) cur = [v unsignedLongValue];
+    } @catch (NSException *e) {}
+    if ((long long)cur == idx) {
+        objc_setAssociatedObject(vc, &kDYYYOpenSyncedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
+    SEL usel = NSSelectorFromString(@"updateTableViewLayoutForTargetPageIndex:");
+    if (![vc respondsToSelector:usel]) return;
+    objc_setAssociatedObject(vc, &kDYYYOpenSyncedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [UIView performWithoutAnimation:^{
+        ((void (*)(id, SEL, long long))[vc methodForSelector:usel])(vc, usel, idx);
+    }];
+}
+
 // ==================== 详情页 Hook ====================
 %group DYYYDetailHeightHook
 
@@ -19051,6 +19080,11 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
 - (void)setupDetailTableView {
     %orig;
     DYYYDetailZeroBottomConstraint(self);
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    DYYYDetailSyncControllerIndex(self);
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -19073,6 +19107,7 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
 - (void)viewDidLayoutSubviews {
     %orig;
     DYYYDetailZeroBottomConstraint(self);
+    DYYYDetailSyncControllerIndex(self);
 }
 
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
