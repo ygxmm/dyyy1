@@ -16887,6 +16887,21 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
     return %orig;
 }
 
+- (void)updateTableViewLayoutForTargetPageIndex:(long long)index {
+    %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen") || index <= 0) return;
+    id tv = nil;
+    @try { tv = [(id)self valueForKey:@"tableView"]; } @catch (NSException *e) {}
+    if (![tv isKindOfClass:[UITableView class]]) return;
+    UITableView *table = (UITableView *)tv;
+    CGFloat h = [UIScreen mainScreen].bounds.size.height;
+    if (h < 400.0) return;
+    if (fabs(table.contentOffset.y - (CGFloat)index * h) <= 1.0) return;
+    [UIView performWithoutAnimation:^{
+        [table setContentOffset:CGPointMake(0, (CGFloat)index * h) animated:NO];
+    }];
+}
+
 - (double)heightForRowAtIndexPath:(id)a0 {
     double nativeH = %orig;
     id tv = nil;
@@ -19073,6 +19088,20 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
 
 // v698: 分页吸附器（AWESmartSlidePageSnapDecisionStrategyDataSource）问的就是这个高度。
 // 原版答 769，所以吸附按 769 的网格走；这里告诉它 852。
+// v699: 初始落点是原生在 updateTableViewLayoutForTargetPageIndex: 里按「屏高 − 60」算的
+// （108 条时正好差 8 个）。同一次调用之后按 852 重摆：索引/播放器状态由 %orig 设好，只对齐位置。
+- (void)updateTableViewLayoutForTargetPageIndex:(long long)index {
+    %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen") || index <= 0) return;
+    UITableView *table = DYYYDetailTable(self);
+    CGFloat h = [UIScreen mainScreen].bounds.size.height;
+    if (!table || h < 400.0) return;
+    if (fabs(table.contentOffset.y - (CGFloat)index * h) <= 1.0) return;
+    [UIView performWithoutAnimation:^{
+        [table setContentOffset:CGPointMake(0, (CGFloat)index * h) animated:NO];
+    }];
+}
+
 - (double)smartSlidePageSnapCellHeightForIndex:(long long)index {
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
         CGFloat h = [UIScreen mainScreen].bounds.size.height;
