@@ -5179,10 +5179,11 @@ static BOOL DYYYInsideCommentPanel(UIView *view) {
 
 - (void)layoutSubviews {
     %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableCommentBlur") && DYYYInsideCommentPanel(self)) {
-        self.backgroundColor = [UIColor clearColor];
-        self.layer.backgroundColor = [UIColor clearColor].CGColor;
-        for (UIView *sub in self.subviews) {
+    UIView *view = (UIView *)self;
+    if (DYYYGetBoolCached(@"DYYYEnableCommentBlur") && DYYYInsideCommentPanel(view)) {
+        view.backgroundColor = [UIColor clearColor];
+        view.layer.backgroundColor = [UIColor clearColor].CGColor;
+        for (UIView *sub in view.subviews) {
             sub.backgroundColor = [UIColor clearColor];
         }
     }
