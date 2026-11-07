@@ -17679,6 +17679,10 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 static char kDYYYV29DoneKey; // v439
 
+// v663: 前向声明——DYYYDetailPageHeight 的实现位于文件后部（v661 段落），
+// 而 v662 的 AWEAwemeDetailTableView / 表格约束归位块先用到它，缺声明会编译失败。
+static CGFloat DYYYDetailPageHeight(UITableView *table);
+
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
