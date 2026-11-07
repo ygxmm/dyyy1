@@ -18946,6 +18946,7 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 // 之前那些「写完之后再改」的补位全部删掉——拉拽感就是它们造成的。
 
 static char kDYYYDetailConstraintKey;
+static char kDYYYDetailRowsFixedKey;
 
 static UITableView *DYYYDetailTable(UIViewController *vc) {
     if (!vc) return nil;
@@ -19001,6 +19002,26 @@ static void DYYYDetailSyncTableHeight(UIViewController *vc) {
     CGRect frame = table.frame;
     frame.size.height = target;
     table.frame = frame;
+
+    // v683: 第一行往往是在表还是 792 时建出来的，探针里 cell0=792、cell1/2=852 就是这个。
+    // 只把「当前可见的几行」重测一次（不是 beginUpdates/endUpdates 全表重排），
+    // 这样第一屏也是满高，且不会像全表重排那样卡顿。
+    if (objc_getAssociatedObject(table, &kDYYYDetailRowsFixedKey) == nil) {
+        objc_setAssociatedObject(table, &kDYYYDetailRowsFixedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!table.window) return;
+            NSArray *visible = [table indexPathsForVisibleRows];
+            if (visible.count == 0) return;
+            BOOL stale = NO;
+            for (NSIndexPath *ip in visible) {
+                if ([table rectForRowAtIndexPath:ip].size.height < table.bounds.size.height - 0.5) { stale = YES; break; }
+            }
+            if (!stale) return;
+            [UIView performWithoutAnimation:^{
+                [table reloadRowsAtIndexPaths:visible withRowAnimation:UITableViewRowAnimationNone];
+            }];
+        });
+    }
 }
 
 // 规则 2：行高归一化。只把「表高 − 60」（典型 792）改成表高，其它值原样返回。
