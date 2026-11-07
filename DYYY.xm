@@ -17753,62 +17753,10 @@ static void DYYYMarkDetailOpening(UITableView *table, long long index) {
     if (index > 0) objc_setAssociatedObject(table, &kDYYYOpenIdxKey, @(index), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
-// v701 探针：记录打开期间每一次偏移写入的来源（谁在约束它）
-static void DYYYOffProbe(NSString *line) {
-    if (line.length == 0) return;
-    static NSMutableSet *seen; static dispatch_once_t once;
-    dispatch_once(&once, ^{ seen = [NSMutableSet set]; });
-    @synchronized (seen) {
-        if (seen.count > 40 || [seen containsObject:line]) return;
-        [seen addObject:line];
-    }
-    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_ui.log"];
-    if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
-        [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil];
-    }
-    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
-    if (!fh) return;
-    @try {
-        [fh seekToEndOfFile];
-        [fh writeData:[[line stringByAppendingString:@"\n"] dataUsingEncoding:NSUTF8StringEncoding]];
-    } @catch (NSException *e) {}
-    [fh closeFile];
-}
-
-static CGPoint DYYYPinDetailOffset(UITableView *table, CGPoint offset) {
-    if (!table || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return offset;
-    if (!table.window || table.tracking || table.dragging) return offset;
-    NSNumber *openedAt = objc_getAssociatedObject(table, &kDYYYOpendAtKey);
-    NSNumber *openIdx = objc_getAssociatedObject(table, &kDYYYOpenIdxKey);
-    if (!openedAt || openIdx.integerValue <= 0) return offset;
-    if (CACurrentMediaTime() - openedAt.doubleValue > 1.5) {
-        objc_setAssociatedObject(table, &kDYYYOpendAtKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(table, &kDYYYOpenIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return offset;
-    }
-    CGFloat target = [UIScreen mainScreen].bounds.size.height;
-    if (target < 400.0) return offset;
-    CGFloat pinnedY = (CGFloat)openIdx.integerValue * target;
-    if (fabs(offset.y - pinnedY) <= 1.0) {
-        objc_setAssociatedObject(table, &kDYYYOpendAtKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(table, &kDYYYOpenIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return offset;
-    }
-    return CGPointMake(offset.x, pinnedY);
-}
-
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
         %orig(frame);
-}
-
-- (void)setContentOffset:(CGPoint)offset {
-    %orig(DYYYPinDetailOffset((UITableView *)self, offset));
-}
-
-- (void)setContentOffset:(CGPoint)offset animated:(BOOL)animated {
-    %orig(DYYYPinDetailOffset((UITableView *)self, offset), animated);
 }
 
 - (void)layoutSubviews {
@@ -19087,29 +19035,12 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
 
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
-    // v696: 落点已经钉住，但控制器不一定接管播放（它按自己的索引判断当前 cell）。
-    // 出现后叫一次原生 play，让它播当前这一条。
-    __weak UIViewController *weakVC = self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        UIViewController *vc = weakVC;
-        if (!vc) return;
-        SEL psel = NSSelectorFromString(@"play");
-        if ([vc respondsToSelector:psel]) {
-            ((void (*)(id, SEL))[vc methodForSelector:psel])(vc, psel);
-        }
-    });
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
     // 页面显示前再确认一次，并记下目标索引供写入时钉住。
     DYYYDetailZeroBottomConstraint(self);
-    long long openIdx = -1;
-    @try {
-        id v = [self valueForKey:@"initialIndex"];
-        if ([v respondsToSelector:@selector(longLongValue)]) openIdx = [v longLongValue];
-    } @catch (NSException *e) {}
-    DYYYMarkDetailOpening(DYYYDetailTable(self), openIdx);
 }
 
 - (void)viewWillLayoutSubviews {
