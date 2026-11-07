@@ -2452,6 +2452,23 @@ static NSInteger DYYYResFromGearName(NSString *name) {
 }
 %end
 
+// v728: 41.0 新增了全局 HDR 闸门（头文件 AWEHDRModelManager.h）：
+//   + (BOOL)enableVideoHDR;  + (BOOL)useOneKeyHDR;
+// 播放链路先问这里，再决定要不要走 HDR；只改 model 上的 hdrType/hdrBit 已经拦不住。
+%hook AWEHDRModelManager
+
++ (BOOL)enableVideoHDR {
+    if (DYYYShouldDisableAllHDR()) return NO;
+    return %orig;
+}
+
++ (BOOL)useOneKeyHDR {
+    if (DYYYShouldDisableAllHDR()) return NO;
+    return %orig;
+}
+
+%end
+
 %hook AWEVideoModel
 
 - (AWEURLModel *)playURL {
