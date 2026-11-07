@@ -54,6 +54,29 @@
 #import "DYYYLoginBypassManager.h"
 
 // setFrame 钩子重入闸：钩子内部会改 frame，可能触发新一轮布局并重入本方法
+// ============================================================
+// 全屏逻辑入口一览（都由 DYYYEnableFullScreen 一个开关控制）
+// 关掉开关时，下面每一处都必须原样走 %orig，与抖音原生一致。
+//
+//   1. 首页信息流
+//      AWEFeedTableView -layoutSubviews            → 表撑满父视图
+//      DYYYStretchPagerTableToSuperview(table,0)   （共用函数）
+//   2. 详情页
+//      AWEAwemeDetailTableView -setFrame:          → 792 夹成屏高
+//      AWEAwemeDetailTableViewController            → 底栏约束归零 / tableViewBottomMargin=0 /
+//                                                    tableViewBottomInsetForAllPlatform=0 /
+//                                                    smartSlidePageSnapCellHeightForIndex:=屏高
+//      AWEDetailFeedListContainer                   → 行高 / 分页偏移回答屏高基
+//      AWEAwemeDetailTableViewCell -enableFullScreenPlay: → YES
+//   3. 交互层（HUD）
+//      AWEPlayInteractionViewController -viewDidLayoutSubviews
+//                                                  → 隐藏顶部 59pt 纯黑条（状态栏遮挡块）
+//      p_stackContainerViewBottomOffset            → 详情页异常负值归位
+//   4. 播放器容器
+//      AWEDPlayerViewController_Merge / AWEDPlayerFeedPlayerViewController
+//        -viewDidLayoutSubviews                    → DYYYFullscreenCoordinator.layoutPlayerContainer:
+// ============================================================
+
 static __thread int gDYYYSetFrameDepth = 0;
 
 // v687: 详情行高归一化（定义在文件后部，这里先声明）
@@ -16171,7 +16194,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
     // v723: 探针确认那条 59pt 黑条挂在 AWEPlayInteractionViewController 上（nearestVC），
     // 只有视频帖有交互层、图文没有，所以只有视频看得到。这里只扫它的直接子视图，开销极小。
-    {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
         CGFloat screenW = [UIScreen mainScreen].bounds.size.width;
         for (UIView *sub in earlyView.subviews) {
             if (![sub isMemberOfClass:[UIView class]] || sub.hidden) continue;
