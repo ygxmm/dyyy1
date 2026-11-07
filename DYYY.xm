@@ -5164,6 +5164,31 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
 
 %end
 
+// v712: 评论面板顶部那条 40pt 的黑条，就是 section 背景。只隐藏这一条（面板内、y=0、高 40），
+// 不动磨砂、不动其他 section。
+static BOOL DYYYInsideCommentPanel(UIView *view) {
+    Class panelCls = NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController");
+    if (!panelCls) return NO;
+    for (UIResponder *r = view.nextResponder; r; r = r.nextResponder) {
+        if ([r isKindOfClass:panelCls]) return YES;
+    }
+    return NO;
+}
+
+%hook AWEBaseListSectionBackgroundView
+
+- (void)layoutSubviews {
+    %orig;
+    UIView *view = (UIView *)self;
+    if (!DYYYGetBoolCached(@"DYYYEnableCommentBlur") || !DYYYInsideCommentPanel(view)) return;
+    CGRect frame = view.frame;
+    if (fabs(frame.origin.y) <= 1.0 && frame.size.height <= 60.0) {
+        view.hidden = YES;
+    }
+}
+
+%end
+
 %hook AWEBaseListViewController
 - (void)viewDidLayoutSubviews {
     %orig;
