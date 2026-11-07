@@ -19082,7 +19082,12 @@ static void DYYYReconcileOpenIndex(UIViewController *vc, NSString *phase) {
     if (t.bounds.size.height + 1.0 < h) return;   // 还没撑满全屏
     long long idx = idxNum.longLongValue;
     NSInteger count = [t numberOfRowsInSection:0];
-    if (idx <= 0 || idx >= count) {
+    if (idx <= 0) {
+        objc_setAssociatedObject(vc, &kDYYYOpenIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
+    if (count <= 0) return;   // 数据还没到，先别放弃
+    if (idx >= count) {
         objc_setAssociatedObject(vc, &kDYYYOpenIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         return;
     }
@@ -19120,7 +19125,7 @@ static void DYYYReconcileOpenIndex(UIViewController *vc, NSString *phase) {
         long long play = DYYYVCLLValue(self, @"currentPlayIndex");
         if (init > 0 && objc_getAssociatedObject(self, &kDYYYOpenIdxKey) == nil) {
             objc_setAssociatedObject(self, &kDYYYOpenIdxKey, @(init), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            objc_setAssociatedObject(self, &kDYYYOpenDeadlineKey, @(CACurrentMediaTime() + 1.6), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(self, &kDYYYOpenDeadlineKey, @(CACurrentMediaTime() + 2.5), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         DYYYProbePagerLine([NSString stringWithFormat:@"[OPEN0] init=%lld cur=%lld play=%lld tH=%.0f rowH=%.0f off=%.1f rows=%ld idInit=%@",
             init, cur, play, t.bounds.size.height, t.rowHeight, t.contentOffset.y,
