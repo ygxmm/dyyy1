@@ -16877,47 +16877,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 }
 %end
 
-// ===== v666：参考 DYKiller —— 原生算分页之前就把详情表撑到满高 =====
-// 实测原生按表格当时的高度算偏移（idx × 792），行高却被统一成 852，
-// 于是落点 = idx × 792 / 852。DYKiller 的做法是在表的尺寸写入入口
-// 直接把「被底栏压掉 60pt」的高度改成满高，让原生自己算出来的分页从一开始就对。
-static BOOL DYYYStretchTableHeightValue(CGFloat current, CGFloat target, CGFloat *out) {
-    if (!isfinite(current) || !isfinite(target)) return NO;
-    if (target <= 0.5 || current <= 0.5) return NO;
-    if (current >= target - 0.5) return NO;   // 已经满高
-    if (current < target * 0.5) return NO;    // 布局早期半成品 / 评论区缩小态，别碰
-    *out = target;
-    return YES;
-}
-
-static BOOL DYYYPrepareDetailTable(UIViewController *vc) {
-    if (!vc || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return NO;
-    if (![NSThread isMainThread]) return NO;
-    SEL tsel = NSSelectorFromString(@"tableView");
-    if (![vc respondsToSelector:tsel]) return NO;
-    id tv = ((id (*)(id, SEL))[vc methodForSelector:tsel])(vc, tsel);
-    if (![tv isKindOfClass:[UITableView class]]) return NO;
-    UITableView *table = (UITableView *)tv;
-    if (!table || !CGAffineTransformIsIdentity(table.transform)) return NO;
-    if ([DYYYFullscreenCoordinator hasCommentInWindow:table.window]) return NO;
-    CGFloat target = 0;
-    UIView *sv = table.superview;
-    if (sv && sv.bounds.size.height > 0.5) {
-        target = sv.bounds.size.height;
-    } else {
-        UIView *root = vc.viewIfLoaded;
-        if (root && root.bounds.size.height > 0.5) target = root.bounds.size.height;
-    }
-    CGFloat stretched = 0;
-    if (!DYYYStretchTableHeightValue(table.frame.size.height, target, &stretched)) return NO;
-    CGRect frame = table.frame;
-    frame.size.height = stretched;
-    table.frame = frame;
-    return YES;
-}
-
-
-
 %hook AWEFeedTableViewCell
 - (void)prepareForReuse {
     if (hideButton && hideButton.isElementsHidden) {
@@ -17727,25 +17686,7 @@ static CGFloat DYYYDetailPageHeight(UITableView *table);
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
-    // v666: 原生写表尺寸时就把「被底栏压掉 60pt」的高度顶回满高，
-    // 这样它随后算的分页偏移（idx × 表高）从一开始就是 852 基，不需要事后跳位。
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && [NSThread isMainThread] &&
-        CGAffineTransformIsIdentity(self.transform) && !self.dragging && !self.tracking &&
-        ![DYYYFullscreenCoordinator hasCommentInWindow:self.window]) {
-        CGFloat target = 0;
-        UIView *sv = self.superview;
-        if (sv && sv.bounds.size.height > 0.5) {
-            target = sv.bounds.size.height;
-        } else {
-            UIWindow *win = self.window;
-            if (win && fabs(frame.size.width - win.bounds.size.width) < 1.0) target = win.bounds.size.height;
-        }
-        CGFloat stretched = 0;
-        if (DYYYStretchTableHeightValue(CGRectGetHeight(frame), target, &stretched)) {
-            frame.size.height = stretched;
-        }
-    }
-    %orig(frame);
+        %orig(frame);
 }
 
 - (void)layoutSubviews {
@@ -19078,10 +19019,7 @@ static void DYYYReconcileOpenIndex(UIViewController *vc) {
 
 
 - (void)viewWillLayoutSubviews {
-    // v666: 原生布局前先把表撑到满高，让它的分页计算用 852。
-    DYYYPrepareDetailTable(self);
     %orig;
-    DYYYPrepareDetailTable(self);
     // v660: 首次布局前归零 bottom 约束 → 表格尽快撑到 852。
     DYYYEarlyZeroDetailTableConstraint(self);
 
@@ -19105,28 +19043,8 @@ static void DYYYReconcileOpenIndex(UIViewController *vc) {
     }
 }
 
-- (void)setupDetailTableView {
-    %orig;
-    // v666: 表刚建好、原生还没算分页时先撑高。
-    DYYYPrepareDetailTable(self);
-}
-
-- (double)contentOffsetYForCellAtIndex:(long long)index {
-    // v666: 原生用这个方法算「第 N 条该滚到哪」，撑高后它返回的才是 852 基。
-    DYYYPrepareDetailTable(self);
-    return %orig;
-}
-
-- (void)adjustTableViewHeightForTargetIndex:(long long)index {
-    DYYYPrepareDetailTable(self);
-    %orig;
-    DYYYPrepareDetailTable(self);
-}
-
 - (void)viewDidLayoutSubviews {
-    DYYYPrepareDetailTable(self);
     %orig;
-    DYYYPrepareDetailTable(self);
     DYYYReconcileOpenIndex(self);
 }
 
