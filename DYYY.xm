@@ -16887,21 +16887,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
     return %orig;
 }
 
-- (void)updateTableViewLayoutForTargetPageIndex:(long long)index {
-    %orig;
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen") || index <= 0) return;
-    id tv = nil;
-    @try { tv = [(id)self valueForKey:@"tableView"]; } @catch (NSException *e) {}
-    if (![tv isKindOfClass:[UITableView class]]) return;
-    UITableView *table = (UITableView *)tv;
-    CGFloat h = [UIScreen mainScreen].bounds.size.height;
-    if (h < 400.0) return;
-    if (fabs(table.contentOffset.y - (CGFloat)index * h) <= 1.0) return;
-    [UIView performWithoutAnimation:^{
-        [table setContentOffset:CGPointMake(0, (CGFloat)index * h) animated:NO];
-    }];
-}
-
 - (double)heightForRowAtIndexPath:(id)a0 {
     double nativeH = %orig;
     id tv = nil;
@@ -17757,10 +17742,54 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 static char kDYYYV29DoneKey; // v439
 
+// v693: 最终的钉子——打开期间任何偏移写入都按 initialIndex × 屏幕高落。
+// 692 的"回答式"覆盖不到直接写 bounds 的路径；实测从第 8 条开始每页漂 60pt（792 基）。
+static char kDYYYOpendAtKey;
+static char kDYYYOpenIdxKey;
+
+static void DYYYMarkDetailOpening(UITableView *table, long long index) {
+    if (!table) return;
+    objc_setAssociatedObject(table, &kDYYYOpendAtKey, @(CACurrentMediaTime()), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (index > 0) objc_setAssociatedObject(table, &kDYYYOpenIdxKey, @(index), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static CGPoint DYYYPinDetailOffset(UITableView *table, CGPoint offset) {
+    if (!table || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return offset;
+    if (!table.window || table.tracking || table.dragging) return offset;
+    NSNumber *openedAt = objc_getAssociatedObject(table, &kDYYYOpendAtKey);
+    NSNumber *openIdx = objc_getAssociatedObject(table, &kDYYYOpenIdxKey);
+    if (!openedAt || openIdx.integerValue <= 0) return offset;
+    if (CACurrentMediaTime() - openedAt.doubleValue > 1.5) {
+        objc_setAssociatedObject(table, &kDYYYOpendAtKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(table, &kDYYYOpenIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return offset;
+    }
+    CGFloat target = [UIScreen mainScreen].bounds.size.height;
+    if (target < 400.0) return offset;
+    CGFloat pinnedY = (CGFloat)openIdx.integerValue * target;
+    if (fabs(offset.y - pinnedY) <= 1.0) {
+        objc_setAssociatedObject(table, &kDYYYOpendAtKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(table, &kDYYYOpenIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return offset;
+    }
+    return CGPointMake(offset.x, pinnedY);
+}
+
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
         %orig(frame);
+}
+
+- (void)setContentOffset:(CGPoint)offset {
+    %orig(DYYYPinDetailOffset((UITableView *)self, offset));
+}
+
+- (void)setContentOffset:(CGPoint)offset animated:(BOOL)animated {
+    CGPoint adjusted = DYYYPinDetailOffset((UITableView *)self, offset);
+    // v700: 钉住时强制无动画——之前保留动画，原生会继续朝它自己的目标滚，和钉住值打架，
+    // 结果既不落对位置，播放器也不接管。
+    %orig(adjusted, fabs(adjusted.y - offset.y) > 1.0 ? NO : animated);
 }
 
 - (void)layoutSubviews {
@@ -19054,8 +19083,14 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
 
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
-    // 页面显示前再确认一次底栏约束。
+    // 页面显示前再确认一次，并记下目标索引供写入时钉住。
     DYYYDetailZeroBottomConstraint(self);
+    long long openIdx = -1;
+    @try {
+        id v = [self valueForKey:@"initialIndex"];
+        if ([v respondsToSelector:@selector(longLongValue)]) openIdx = [v longLongValue];
+    } @catch (NSException *e) {}
+    DYYYMarkDetailOpening(DYYYDetailTable(self), openIdx);
 }
 
 - (void)viewWillLayoutSubviews {
@@ -19084,30 +19119,6 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
 
 - (double)cellHeightAtIndex:(long long)index {
     return DYYYDetailRowHeight([self tableView], %orig);
-}
-
-// v698: 分页吸附器（AWESmartSlidePageSnapDecisionStrategyDataSource）问的就是这个高度。
-// 原版答 769，所以吸附按 769 的网格走；这里告诉它 852。
-// v699: 初始落点是原生在 updateTableViewLayoutForTargetPageIndex: 里按「屏高 − 60」算的
-// （108 条时正好差 8 个）。同一次调用之后按 852 重摆：索引/播放器状态由 %orig 设好，只对齐位置。
-- (void)updateTableViewLayoutForTargetPageIndex:(long long)index {
-    %orig;
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen") || index <= 0) return;
-    UITableView *table = DYYYDetailTable(self);
-    CGFloat h = [UIScreen mainScreen].bounds.size.height;
-    if (!table || h < 400.0) return;
-    if (fabs(table.contentOffset.y - (CGFloat)index * h) <= 1.0) return;
-    [UIView performWithoutAnimation:^{
-        [table setContentOffset:CGPointMake(0, (CGFloat)index * h) animated:NO];
-    }];
-}
-
-- (double)smartSlidePageSnapCellHeightForIndex:(long long)index {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        CGFloat h = [UIScreen mainScreen].bounds.size.height;
-        if (h > 400.0) return h;
-    }
-    return %orig;
 }
 
 - (double)contentOffsetYForCellAtIndex:(long long)index {
