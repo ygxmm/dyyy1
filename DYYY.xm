@@ -15931,46 +15931,7 @@ static Class tabBarButtonClass = nil;
     %orig([DYYYFullscreenCoordinator centerForMediaHost:self proposed:center]);
 }
 
-static void DYYYShrinkProbeLog(NSString *line) {
-    static NSMutableSet *seen; static dispatch_once_t once;
-    dispatch_once(&once, ^{ seen = [NSMutableSet set]; });
-    @synchronized (seen) {
-        if (seen.count > 25 || [seen containsObject:line]) return;
-        [seen addObject:line];
-    }
-    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_ui.log"];
-    if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
-        [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil];
-    }
-    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
-    if (!fh) return;
-    @try {
-        [fh seekToEndOfFile];
-        [fh writeData:[[line stringByAppendingString:@"\n"] dataUsingEncoding:NSUTF8StringEncoding]];
-    } @catch (NSException *e) {}
-    [fh closeFile];
-}
-
 - (void)setFrame:(CGRect)frame {
-    // v721 探针：评论区展开时视频被收成 200~400 高，记录这次写入的调用者
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        CGFloat h = CGRectGetHeight(frame);
-        CGFloat w = [UIScreen mainScreen].bounds.size.width;
-        if (h > 200.0 && h < 400.0 && fabs(CGRectGetWidth(frame) - w) < 1.0 && self.window) {
-            NSArray *symbols = [NSThread callStackSymbols];
-            NSMutableArray *hits = [NSMutableArray array];
-            for (NSString *sym in symbols) {
-                if ([sym containsString:@"Comment"] || [sym containsString:@"Shrink"] ||
-                    [sym containsString:@"AWEAwemeDetail"] || [sym containsString:@"PlayInteraction"] ||
-                    [sym containsString:@"DYYY"]) {
-                    [hits addObject:[sym stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]]];
-                    if (hits.count >= 5) break;
-                }
-            }
-            DYYYShrinkProbeLog([NSString stringWithFormat:@"[SHRINK] %.0f by %@ :: %@",
-                h, NSStringFromClass([self class]), [hits componentsJoinedByString:@" <- "]]);
-        }
-    }
     if (gDYYYSetFrameDepth > 0) {
         %orig(frame);
         return;
@@ -19185,28 +19146,6 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
 %end
 
 
-// v722: 打开评论区时视频被收成小窗，高度取自这个半屏转场方法。
-// 全屏模式下直接回答整屏高度，视频不再收缩，顶部也不会空出一条黑块。
-%group DYYYCommentPartialScreenGroup
-
-%hook AWECommentPanelContainerSwiftImpl_CommentContainerInnerViewController
-
-- (double)commentPartialScreenEnterTransition_innerContextProviderContentVCHeight {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        return [UIScreen mainScreen].bounds.size.height;
-    }
-    return %orig;
-}
-
-%end
-
-%end
-
-
 %ctor {
     %init(DYYYDetailHeightHook);
-    Class commentPanelClass = objc_getClass("AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController");
-    if (commentPanelClass && [commentPanelClass isSubclassOfClass:[UIViewController class]]) {
-        %init(DYYYCommentPartialScreenGroup, AWECommentPanelContainerSwiftImpl_CommentContainerInnerViewController = commentPanelClass);
-    }
 }
