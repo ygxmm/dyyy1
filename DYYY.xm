@@ -5164,6 +5164,32 @@ static void DYYYSyncHiddenFeedAnchorArrangedView(UIView *inner);
 
 %end
 
+// v709: 评论区顶部黑条来自面板里那条 40pt 的 AWEBaseListSectionBackgroundView（section 背景），
+// 磨砂把面板本身变透明后它就露出来了。磨砂开启时把它的底色清掉。
+static BOOL DYYYInsideCommentPanel(UIView *view) {
+    Class panelCls = NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController");
+    if (!panelCls) return NO;
+    for (UIResponder *r = view.nextResponder; r; r = r.nextResponder) {
+        if ([r isKindOfClass:panelCls]) return YES;
+    }
+    return NO;
+}
+
+%hook AWEBaseListSectionBackgroundView
+
+- (void)layoutSubviews {
+    %orig;
+    if (DYYYGetBoolCached(@"DYYYEnableCommentBlur") && DYYYInsideCommentPanel(self)) {
+        self.backgroundColor = [UIColor clearColor];
+        self.layer.backgroundColor = [UIColor clearColor].CGColor;
+        for (UIView *sub in self.subviews) {
+            sub.backgroundColor = [UIColor clearColor];
+        }
+    }
+}
+
+%end
+
 %hook AWEBaseListViewController
 - (void)viewDidLayoutSubviews {
     %orig;
