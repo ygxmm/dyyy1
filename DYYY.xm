@@ -16872,6 +16872,21 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
     return nativeH;
 }
 
+- (double)contentOffsetYForCellAtIndex:(long long)index {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        return (double)index * [UIScreen mainScreen].bounds.size.height;
+    }
+    return %orig;
+}
+
+- (double)indexForContentOffsetY:(double)y {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        CGFloat h = [UIScreen mainScreen].bounds.size.height;
+        if (h > 400.0) return y / h;
+    }
+    return %orig;
+}
+
 - (double)heightForRowAtIndexPath:(id)a0 {
     double nativeH = %orig;
     id tv = nil;
@@ -17727,60 +17742,10 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 static char kDYYYV29DoneKey; // v439
 
-// v689: 打开瞬间原生还是按「屏幕高 − 60」算初始偏移（idx × 792），
-// 所以在写入这一刻换算成 idx × 852。只做这一件事，页面不会停在错位置，
-// 也就没有"往前翻"和"被拽回来"。
-static char kDYYYOpendAtKey;
-static char kDYYYOpenIdxKey;
-
-static void DYYYMarkDetailTableOpening(UITableView *table, long long index) {
-    if (!table) return;
-    objc_setAssociatedObject(table, &kDYYYOpendAtKey, @(CACurrentMediaTime()), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    if (index > 0) {
-        objc_setAssociatedObject(table, &kDYYYOpenIdxKey, @(index), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-}
-
-static CGPoint DYYYAdjustDetailOffset(UITableView *table, CGPoint offset) {
-    if (!table || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return offset;
-    if (!table.window || table.tracking || table.dragging) return offset;
-    NSTimeInterval now = CACurrentMediaTime();
-    // v690: 窗口必须以「页面打开」为起点。之前用首次写入当起点，
-    // 而详情控制器是预加载的——等真正点开时早就过了窗口期，换算没跑，
-    // 14×792 被分页吸附成 13×852，就出现"点 15 开 14"。
-    NSNumber *openedAt = objc_getAssociatedObject(table, &kDYYYOpendAtKey);
-    if (!openedAt) return offset;
-    if (now - openedAt.doubleValue > 3.0) return offset;
-    CGFloat target = [UIScreen mainScreen].bounds.size.height;
-    if (target < 400.0) return offset;
-    // v691: 打开期间直接把偏移钉到 initialIndex × 屏幕高——
-    // 原生按 769/792 算出来的值（14×769=10766）会被分页吸附成 13×852，就是这个"往前翻一格"。
-    NSNumber *openIdx = objc_getAssociatedObject(table, &kDYYYOpenIdxKey);
-    if (openIdx.integerValue > 0) {
-        return CGPointMake(offset.x, (CGFloat)openIdx.integerValue * target);
-    }
-    CGFloat y = offset.y;
-    if (y <= 1.0) return offset;
-    if (fabs(y / target - (CGFloat)llround(y / target)) < 0.02) return offset;
-    CGFloat base = target - 60.0;
-    if (base > 100.0 && fabs(y / base - (CGFloat)llround(y / base)) < 0.02) {
-        return CGPointMake(offset.x, (CGFloat)llround(y / base) * target);
-    }
-    return offset;
-}
-
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
         %orig(frame);
-}
-
-- (void)setContentOffset:(CGPoint)offset {
-    %orig(DYYYAdjustDetailOffset((UITableView *)self, offset));
-}
-
-- (void)setContentOffset:(CGPoint)offset animated:(BOOL)animated {
-    %orig(DYYYAdjustDetailOffset((UITableView *)self, offset), animated);
 }
 
 - (void)layoutSubviews {
@@ -19032,37 +18997,12 @@ static void DYYYDetailZeroBottomConstraint(UIViewController *vc) {
 
 // 规则 2：行高归一化。只把「表高 − 60」（典型 792）改成表高，其它值原样返回。
 static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
-    if (!table || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return nativeH;
-    // v686: 基准用「屏幕高度」而不是「表当前 bounds」。探针里 row0 一会儿 852 一会儿 792，
-    // 就是因为量行时表可能还是 792，拿它当 target 会把 792 原样放行。
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return nativeH;
+    // v692: 直接告诉原生「这一页的行高就是屏幕高」。原版是 769（底部留了评论输入栏），
+    // 之前只在 792 时归一，769 会漏过去 → 分页按 769 算，页面就往前翻一格。
     CGFloat target = [UIScreen mainScreen].bounds.size.height;
-    if (target < 400.0 || !isfinite(nativeH)) return nativeH;
-    if (fabs(nativeH - target) <= 0.5) return nativeH;
-    if (fabs(nativeH - (target - 60.0)) <= 0.5) return target;
-    return nativeH;
-}
-
-// v690b: 打开瞬间按 initialIndex 把落点归位一次（在页面显示前，看不见）。
-// 只处理"已经吸附到 852 网格、但索引不对"的情况——也就是 14×792 被吸附成 13×852 这种。
-static void DYYYDetailAlignOpenOffset(UIViewController *vc) {
-    if (![NSThread isMainThread] || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    UITableView *table = DYYYDetailTable(vc);
-    if (!table || !table.window || table.tracking || table.dragging) return;
-    long long idx = -1;
-    @try {
-        id v = [vc valueForKey:@"initialIndex"];
-        if ([v respondsToSelector:@selector(longLongValue)]) idx = [v longLongValue];
-    } @catch (NSException *e) {}
-    if (idx <= 0) return;
-    CGFloat h = table.bounds.size.height;
-    if (h < 400.0) return;
-    NSInteger count = [table numberOfRowsInSection:0];
-    if (count <= 0 || idx >= count) return;
-    CGFloat target = (CGFloat)idx * h;
-    if (fabs(table.contentOffset.y - target) <= 1.0) return;
-    [UIView performWithoutAnimation:^{
-        [table setContentOffset:CGPointMake(0, target) animated:NO];
-    }];
+    if (target < 400.0 || !isfinite(nativeH) || nativeH <= 0.0) return nativeH;
+    return target;
 }
 
 // ==================== 详情页 Hook ====================
@@ -19086,13 +19026,6 @@ static void DYYYDetailAlignOpenOffset(UIViewController *vc) {
     %orig;
     // 页面显示前再确认一次（原生可能在别处把约束改回去），并标记"正在打开"。
     DYYYDetailZeroBottomConstraint(self);
-    long long openIdx = -1;
-    @try {
-        id v = [self valueForKey:@"initialIndex"];
-        if ([v respondsToSelector:@selector(longLongValue)]) openIdx = [v longLongValue];
-    } @catch (NSException *e) {}
-    DYYYMarkDetailTableOpening(DYYYDetailTable(self), openIdx);
-    DYYYDetailAlignOpenOffset(self);
 }
 
 - (void)viewWillLayoutSubviews {
@@ -19121,6 +19054,21 @@ static void DYYYDetailAlignOpenOffset(UIViewController *vc) {
 
 - (double)cellHeightAtIndex:(long long)index {
     return DYYYDetailRowHeight([self tableView], %orig);
+}
+
+- (double)contentOffsetYForCellAtIndex:(long long)index {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        return (double)index * [UIScreen mainScreen].bounds.size.height;
+    }
+    return %orig;
+}
+
+- (double)indexForContentOffsetY:(double)y {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        CGFloat h = [UIScreen mainScreen].bounds.size.height;
+        if (h > 400.0) return y / h;
+    }
+    return %orig;
 }
 
 - (double)baseTableViewBottomInset {
