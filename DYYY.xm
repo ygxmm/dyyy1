@@ -17727,10 +17727,45 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 static char kDYYYV29DoneKey; // v439
 
+// v689: 打开瞬间原生还是按「屏幕高 − 60」算初始偏移（idx × 792），
+// 所以在写入这一刻换算成 idx × 852。只做这一件事，页面不会停在错位置，
+// 也就没有"往前翻"和"被拽回来"。
+static char kDYYYOpendAtKey;
+
+static CGPoint DYYYAdjustDetailOffset(UITableView *table, CGPoint offset) {
+    if (!table || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return offset;
+    if (!table.window || table.tracking || table.dragging) return offset;
+    NSTimeInterval now = CACurrentMediaTime();
+    NSNumber *openedAt = objc_getAssociatedObject(table, &kDYYYOpendAtKey);
+    if (!openedAt) {
+        openedAt = @(now);
+        objc_setAssociatedObject(table, &kDYYYOpendAtKey, openedAt, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (now - openedAt.doubleValue > 2.0) return offset;
+    CGFloat target = [UIScreen mainScreen].bounds.size.height;
+    if (target < 400.0) return offset;
+    CGFloat y = offset.y;
+    if (y <= 1.0) return offset;
+    if (fabs(y / target - (CGFloat)llround(y / target)) < 0.02) return offset;
+    CGFloat base = target - 60.0;
+    if (base > 100.0 && fabs(y / base - (CGFloat)llround(y / base)) < 0.02) {
+        return CGPointMake(offset.x, (CGFloat)llround(y / base) * target);
+    }
+    return offset;
+}
+
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
         %orig(frame);
+}
+
+- (void)setContentOffset:(CGPoint)offset {
+    %orig(DYYYAdjustDetailOffset((UITableView *)self, offset));
+}
+
+- (void)setContentOffset:(CGPoint)offset animated:(BOOL)animated {
+    %orig(DYYYAdjustDetailOffset((UITableView *)self, offset), animated);
 }
 
 - (void)layoutSubviews {
