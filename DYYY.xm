@@ -16893,8 +16893,11 @@ static BOOL DYYYStretchTableHeightValue(CGFloat current, CGFloat target, CGFloat
 static BOOL DYYYPrepareDetailTable(UIViewController *vc) {
     if (!vc || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return NO;
     if (![NSThread isMainThread]) return NO;
-    if (![vc respondsToSelector:@selector(tableView)]) return NO;
-    UITableView *table = [vc tableView];
+    SEL tsel = NSSelectorFromString(@"tableView");
+    if (![vc respondsToSelector:tsel]) return NO;
+    id tv = ((id (*)(id, SEL))[vc methodForSelector:tsel])(vc, tsel);
+    if (![tv isKindOfClass:[UITableView class]]) return NO;
+    UITableView *table = (UITableView *)tv;
     if (!table || !CGAffineTransformIsIdentity(table.transform)) return NO;
     if ([DYYYFullscreenCoordinator hasCommentInWindow:table.window]) return NO;
     CGFloat target = 0;
@@ -16913,29 +16916,7 @@ static BOOL DYYYPrepareDetailTable(UIViewController *vc) {
     return YES;
 }
 
-%hook AWEAwemeDetailTableView
 
-- (void)setFrame:(CGRect)frame {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && [NSThread isMainThread] &&
-        CGAffineTransformIsIdentity(self.transform) && !self.dragging && !self.tracking &&
-        ![DYYYFullscreenCoordinator hasCommentInWindow:self.window]) {
-        CGFloat target = 0;
-        UIView *sv = self.superview;
-        if (sv && sv.bounds.size.height > 0.5) {
-            target = sv.bounds.size.height;
-        } else {
-            UIWindow *win = self.window;
-            if (win && fabs(frame.size.width - win.bounds.size.width) < 1.0) target = win.bounds.size.height;
-        }
-        CGFloat stretched = 0;
-        if (DYYYStretchTableHeightValue(CGRectGetHeight(frame), target, &stretched)) {
-            frame.size.height = stretched;
-        }
-    }
-    %orig(frame);
-}
-
-%end
 
 %hook AWEFeedTableViewCell
 - (void)prepareForReuse {
@@ -17746,7 +17727,25 @@ static CGFloat DYYYDetailPageHeight(UITableView *table);
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
-        %orig(frame);
+    // v666: 原生写表尺寸时就把「被底栏压掉 60pt」的高度顶回满高，
+    // 这样它随后算的分页偏移（idx × 表高）从一开始就是 852 基，不需要事后跳位。
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && [NSThread isMainThread] &&
+        CGAffineTransformIsIdentity(self.transform) && !self.dragging && !self.tracking &&
+        ![DYYYFullscreenCoordinator hasCommentInWindow:self.window]) {
+        CGFloat target = 0;
+        UIView *sv = self.superview;
+        if (sv && sv.bounds.size.height > 0.5) {
+            target = sv.bounds.size.height;
+        } else {
+            UIWindow *win = self.window;
+            if (win && fabs(frame.size.width - win.bounds.size.width) < 1.0) target = win.bounds.size.height;
+        }
+        CGFloat stretched = 0;
+        if (DYYYStretchTableHeightValue(CGRectGetHeight(frame), target, &stretched)) {
+            frame.size.height = stretched;
+        }
+    }
+    %orig(frame);
 }
 
 - (void)layoutSubviews {
