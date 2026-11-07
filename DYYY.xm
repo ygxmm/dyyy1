@@ -17698,35 +17698,8 @@ static char kDYYYV29DoneKey; // v439
         self.clipsToBounds = YES;
     }
 
-    // v439: 直接把自身 bottom 约束改 0 撑满（替代 _m_v29 的 BFS 方案）
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        // 已经是屏幕高度就不用动
-        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-        if (self.bounds.size.height >= screenH - 1.0) return;
-        // 已经改过就不再改
-        if (objc_getAssociatedObject(self, &kDYYYV29DoneKey)) return;
-        // v446: 约束现成，直接改，不等 IC 创建
-        // 时序安全：在 table 自己的 layoutSubviews 里改，不主动触发 layout，不打断 IC 创建
-        // 改 self 上下三层的 bottom 约束（table / superview / 祖父）
-        BOOL changed = NO;
-        NSMutableArray *pools = [NSMutableArray arrayWithObject:self.constraints];
-        if (self.superview) [pools addObject:self.superview.constraints];
-        if (self.superview.superview) [pools addObject:self.superview.superview.constraints];
-        for (NSArray *pool in pools) {
-            for (NSLayoutConstraint *c in pool) {
-                if (c.firstItem != self && c.secondItem != self) continue;
-                if (c.firstAttribute != NSLayoutAttributeBottom &&
-                    c.secondAttribute != NSLayoutAttributeBottom) continue;
-                if (fabs(c.constant) > 1.0) {
-                    c.constant = 0;
-                    changed = YES;
-                }
-            }
-        }
-        if (changed) {
-            objc_setAssociatedObject(self, &kDYYYV29DoneKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-    }
+    // v660: 约束归零已提前到 AWEAwemeDetailTableViewController 的
+    // viewWillLayoutSubviews（首次布局前），这里不再处理。
 }
 
 %end
@@ -18915,6 +18888,39 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 
 
 
+// v660: 在首次布局前把详情表格的 bottom 约束归零 —— 翻页器一开始就按
+// 852 计算每页偏移，点击直接滚到目标×852，无 792→852 过渡、无补位校正。
+static void DYYYEarlyZeroDetailTableConstraint(UIViewController *vc) {
+    if (![NSThread isMainThread]) return;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    SEL tsel = NSSelectorFromString(@"tableView");
+    if (![vc respondsToSelector:tsel]) return;
+    id tv = ((id (*)(id, SEL))[vc methodForSelector:tsel])(vc, tsel);
+    if (![tv isKindOfClass:[UITableView class]]) return;
+    UITableView *table = (UITableView *)tv;
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    if (table.bounds.size.height >= screenH - 1.0) return;
+    if (objc_getAssociatedObject(table, &kDYYYV29DoneKey)) return;
+    BOOL changed = NO;
+    NSMutableArray *pools = [NSMutableArray arrayWithObject:table.constraints];
+    if (table.superview) [pools addObject:table.superview.constraints];
+    if (table.superview.superview) [pools addObject:table.superview.superview.constraints];
+    for (NSArray *pool in pools) {
+        for (NSLayoutConstraint *c in pool) {
+            if (c.firstItem != table && c.secondItem != table) continue;
+            if (c.firstAttribute != NSLayoutAttributeBottom &&
+                c.secondAttribute != NSLayoutAttributeBottom) continue;
+            if (fabs(c.constant) > 1.0) {
+                c.constant = 0;
+                changed = YES;
+            }
+        }
+    }
+    if (changed) {
+        objc_setAssociatedObject(table, &kDYYYV29DoneKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
 // ===== v656 探针：详情分页几何（写沙盒 Documents/dyyy_ui.log） =====
 static void DYYYProbeDetailBrief(UIViewController *vc) {
     @autoreleasepool {
@@ -18955,48 +18961,17 @@ static void DYYYProbeDetailBrief(UIViewController *vc) {
 %hook AWEAwemeDetailTableViewController
 
 
+- (void)viewWillLayoutSubviews {
+    %orig;
+    // v660: 首次布局前归零 bottom 约束 → 表格第一次量出即 852。
+    DYYYEarlyZeroDetailTableConstraint(self);
+}
+
 - (void)viewDidLayoutSubviews {
     %orig;
     DYYYProbeDetailBrief(self);
 
-    // v659: 表格 792 状态 = 分页索引的「正确世界」——持续记录当前索引
-    // （用户滑动后也能刷新）。表格跳到 852 后按最后记录的索引持续补位，
-    // 抵消原生用错误索引重新对位；3s 窗口 + 用户拖动即放弃。
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    static char kDYYYCoverIdxKey;
-    static char kDYYYCoverDeadlineKey;
-    UITableView *table2 = [self tableView];
-    if (!table2.window || table2.bounds.size.height <= 0) return;
-    BOOL dragging = table2.tracking || table2.dragging || table2.decelerating;
-    if (table2.bounds.size.height < 800) {
-        // 792 状态：采集正确索引（拖动中也刷新——以最新位置为准）
-        SEL isel = NSSelectorFromString(@"currentVisibleCellIndex");
-        if (![self respondsToSelector:isel]) return;
-        unsigned long long idx = ((unsigned long long (*)(id, SEL))[self methodForSelector:isel])(self, isel);
-        NSInteger count = [table2 numberOfRowsInSection:0];
-        if (count <= 0 || idx >= (unsigned long long)count) return;
-        objc_setAssociatedObject(self, &kDYYYCoverIdxKey, @((long long)idx), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(self, &kDYYYCoverDeadlineKey, @(CACurrentMediaTime() + 3.0), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return;
-    }
-    NSNumber *pendingIdx = objc_getAssociatedObject(self, &kDYYYCoverIdxKey);
-    NSNumber *deadline = objc_getAssociatedObject(self, &kDYYYCoverDeadlineKey);
-    if (!pendingIdx || !deadline) return;
-    if (CACurrentMediaTime() > deadline.doubleValue) {
-        objc_setAssociatedObject(self, &kDYYYCoverIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return;
-    }
-    if (dragging) {
-        objc_setAssociatedObject(self, &kDYYYCoverIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return;
-    }
-    long long idx = pendingIdx.longLongValue;
-    NSInteger count = [table2 numberOfRowsInSection:0];
-    if (idx < 0 || idx >= count) return;
-    CGFloat targetY = idx * table2.bounds.size.height;
-    if (fabs(table2.contentOffset.y - targetY) > 0.5) {
-        table2.contentOffset = CGPointMake(0, targetY);
-    }
+
 }
 
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
@@ -19006,19 +18981,6 @@ static void DYYYProbeDetailBrief(UIViewController *vc) {
         return table.bounds.size.height;
     }
     return height;
-}
-
-- (void)updateTableViewLayoutForTargetPageIndex:(long long)index {
-    %orig(index);
-    // v659: 只按当前表格高度立即对位；目标索引的记录改由布局钩子在
-    // 792 状态下持续采集（原生在 852 后还会用错误索引再调本方法）。
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    UITableView *table = [self tableView];
-    if (!table.window || table.bounds.size.height <= 0) return;
-    CGFloat targetY = index * table.bounds.size.height;
-    if (fabs(table.contentOffset.y - targetY) > 0.5) {
-        table.contentOffset = CGPointMake(0, targetY);
-    }
 }
 
 - (double)baseTableViewBottomInset {
