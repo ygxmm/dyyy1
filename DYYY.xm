@@ -5192,10 +5192,18 @@ static BOOL DYYYInsideCommentPanel(UIView *view) {
 %end
 
 %hook AWEBaseListViewController
-- (void)viewDidLayoutSubviews {
+- (void)viewDidAppear:(BOOL)animated {
     %orig;
-
-    [self applyBlurEffectIfNeeded];
+    // v711: 磨砂只在面板「出现之后」应用。之前在 viewDidLayoutSubviews 里做，
+    // 打开动画途中就在改背景/插模糊，backdrop 还没渲染出来 → 顶部一条黑。
+    if (DYYYGetBool(@"DYYYEnableCommentBlur") &&
+        [self isKindOfClass:NSClassFromString(@"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController")]) {
+        __weak UIViewController *weakSelf = self;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIViewController *vc = weakSelf;
+            if (vc) [(id)vc applyBlurEffectIfNeeded];
+        });
+    }
 }
 
 %new
