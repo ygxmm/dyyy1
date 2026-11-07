@@ -17753,26 +17753,47 @@ static void DYYYMarkDetailOpening(UITableView *table, long long index) {
     if (index > 0) objc_setAssociatedObject(table, &kDYYYOpenIdxKey, @(index), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
+// v701 探针：记录打开期间每一次偏移写入的来源（谁在约束它）
+static void DYYYOffProbe(NSString *line) {
+    if (line.length == 0) return;
+    static NSMutableSet *seen; static dispatch_once_t once;
+    dispatch_once(&once, ^{ seen = [NSMutableSet set]; });
+    @synchronized (seen) {
+        if (seen.count > 40 || [seen containsObject:line]) return;
+        [seen addObject:line];
+    }
+    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_ui.log"];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+        [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil];
+    }
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+    if (!fh) return;
+    @try {
+        [fh seekToEndOfFile];
+        [fh writeData:[[line stringByAppendingString:@"\n"] dataUsingEncoding:NSUTF8StringEncoding]];
+    } @catch (NSException *e) {}
+    [fh closeFile];
+}
+
 static CGPoint DYYYPinDetailOffset(UITableView *table, CGPoint offset) {
     if (!table || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return offset;
-    if (!table.window || table.tracking || table.dragging) return offset;
     NSNumber *openedAt = objc_getAssociatedObject(table, &kDYYYOpendAtKey);
-    NSNumber *openIdx = objc_getAssociatedObject(table, &kDYYYOpenIdxKey);
-    if (!openedAt || openIdx.integerValue <= 0) return offset;
-    if (CACurrentMediaTime() - openedAt.doubleValue > 1.5) {
-        objc_setAssociatedObject(table, &kDYYYOpendAtKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(table, &kDYYYOpenIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return offset;
+    if (!openedAt) return offset;
+    if (CACurrentMediaTime() - openedAt.doubleValue > 2.5) return offset;
+    NSArray *symbols = [NSThread callStackSymbols];
+    NSMutableArray *hits = [NSMutableArray array];
+    for (NSString *sym in symbols) {
+        if ([sym containsString:@"AWEAwemeDetail"] || [sym containsString:@"AWEDetailFeed"] ||
+            [sym containsString:@"BSTTableView"] || [sym containsString:@"SmartSlide"] ||
+            [sym containsString:@"DYYY"]) {
+            [hits addObject:[sym stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]]];
+            if (hits.count >= 5) break;
+        }
     }
-    CGFloat target = [UIScreen mainScreen].bounds.size.height;
-    if (target < 400.0) return offset;
-    CGFloat pinnedY = (CGFloat)openIdx.integerValue * target;
-    if (fabs(offset.y - pinnedY) <= 1.0) {
-        objc_setAssociatedObject(table, &kDYYYOpendAtKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(table, &kDYYYOpenIdxKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return offset;
-    }
-    return CGPointMake(offset.x, pinnedY);
+    DYYYOffProbe([NSString stringWithFormat:@"[OFF] y=%.0f idx=%@ :: %@",
+        offset.y, objc_getAssociatedObject(table, &kDYYYOpenIdxKey) ?: @(-1),
+        [hits componentsJoinedByString:@" <- "]]);
+    return offset;
 }
 
 %hook AWEAwemeDetailTableView
@@ -17786,10 +17807,7 @@ static CGPoint DYYYPinDetailOffset(UITableView *table, CGPoint offset) {
 }
 
 - (void)setContentOffset:(CGPoint)offset animated:(BOOL)animated {
-    CGPoint adjusted = DYYYPinDetailOffset((UITableView *)self, offset);
-    // v700: 钉住时强制无动画——之前保留动画，原生会继续朝它自己的目标滚，和钉住值打架，
-    // 结果既不落对位置，播放器也不接管。
-    %orig(adjusted, fabs(adjusted.y - offset.y) > 1.0 ? NO : animated);
+    %orig(DYYYPinDetailOffset((UITableView *)self, offset), animated);
 }
 
 - (void)layoutSubviews {
