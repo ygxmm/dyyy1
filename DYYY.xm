@@ -18916,6 +18916,7 @@ static char kDYYYOpenBusyKey;
 static char kDYYYOpenNativeKey;
 static char kDYYYOpenFallbackKey;
 static char kDYYYHeightConvertedKey;
+static char kDYYYDetailReloadedKey;
 
 static long long DYYYVCLLValue(UIViewController *vc, NSString *key) {
     @try {
@@ -19068,8 +19069,6 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
     if (fabs(nativeH - (target - 60.0)) <= 0.5) return target;
     return nativeH;
 }
-
-static char kDYYYDetailReloadedKey;
 
 static void DYYYDetailRecordInitialIndex(UIViewController *vc) {
     if (objc_getAssociatedObject(vc, &kDYYYOpenIdxKey) != nil) return;
