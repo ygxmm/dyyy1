@@ -19052,8 +19052,7 @@ static void DYYYGeomProbeLine(NSString *line) {
         if (!fh) return;
         @try {
             [fh seekToEndOfFile];
-            [fh writeData:[[line stringByAppendingString:@"
-"] dataUsingEncoding:NSUTF8StringEncoding]];
+            [fh writeData:[[line stringByAppendingString:@"\n"] dataUsingEncoding:NSUTF8StringEncoding]];
         } @catch (NSException *e) {}
         [fh closeFile];
     }
