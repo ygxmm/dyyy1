@@ -18911,7 +18911,8 @@ static void DYYYEarlyZeroDetailTableConstraint(UIViewController *vc) {
     UITableView *table = (UITableView *)tv;
     CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
     if (table.bounds.size.height >= screenH - 1.0) return;
-    if (objc_getAssociatedObject(table, &kDYYYV29DoneKey)) return;
+    // v671: 去掉一次性标记——原生会在底栏更新等时机把约束改回 -60，
+    // 只零一次就会掉回 792（v670 日志里 boundsH 时 852 时 792 就是这么来的）。
     BOOL changed = NO;
     NSMutableArray *pools = [NSMutableArray arrayWithObject:table.constraints];
     if (table.superview) [pools addObject:table.superview.constraints];
@@ -18927,15 +18928,39 @@ static void DYYYEarlyZeroDetailTableConstraint(UIViewController *vc) {
             }
         }
     }
-    if (changed) {
-        objc_setAssociatedObject(table, &kDYYYV29DoneKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
+    (void)changed;
     // v662: rowHeight 属性存在时 UITableView 根本不调用 delegate 的
     // heightForRowAtIndexPath（原生设了 792）→ contentSize 一直按 792 算。
     // 直接把属性改成窗口高度，从第一次布局起内容就是 852。
     CGFloat targetH = DYYYDetailPageHeight(table);
     if (fabs(table.rowHeight - targetH) > 0.5) table.rowHeight = targetH;
     if (fabs(table.estimatedRowHeight - targetH) > 0.5) table.estimatedRowHeight = targetH;
+}
+
+// v671: 约束之外的第二道保险——布局结束后表仍比满屏父视图矮 60pt 时直接补高。
+// 只在满屏父视图、非手势、无变换时动手，避免转场动画期间乱改。
+static void DYYYSyncDetailTableHeight(UIViewController *vc) {
+    if (![NSThread isMainThread]) return;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    SEL tsel = NSSelectorFromString(@"tableView");
+    if (![vc respondsToSelector:tsel]) return;
+    id tv = ((id (*)(id, SEL))[vc methodForSelector:tsel])(vc, tsel);
+    if (![tv isKindOfClass:[UITableView class]]) return;
+    UITableView *table = (UITableView *)tv;
+    if (!table.window || !CGAffineTransformIsIdentity(table.transform)) return;
+    if (table.tracking || table.dragging || table.decelerating) return;
+    CGFloat target = 0;
+    UIView *sv = table.superview;
+    if (sv && sv.bounds.size.height > 0) target = sv.bounds.size.height;
+    else if (vc.viewIfLoaded) target = vc.viewIfLoaded.bounds.size.height;
+    if (target < 500.0) return;
+    if (fabs(target - [UIScreen mainScreen].bounds.size.height) > 1.0) return;
+    CGFloat height = table.frame.size.height;
+    if (height >= target - 0.5) return;
+    if (height < target * 0.5) return;
+    CGRect frame = table.frame;
+    frame.size.height = target;
+    table.frame = frame;
 }
 
 // v661: 详情页统一高度 = 窗口高度。翻页器在点击瞬间就询问这些方法，
@@ -19088,13 +19113,14 @@ static void DYYYProbeDetailGeometry(UIViewController *vc, UITableView *table) {
     %orig;
     // v660: 首次布局前归零 bottom 约束 → 表格尽快撑到 852。
     DYYYEarlyZeroDetailTableConstraint(self);
+    DYYYSyncDetailTableHeight(self);
 
     // v665: 记下原生下发的起始索引（此时表格可能还没撑满，等下一轮再补位）。
     if (objc_getAssociatedObject(self, &kDYYYOpenIdxKey) == nil) {
         long long init = DYYYVCLLValue(self, @"initialIndex");
         if (init > 0) {
             objc_setAssociatedObject(self, &kDYYYOpenIdxKey, @(init), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            objc_setAssociatedObject(self, &kDYYYOpenDeadlineKey, @(CACurrentMediaTime() + 2.5), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(self, &kDYYYOpenDeadlineKey, @(CACurrentMediaTime() + 5.0), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
     }
     DYYYReconcileOpenIndex(self);
@@ -19105,12 +19131,14 @@ static void DYYYProbeDetailGeometry(UIViewController *vc, UITableView *table) {
     %orig;
     if (index > 0 && objc_getAssociatedObject(self, &kDYYYOpenIdxKey) == nil) {
         objc_setAssociatedObject(self, &kDYYYOpenIdxKey, @(index), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(self, &kDYYYOpenDeadlineKey, @(CACurrentMediaTime() + 2.5), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(self, &kDYYYOpenDeadlineKey, @(CACurrentMediaTime() + 5.0), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 }
 
 - (void)viewDidLayoutSubviews {
     %orig;
+    DYYYEarlyZeroDetailTableConstraint(self);
+    DYYYSyncDetailTableHeight(self);
     DYYYProbeDetailGeometry(self, [self tableView]);
     DYYYReconcileOpenIndex(self);
 }
