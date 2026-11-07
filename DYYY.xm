@@ -18917,6 +18917,8 @@ static char kDYYYOpenNativeKey;
 static char kDYYYOpenFallbackKey;
 static char kDYYYHeightConvertedKey;
 static char kDYYYDetailReloadedKey;
+static char kDYYYDetailConstraintKey;
+static char kDYYYDetailReloadPendingKey;
 
 static long long DYYYVCLLValue(UIViewController *vc, NSString *key) {
     @try {
@@ -18942,16 +18944,26 @@ static void DYYYDetailZeroBottomConstraint(UIViewController *vc) {
     if (!table) return;
     CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
     if (table.bounds.size.height >= screenH - 1.0) return;
-    NSMutableArray *pools = [NSMutableArray arrayWithObject:table.constraints];
-    if (table.superview) [pools addObject:table.superview.constraints];
-    if (table.superview.superview) [pools addObject:table.superview.superview.constraints];
-    for (NSArray *pool in pools) {
-        for (NSLayoutConstraint *c in pool) {
-            if (c.firstItem != table && c.secondItem != table) continue;
-            if (c.firstAttribute != NSLayoutAttributeBottom &&
-                c.secondAttribute != NSLayoutAttributeBottom) continue;
-            if (fabs(c.constant) > 1.0) c.constant = 0;
+    // v678: 约束只找一次并缓存——之前每次布局都遍历三层约束数组，是详情页掉帧的来源之一。
+    NSArray *cached = objc_getAssociatedObject(table, &kDYYYDetailConstraintKey);
+    if (!cached) {
+        NSMutableArray *found = [NSMutableArray array];
+        NSMutableArray *pools = [NSMutableArray arrayWithObject:table.constraints];
+        if (table.superview) [pools addObject:table.superview.constraints];
+        if (table.superview.superview) [pools addObject:table.superview.superview.constraints];
+        for (NSArray *pool in pools) {
+            for (NSLayoutConstraint *c in pool) {
+                if (c.firstItem != table && c.secondItem != table) continue;
+                if (c.firstAttribute != NSLayoutAttributeBottom &&
+                    c.secondAttribute != NSLayoutAttributeBottom) continue;
+                [found addObject:c];
+            }
         }
+        cached = found;
+        objc_setAssociatedObject(table, &kDYYYDetailConstraintKey, found, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    for (NSLayoutConstraint *c in cached) {
+        if (fabs(c.constant) > 1.0) c.constant = 0;
     }
 }
 
@@ -18993,12 +19005,23 @@ static void DYYYDetailSyncTableHeight(UIViewController *vc) {
     frame.size.height = target;
     table.frame = frame;
 
-    // v677: 行是在表还 792 时建的，抬高后要重新问一次行高，否则 cell 仍是 792。
-    // 每张表只重建一次，避免每轮布局都 begin/endUpdates（v668 的卡死就是这么来的）。
-    if (objc_getAssociatedObject(table, &kDYYYDetailReloadedKey) == nil) {
-        objc_setAssociatedObject(table, &kDYYYDetailReloadedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [table beginUpdates];
-        [table endUpdates];
+    // v678: 重建行改为「确实过期才做 + 下一轮 runloop 做」。
+    // 之前直接在本轮布局里 begin/endUpdates，等于布局套布局，详情页打开就是一顿掉帧。
+    if (objc_getAssociatedObject(table, &kDYYYDetailReloadedKey) == nil &&
+        objc_getAssociatedObject(table, &kDYYYDetailReloadPendingKey) == nil &&
+        [table numberOfRowsInSection:0] > 0) {
+        CGRect firstRow = [table rectForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
+        if (firstRow.size.height < target - 0.5) {
+            objc_setAssociatedObject(table, &kDYYYDetailReloadPendingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                objc_setAssociatedObject(table, &kDYYYDetailReloadedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                objc_setAssociatedObject(table, &kDYYYDetailReloadPendingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                if (table.window && [table numberOfRowsInSection:0] > 0) {
+                    [table beginUpdates];
+                    [table endUpdates];
+                }
+            });
+        }
     }
 }
 
@@ -19112,7 +19135,7 @@ static void DYYYDetailRecordInitialIndex(UIViewController *vc) {
     %orig;
     // 原生可能在出现动画结束后才写完初始偏移 → 稍后再补两次。
     __weak UIViewController *weakVC = self;
-    for (NSNumber *delayNum in @[@0.35, @1.0, @2.0]) {
+    for (NSNumber *delayNum in @[@0.35, @1.2]) {
         double delay = delayNum.doubleValue;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             UIViewController *vc = weakVC;
