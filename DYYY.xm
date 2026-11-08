@@ -17000,20 +17000,6 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
 
 %hook AWEFeedTableView
 
-// v731: 与详情页同一套逻辑——信息流表也永远不允许出现「屏高 − 60」的高度。
-// 只要它真的变成过 792，那一轮建出来的行就按 792 排版，和后来的 852 混成两套网格，
-// 于是放大缩小、拖进度条都会错位。在写入入口夹住，行从第一次起就都是 852。
-- (void)setFrame:(CGRect)frame {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-        CGFloat h = CGRectGetHeight(frame);
-        if (screenH > 400.0 && fabs(h - (screenH - 60.0)) <= 1.0) {
-            frame.size.height = screenH;
-        }
-    }
-    %orig(frame);
-}
-
 - (void)layoutSubviews {
     %orig;
 
@@ -17153,19 +17139,20 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
 
 %hook AWEFeedTableViewController
 
-// v732: 和详情页同一套口径——首页也实现 AWESmartSlidePageSnapDecisionStrategyDataSource，
-// 分页吸附器的页高同样要回答整屏；底部 inset 也答 0。这样 792/852 两套网格根本不会产生。
-- (double)smartSlidePageSnapCellHeightForIndex:(long long)index {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        CGFloat h = [UIScreen mainScreen].bounds.size.height;
-        if (h > 400.0) return h;
+// v733: 信息流的行高只有这一个来源（AO 是 dataSource/delegate 本身）。
+// 原生在过渡帧里会按「表高 − 60」量出 792，之后表回到 852，这一行就留在旧网格上，
+// 于是捏合、拖进度条都错位。这里只把「表已经满屏、却量出 表高 − 60」这一种情况归一，
+// 其它高度（半屏、评论区、拖拽回退）一律放行。
+- (double)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    double h = %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return h;
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    if (screenH > 400.0 && tableView == self.tableView &&
+        fabs(tableView.bounds.size.height - screenH) <= 1.0 &&
+        fabs(h - (screenH - 60.0)) <= 1.0) {
+        return screenH;
     }
-    return %orig;
-}
-
-- (double)tableViewBottomInsetForAllPlatform {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
-    return %orig;
+    return h;
 }
 
 - (void)setCurrentPlayIndex:(NSInteger)index {
