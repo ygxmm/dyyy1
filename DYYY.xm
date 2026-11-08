@@ -17008,7 +17008,7 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
     }
     return v;
 }
-@end
+%end
 
 %hook AWEFeedTableView
 
