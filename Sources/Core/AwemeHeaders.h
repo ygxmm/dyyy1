@@ -576,6 +576,11 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 - (void)setCurrentPlayIndex:(NSInteger)index;
 - (void)playVideo:(id)video;
 - (void)playVideoOnScrollDidEnd;
+// 41.0 转储 AWEFeedTableViewController.h:563（AO 自身即 dataSource/delegate）
+- (double)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath;
+- (double)cellHeight;
+- (double)tableViewBottomInsetForAllPlatform;
+- (double)smartSlidePageSnapCellHeightForIndex:(long long)index;
 @end
 
 @interface AWEFeedTableView : UITableView
