@@ -16998,6 +16998,18 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
     table.frame = frame;
 }
 
+%hook AWEFeedModuleService
+- (double)tableViewBottomInsetForFeedViewController:(id)vc {
+    double v = %orig;
+    static int n = 0;
+    if (n++ < 200) {
+        DYYYFeedProbe([NSString stringWithFormat:@"[SVC-FEED] vc=%@ v=%.1f",
+                       NSStringFromClass([vc class]), v]);
+    }
+    return v;
+}
+@end
+
 %hook AWEFeedTableView
 
 - (void)layoutSubviews {
@@ -17137,6 +17149,15 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
 }
 %end
 
+// v734：只读探针，不改任何行为。用来确认首页 792 的取数到底走哪条路。
+static void DYYYFeedProbe(NSString *line) {
+    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_probe.log"];
+    FILE *f = fopen(path.fileSystemRepresentation, "a");
+    if (!f) return;
+    fprintf(f, "%s\n", line.UTF8String);
+    fclose(f);
+}
+
 %hook AWEFeedTableViewController
 
 // v733: 信息流的行高只有这一个来源（AO 是 dataSource/delegate 本身）。
@@ -17152,6 +17173,28 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
         return screenH;
     }
     return h;
+}
+
+- (double)tableViewBottomInsetForAllPlatform {
+    double v = %orig;
+    static int n = 0;
+    if (n++ < 200) {
+        UIView *tv = [self valueForKey:@"tableView"];
+        DYYYFeedProbe([NSString stringWithFormat:@"[INSET] vc=%@ v=%.1f tableH=%.1f superH=%.1f",
+                       NSStringFromClass([self class]), v, tv.bounds.size.height, tv.superview.bounds.size.height]);
+    }
+    return v;
+}
+
+- (void)applyTableViewLayoutForAllPlatform {
+    UIView *tv = [self valueForKey:@"tableView"];
+    CGFloat before = tv.frame.size.height;
+    %orig;
+    static int n = 0;
+    if (n++ < 200) {
+        DYYYFeedProbe([NSString stringWithFormat:@"[APPLY] before=%.1f after=%.1f v=%.1f",
+                       before, tv.frame.size.height, [self tableViewBottomInsetForAllPlatform]]);
+    }
 }
 
 - (void)setCurrentPlayIndex:(NSInteger)index {
