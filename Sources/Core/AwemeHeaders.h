@@ -2565,3 +2565,16 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property(nonatomic, copy) NSDictionary *nowPlayingInfo;              // 正在播放信息字典
 + (instancetype)defaultCenter;                                        // 单例入口
 @end
+
+@interface AWEDPlayerVideoInfoModel : NSObject
+@property (nonatomic) long long isSourceHDR;
+@property (nonatomic) long long hdrType;
+@end
+
+@interface AWEDPlayerVideoController_Merge : NSObject
+- (void)setEnablePlayHDRModeIfNeeded;
+@end
+
+@interface AWEDPlayerPlayControlContainer : NSObject
+- (void)configEnableMetalRenderHDRIfNeeded;
+@end

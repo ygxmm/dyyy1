@@ -2519,6 +2519,78 @@ static NSInteger DYYYResFromGearName(NSString *name) {
 // v728: 41.0 新增了全局 HDR 闸门（头文件 AWEHDRModelManager.h）：
 //   + (BOOL)enableVideoHDR;  + (BOOL)useOneKeyHDR;
 // 播放链路先问这里，再决定要不要走 HDR；只改 model 上的 hdrType/hdrBit 已经拦不住。
+// ===== v740 HDR 播放侧探针 =====
+static void DYYYHDRProbe(NSString *line) {
+    static NSMutableSet *seen = nil;
+    static int count = 0;
+    if (!seen) seen = [NSMutableSet set];
+    if (count > 200 || [seen containsObject:line]) return;
+    [seen addObject:line];
+    count++;
+    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_hdr.log"];
+    FILE *f = fopen(path.fileSystemRepresentation, "a");
+    if (!f) return;
+    fprintf(f, "%s\n", line.UTF8String);
+    fclose(f);
+}
+
+// v740: 41.0 播放链路自己有一份 HDR 结论（AWEDPlayerVideoInfoModel.isSourceHDR/hdrType），
+// 并在 setEnablePlayHDRModeIfNeeded 里决定是否开 HDR 模式；只改 API 模型上的字段拦不住。
+%hook AWEDPlayerVideoInfoModel
+
+- (long long)isSourceHDR {
+    long long v = %orig;
+    if (DYYYShouldDisableAllHDR()) {
+        DYYYHDRProbe([NSString stringWithFormat:@"[HDR] info.isSourceHDR orig=%lld -> 0", v]);
+        return 0;
+    }
+    return v;
+}
+
+- (void)setIsSourceHDR:(long long)v {
+    if (DYYYShouldDisableAllHDR()) {
+        DYYYHDRProbe([NSString stringWithFormat:@"[HDR] info.setIsSourceHDR(%lld) -> 0", v]);
+        %orig(0);
+        return;
+    }
+    %orig(v);
+}
+
+- (long long)hdrType {
+    long long v = %orig;
+    if (DYYYShouldDisableAllHDR()) {
+        DYYYHDRProbe([NSString stringWithFormat:@"[HDR] info.hdrType orig=%lld -> 0", v]);
+        return 0;
+    }
+    return v;
+}
+
+%end
+
+%hook AWEDPlayerVideoController_Merge
+
+- (void)setEnablePlayHDRModeIfNeeded {
+    if (DYYYShouldDisableAllHDR()) {
+        DYYYHDRProbe(@"[HDR] setEnablePlayHDRModeIfNeeded skipped");
+        return;
+    }
+    %orig;
+}
+
+%end
+
+%hook AWEDPlayerPlayControlContainer
+
+- (void)configEnableMetalRenderHDRIfNeeded {
+    if (DYYYShouldDisableAllHDR()) {
+        DYYYHDRProbe(@"[HDR] configEnableMetalRenderHDRIfNeeded skipped");
+        return;
+    }
+    %orig;
+}
+
+%end
+
 %hook AWEHDRModelManager
 
 + (BOOL)enableVideoHDR {
