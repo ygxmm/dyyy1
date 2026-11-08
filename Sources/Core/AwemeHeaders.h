@@ -590,7 +590,10 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 - (double)tableViewBottomInsetForAllPlatform;
 @end
 
-@interface AWEFeedTableView : UITableView
+@interface AWEFeedDataSafeTableView : UITableView
+@end
+
+@interface AWEFeedTableView : AWEFeedDataSafeTableView
 @end
 
 @interface AWEFeedTableViewCell : UITableViewCell

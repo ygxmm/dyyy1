@@ -235,7 +235,8 @@ static void DYYYGeometryProbe(UITableView *table, NSString *tag) {
         }
         cells = buf;
     }
-    if (!bad && y > 1.0 && fabs(remainder(y, screenH)) > 0.5) bad = YES;
+    BOOL atRest = !table.isTracking && !table.isDragging && !table.isDecelerating;
+    if (!bad && atRest && y > 1.0 && fabs(remainder(y, screenH)) > 0.5) bad = YES;
     if (!bad) return;
     static NSMutableSet *seen = nil;
     static int count = 0;
@@ -245,8 +246,8 @@ static void DYYYGeometryProbe(UITableView *table, NSString *tag) {
     if ([seen containsObject:sig]) return;
     [seen addObject:sig];
     count++;
-    DYYYGeomWrite([NSString stringWithFormat:@"[GEOM] %@ size=%.0f cells=%@%@",
-                   sig, table.contentSize.height, cells.length ? cells : @"-", @""]);
+    DYYYGeomWrite([NSString stringWithFormat:@"[GEOM] %@ size=%.0f rest=%d",
+                   sig, table.contentSize.height, atRest ? 1 : 0]);
 }
 
 %group DYYYLoginBypassCore
@@ -17062,6 +17063,18 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
     frame.size.height = target;
     table.frame = frame;
 }
+
+%hook AWEFeedDataSafeTableView
+
+// v737: 探针覆盖兜底——只对「裸 AWEFeedDataSafeTableView 实例」生效，
+// 子类（AWEFeedTableView / AWEAwemeDetailTableView）已各有自己的探针，避免重复计数。
+- (void)layoutSubviews {
+    %orig;
+    if ([self isMemberOfClass:NSClassFromString(@"AWEFeedDataSafeTableView")]) {
+        DYYYGeometryProbe((UITableView *)self, @"datasafe");
+    }
+}
+%end
 
 %hook AWEFeedTableView
 
