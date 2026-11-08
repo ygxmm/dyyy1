@@ -17147,8 +17147,7 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
     double h = %orig;
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return h;
     CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-    if (screenH > 400.0 && tableView == self.tableView &&
-        fabs(tableView.bounds.size.height - screenH) <= 1.0 &&
+    if (screenH > 400.0 && fabs(tableView.bounds.size.height - screenH) <= 1.0 &&
         fabs(h - (screenH - 60.0)) <= 1.0) {
         return screenH;
     }
