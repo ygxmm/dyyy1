@@ -217,7 +217,13 @@ static void DYYYGeometryProbe(UITableView *table, NSString *tag) {
     CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
     if (screenH < 400.0) return;
     static NSTimeInterval lastCheck = 0;
+    static NSMutableSet *alive = nil;
     NSTimeInterval now = CFAbsoluteTimeGetCurrent();
+    if (!alive) {
+        alive = [NSMutableSet set];
+        DYYYGeomWrite([NSString stringWithFormat:@"[GEOM] probe-active v=737 tag=%@ h=%.1f",
+                       tag, table.bounds.size.height]);
+    }
     if (now - lastCheck < 0.25) return;
     lastCheck = now;
     CGFloat tableH = table.bounds.size.height;
@@ -237,7 +243,13 @@ static void DYYYGeometryProbe(UITableView *table, NSString *tag) {
     }
     BOOL atRest = !table.isTracking && !table.isDragging && !table.isDecelerating;
     if (!bad && atRest && y > 1.0 && fabs(remainder(y, screenH)) > 0.5) bad = YES;
-    if (!bad) return;
+    if (!bad) {
+        if (![alive containsObject:tag]) {
+            [alive addObject:tag];
+            DYYYGeomWrite([NSString stringWithFormat:@"[GEOM] probe-ok tag=%@ h=%.1f", tag, tableH]);
+        }
+        return;
+    }
     static NSMutableSet *seen = nil;
     static int count = 0;
     if (!seen) seen = [NSMutableSet set];
