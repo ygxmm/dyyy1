@@ -590,6 +590,12 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 - (double)tableViewBottomInsetForAllPlatform;
 @end
 
+@interface AWEFeedModuleService : NSObject
+- (double)tableViewBottomInsetForFeedViewController:(id)vc;
+- (double)tableViewBottomInsetForDetailViewController:(id)vc;
+- (double)tableViewBottomInsetForAllPlatform;
+@end
+
 @interface AWEFeedTableView : UITableView
 @end
 

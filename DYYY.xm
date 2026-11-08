@@ -201,6 +201,54 @@ static NSURL *DYYYLoginBypassURLByReplacingBundleIdentifier(NSURL *url) {
     return [DYYYLoginBypassManager URLByReplacingTargetBundleIdentifiers:url];
 }
 
+// ===== v736 几何探针：只读数，不改行为 =====
+// 不变式：全屏时 表高 = 屏高，偏移与每个可见行都落在 屏高 的整数网格上。
+// 只在被破坏时写一行，同签名只写一次，最多 300 行，0.25s 限流。
+static void DYYYGeomWrite(NSString *line) {
+    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_geom.log"];
+    FILE *f = fopen(path.fileSystemRepresentation, "a");
+    if (!f) return;
+    fprintf(f, "%s\n", line.UTF8String);
+    fclose(f);
+}
+
+static void DYYYGeometryProbe(UITableView *table, NSString *tag) {
+    if (!table) return;
+    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
+    if (screenH < 400.0) return;
+    static NSTimeInterval lastCheck = 0;
+    NSTimeInterval now = CFAbsoluteTimeGetCurrent();
+    if (now - lastCheck < 0.25) return;
+    lastCheck = now;
+    CGFloat tableH = table.bounds.size.height;
+    CGFloat y = table.contentOffset.y;
+    NSString *cells = @"";
+    BOOL bad = (fabs(tableH - screenH) > 1.0);
+    if (!bad) {
+        NSMutableString *buf = [NSMutableString string];
+        for (UITableViewCell *c in table.visibleCells) {
+            CGRect f = c.frame;
+            if (fabs(f.size.height - screenH) > 0.5 || fabs(remainder(f.origin.y, screenH)) > 0.5) {
+                bad = YES;
+                [buf appendFormat:@" %.0f/%.0f", f.origin.y, f.size.height];
+            }
+        }
+        cells = buf;
+    }
+    if (!bad && y > 1.0 && fabs(remainder(y, screenH)) > 0.5) bad = YES;
+    if (!bad) return;
+    static NSMutableSet *seen = nil;
+    static int count = 0;
+    if (!seen) seen = [NSMutableSet set];
+    if (count > 300) return;
+    NSString *sig = [NSString stringWithFormat:@"%@|h=%.0f|y=%.0f|%@", tag, tableH, y, cells];
+    if ([seen containsObject:sig]) return;
+    [seen addObject:sig];
+    count++;
+    DYYYGeomWrite([NSString stringWithFormat:@"[GEOM] %@ size=%.0f cells=%@%@",
+                   sig, table.contentSize.height, cells.length ? cells : @"-", @""]);
+}
+
 %group DYYYLoginBypassCore
 
 // ===== DYYY 统一日志（变参，动态沙盒路径）=====
@@ -7866,6 +7914,23 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
 
 - (BOOL)getFeedIphoneAutoPlayState {
     return YES;
+}
+
+// v736: 底部预留的公共源头。全屏时统一答 0，让各页 applyTableViewLayoutForAllPlatform
+// 第一次就把表摆成屏高，792 这一网格不再产生（详情页已在 VC 层验证过同一做法）。
+- (double)tableViewBottomInsetForFeedViewController:(id)vc {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
+    return %orig;
+}
+
+- (double)tableViewBottomInsetForDetailViewController:(id)vc {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
+    return %orig;
+}
+
+- (double)tableViewBottomInsetForAllPlatform {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
+    return %orig;
 }
 %end
 
@@ -17005,6 +17070,7 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
 
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         DYYYStretchPagerTableToSuperview(self, 0.0);
+        DYYYGeometryProbe(self, @"feed");
 
     } else if (gCurrentTabBarHeight > 0) {
         UIWindow *keyWindow = [DYYYUtils getActiveWindow];
@@ -17855,6 +17921,7 @@ static char kDYYYV29DoneKey; // v439
     // 造成主线程长时间满载（实测冻屏 3 分钟以上）。这里恢复裁剪以降低渲染负载。
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         self.clipsToBounds = YES;
+        DYYYGeometryProbe(self, @"detail");
     }
 
 }
