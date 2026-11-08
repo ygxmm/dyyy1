@@ -16939,15 +16939,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 // v687: 探针里 delegate 是 BSTTableViewDelegateOptProxy，它转发给 AWEDetailFeedListContainer——
 // 真正提供行高的是这个容器（UITableViewDataSource + UITableViewDelegate），不是 VC。
 // 之前一直在 VC 上加钩子，等于打错了人；这里直接钩它。
-// v734：只读探针，不改任何行为。用来确认首页 792 的取数到底走哪条路。
-static void DYYYFeedProbe(NSString *line) {
-    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_probe.log"];
-    FILE *f = fopen(path.fileSystemRepresentation, "a");
-    if (!f) return;
-    fprintf(f, "%s\n", line.UTF8String);
-    fclose(f);
-}
-
 %hook AWEDetailFeedListContainer
 
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
@@ -17006,18 +16997,6 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
     frame.size.height = target;
     table.frame = frame;
 }
-
-%hook AWEFeedModuleService
-- (double)tableViewBottomInsetForFeedViewController:(id)vc {
-    double v = %orig;
-    static int n = 0;
-    if (n++ < 200) {
-        DYYYFeedProbe([NSString stringWithFormat:@"[SVC-FEED] vc=%@ v=%.1f",
-                       NSStringFromClass([vc class]), v]);
-    }
-    return v;
-}
-%end
 
 %hook AWEFeedTableView
 
@@ -17160,41 +17139,12 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
 
 %hook AWEFeedTableViewController
 
-// v733: 信息流的行高只有这一个来源（AO 是 dataSource/delegate 本身）。
-// 原生在过渡帧里会按「表高 − 60」量出 792，之后表回到 852，这一行就留在旧网格上，
-// 于是捏合、拖进度条都错位。这里只把「表已经满屏、却量出 表高 − 60」这一种情况归一，
-// 其它高度（半屏、评论区、拖拽回退）一律放行。
-- (double)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    double h = %orig;
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return h;
-    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-    if (screenH > 400.0 && fabs(tableView.bounds.size.height - screenH) <= 1.0 &&
-        fabs(h - (screenH - 60.0)) <= 1.0) {
-        return screenH;
-    }
-    return h;
-}
-
+// v735: 探针实测——本方法恒返回 60，applyTableViewLayoutForAllPlatform 就按它把表摆成 792
+// （before=792 after=792，superH 始终 852），随后又被 layoutSubviews 撑回 852，两套网格来回拉锯，
+// 行有时按 792 量、有时按 852 量，缓存就混了。与详情页同一处源头：这里答 0。
 - (double)tableViewBottomInsetForAllPlatform {
-    double v = %orig;
-    static int n = 0;
-    if (n++ < 200) {
-        UIView *tv = [self valueForKey:@"tableView"];
-        DYYYFeedProbe([NSString stringWithFormat:@"[INSET] vc=%@ v=%.1f tableH=%.1f superH=%.1f",
-                       NSStringFromClass([self class]), v, tv.bounds.size.height, tv.superview.bounds.size.height]);
-    }
-    return v;
-}
-
-- (void)applyTableViewLayoutForAllPlatform {
-    UIView *tv = [self valueForKey:@"tableView"];
-    CGFloat before = tv.frame.size.height;
-    %orig;
-    static int n = 0;
-    if (n++ < 200) {
-        DYYYFeedProbe([NSString stringWithFormat:@"[APPLY] before=%.1f after=%.1f v=%.1f",
-                       before, tv.frame.size.height, [self tableViewBottomInsetForAllPlatform]]);
-    }
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
+    return %orig;
 }
 
 - (void)setCurrentPlayIndex:(NSInteger)index {
