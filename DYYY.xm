@@ -218,22 +218,27 @@ static void DYYYGeometryProbe(UITableView *table, NSString *tag) {
     if (screenH < 400.0) return;
     static NSTimeInterval lastCheck = 0;
     static NSMutableSet *alive = nil;
+    static BOOL inProbe = NO;
     NSTimeInterval now = CFAbsoluteTimeGetCurrent();
     if (!alive) {
         alive = [NSMutableSet set];
-        DYYYGeomWrite([NSString stringWithFormat:@"[GEOM] probe-active v=737 tag=%@ h=%.1f",
+        DYYYGeomWrite([NSString stringWithFormat:@"[GEOM] probe-active v=738 tag=%@ h=%.1f",
                        tag, table.bounds.size.height]);
     }
+    if (inProbe) return;
     if (now - lastCheck < 0.25) return;
     lastCheck = now;
+    inProbe = YES;
     CGFloat tableH = table.bounds.size.height;
-    CGFloat y = table.contentOffset.y;
     NSString *cells = @"";
     BOOL bad = (fabs(tableH - screenH) > 1.0);
     if (!bad) {
+        // 绝不调用 -visibleCells：它会逼 UITableView 在 layoutSubviews 里再取一次 cell，
+        // 重入布局就是「用着用着卡死」的根源。这里只读已经挂在表上的子视图，不触发布局。
         NSMutableString *buf = [NSMutableString string];
-        for (UITableViewCell *c in table.visibleCells) {
-            CGRect f = c.frame;
+        for (UIView *v in table.subviews) {
+            if (![v isKindOfClass:[UITableViewCell class]]) continue;
+            CGRect f = v.frame;
             if (fabs(f.size.height - screenH) > 0.5 || fabs(remainder(f.origin.y, screenH)) > 0.5) {
                 bad = YES;
                 [buf appendFormat:@" %.0f/%.0f", f.origin.y, f.size.height];
@@ -241,8 +246,7 @@ static void DYYYGeometryProbe(UITableView *table, NSString *tag) {
         }
         cells = buf;
     }
-    BOOL atRest = !table.isTracking && !table.isDragging && !table.isDecelerating;
-    if (!bad && atRest && y > 1.0 && fabs(remainder(y, screenH)) > 0.5) bad = YES;
+    inProbe = NO;
     if (!bad) {
         if (![alive containsObject:tag]) {
             [alive addObject:tag];
@@ -254,12 +258,11 @@ static void DYYYGeometryProbe(UITableView *table, NSString *tag) {
     static int count = 0;
     if (!seen) seen = [NSMutableSet set];
     if (count > 300) return;
-    NSString *sig = [NSString stringWithFormat:@"%@|h=%.0f|y=%.0f|%@", tag, tableH, y, cells];
+    NSString *sig = [NSString stringWithFormat:@"%@|h=%.0f|%@", tag, tableH, cells];
     if ([seen containsObject:sig]) return;
     [seen addObject:sig];
     count++;
-    DYYYGeomWrite([NSString stringWithFormat:@"[GEOM] %@ size=%.0f rest=%d",
-                   sig, table.contentSize.height, atRest ? 1 : 0]);
+    DYYYGeomWrite([NSString stringWithFormat:@"[GEOM] %@ size=%.0f", sig, table.contentSize.height]);
 }
 
 %group DYYYLoginBypassCore
