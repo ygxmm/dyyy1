@@ -16939,6 +16939,15 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 // v687: 探针里 delegate 是 BSTTableViewDelegateOptProxy，它转发给 AWEDetailFeedListContainer——
 // 真正提供行高的是这个容器（UITableViewDataSource + UITableViewDelegate），不是 VC。
 // 之前一直在 VC 上加钩子，等于打错了人；这里直接钩它。
+// v734：只读探针，不改任何行为。用来确认首页 792 的取数到底走哪条路。
+static void DYYYFeedProbe(NSString *line) {
+    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_probe.log"];
+    FILE *f = fopen(path.fileSystemRepresentation, "a");
+    if (!f) return;
+    fprintf(f, "%s\n", line.UTF8String);
+    fclose(f);
+}
+
 %hook AWEDetailFeedListContainer
 
 - (double)tableView:(id)a0 heightForRowAtIndexPath:(id)a1 {
@@ -17148,15 +17157,6 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
     }
 }
 %end
-
-// v734：只读探针，不改任何行为。用来确认首页 792 的取数到底走哪条路。
-static void DYYYFeedProbe(NSString *line) {
-    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_probe.log"];
-    FILE *f = fopen(path.fileSystemRepresentation, "a");
-    if (!f) return;
-    fprintf(f, "%s\n", line.UTF8String);
-    fclose(f);
-}
 
 %hook AWEFeedTableViewController
 
