@@ -16117,7 +16117,9 @@ static BOOL DYYYViewHideGate(void) {
     }
 
 
-    if (!enableBlur || frame.origin.x == 0) {
+    // v742: 评论磨砂那段逻辑只在面板真的在屏时才需要（responder 链遍历很贵，
+    // 转场时每个带 x 偏移的 setFrame 都会触发一次）。面板不在屏直接透传。
+    if (!enableBlur || !dyyyCommentViewVisible || frame.origin.x == 0) {
         %orig(frame);
         return;
     }
