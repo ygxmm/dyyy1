@@ -16131,6 +16131,14 @@ static BOOL DYYYViewHideGate(void) {
         return;
     }
 
+    // v744: 先按尺寸筛。播放器/互动层都是整屏尺寸，而转场里高频 setFrame 的是标题、按钮、图标。
+    // 小视图直接透传，连关联对象都不用读（objc_getAssociatedObject 有全局锁）。
+    CGFloat dyyyScreenW = [UIScreen mainScreen].bounds.size.width;
+    if (frame.size.width < dyyyScreenW - 1.0 || frame.size.height < 300.0) {
+        %orig(frame);
+        return;
+    }
+
     // v743: 不再每次沿 responder 链找 VC（最多 100 跳 isKindOfClass，转场时每个视图都要走一遍）。
     // 每个视图只查一次并用弱引用记住结果，之后就是一次关联对象读取。
     static char kDYYYNearestVCKey;
