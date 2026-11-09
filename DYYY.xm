@@ -15892,6 +15892,13 @@ static BOOL DYYYViewHideGate(void) {
     return enabled;
 }
 
+// v743: 弱引用盒子，用于给视图缓存「最近的 VC」，避免每次 setFrame 都走 responder 链。
+@interface DYYYWeakRef : NSObject
+@property (nonatomic, weak) id obj;
+@end
+@implementation DYYYWeakRef
+@end
+
 %hook UIView
 
 - (void)setHidden:(BOOL)hidden {
@@ -16124,7 +16131,19 @@ static BOOL DYYYViewHideGate(void) {
         return;
     }
 
-    UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
+    // v743: 不再每次沿 responder 链找 VC（最多 100 跳 isKindOfClass，转场时每个视图都要走一遍）。
+    // 每个视图只查一次并用弱引用记住结果，之后就是一次关联对象读取。
+    static char kDYYYNearestVCKey;
+    DYYYWeakRef *vcRef = objc_getAssociatedObject(self, &kDYYYNearestVCKey);
+    UIViewController *vc = vcRef.obj;
+    if (!vc) {
+        vc = [DYYYUtils firstAvailableViewControllerFromView:self];
+        if (vc) {
+            DYYYWeakRef *ref = [DYYYWeakRef new];
+            ref.obj = vc;
+            objc_setAssociatedObject(self, &kDYYYNearestVCKey, ref, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
     static Class PlayVCClass1, PlayVCClass2, PlayVCClass3;
     static dispatch_once_t playClassesOnce;
     dispatch_once(&playClassesOnce, ^{
