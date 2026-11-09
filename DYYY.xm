@@ -201,70 +201,6 @@ static NSURL *DYYYLoginBypassURLByReplacingBundleIdentifier(NSURL *url) {
     return [DYYYLoginBypassManager URLByReplacingTargetBundleIdentifiers:url];
 }
 
-// ===== v736 几何探针：只读数，不改行为 =====
-// 不变式：全屏时 表高 = 屏高，偏移与每个可见行都落在 屏高 的整数网格上。
-// 只在被破坏时写一行，同签名只写一次，最多 300 行，0.25s 限流。
-static void DYYYGeomWrite(NSString *line) {
-    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_geom.log"];
-    FILE *f = fopen(path.fileSystemRepresentation, "a");
-    if (!f) return;
-    fprintf(f, "%s\n", line.UTF8String);
-    fclose(f);
-}
-
-static void DYYYGeometryProbe(UITableView *table, NSString *tag) {
-    if (!table) return;
-    CGFloat screenH = [UIScreen mainScreen].bounds.size.height;
-    if (screenH < 400.0) return;
-    static NSTimeInterval lastCheck = 0;
-    static NSMutableSet *alive = nil;
-    static BOOL inProbe = NO;
-    NSTimeInterval now = CFAbsoluteTimeGetCurrent();
-    if (!alive) {
-        alive = [NSMutableSet set];
-        DYYYGeomWrite([NSString stringWithFormat:@"[GEOM] probe-active v=738 tag=%@ h=%.1f",
-                       tag, table.bounds.size.height]);
-    }
-    if (inProbe) return;
-    if (now - lastCheck < 0.25) return;
-    lastCheck = now;
-    inProbe = YES;
-    CGFloat tableH = table.bounds.size.height;
-    NSString *cells = @"";
-    BOOL bad = (fabs(tableH - screenH) > 1.0);
-    if (!bad) {
-        // 绝不调用 -visibleCells：它会逼 UITableView 在 layoutSubviews 里再取一次 cell，
-        // 重入布局就是「用着用着卡死」的根源。这里只读已经挂在表上的子视图，不触发布局。
-        NSMutableString *buf = [NSMutableString string];
-        for (UIView *v in table.subviews) {
-            if (![v isKindOfClass:[UITableViewCell class]]) continue;
-            CGRect f = v.frame;
-            if (fabs(f.size.height - screenH) > 0.5 || fabs(remainder(f.origin.y, screenH)) > 0.5) {
-                bad = YES;
-                [buf appendFormat:@" %.0f/%.0f", f.origin.y, f.size.height];
-            }
-        }
-        cells = buf;
-    }
-    inProbe = NO;
-    if (!bad) {
-        if (![alive containsObject:tag]) {
-            [alive addObject:tag];
-            DYYYGeomWrite([NSString stringWithFormat:@"[GEOM] probe-ok tag=%@ h=%.1f", tag, tableH]);
-        }
-        return;
-    }
-    static NSMutableSet *seen = nil;
-    static int count = 0;
-    if (!seen) seen = [NSMutableSet set];
-    if (count > 300) return;
-    NSString *sig = [NSString stringWithFormat:@"%@|h=%.0f|%@", tag, tableH, cells];
-    if ([seen containsObject:sig]) return;
-    [seen addObject:sig];
-    count++;
-    DYYYGeomWrite([NSString stringWithFormat:@"[GEOM] %@ size=%.0f", sig, table.contentSize.height]);
-}
-
 %group DYYYLoginBypassCore
 
 // ===== DYYY 统一日志（变参，动态沙盒路径）=====
@@ -15940,9 +15876,30 @@ static Class tabBarButtonClass = nil;
 
 %end
 
+// v741: setHidden 是转场时最热的钩子之一（每次页面切换数百次）。
+// 三个功能全关时直接透传，省掉三次函数调用 + 三次关联对象查询。
+static BOOL DYYYViewHideGate(void) {
+    static uint32_t gen = UINT32_MAX;
+    static BOOL enabled = NO;
+    uint32_t g = gDYYYSettingsGeneration;
+    if (gen != g) {
+        enabled = DYYYGetBool(@"DYYYHideLOTAnimationView") ||
+                  DYYYGetBool(@"DYYYHideFollowPromptView") ||
+                  DYYYGetBool(@"DYYYHideAvatarSurrounding") ||
+                  DYYYFeedVideoCollectButtonHideEnabled();
+        gen = g;
+    }
+    return enabled;
+}
+
 %hook UIView
 
 - (void)setHidden:(BOOL)hidden {
+    if (__builtin_expect(!DYYYViewHideGate(), 1)) {
+        %orig(hidden);
+        return;
+    }
+
     BOOL shouldForceHidden = DYYYShouldForceAvatarActionViewHidden(self) ||
                              DYYYShouldForceAvatarSurroundingViewHidden(self) ||
                              DYYYShouldForceHideFeedVideoCollectButtonView(self);
@@ -17151,26 +17108,13 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
     table.frame = frame;
 }
 
-%hook AWEFeedDataSafeTableView
-
-// v737: 探针覆盖兜底——只对「裸 AWEFeedDataSafeTableView 实例」生效，
-// 子类（AWEFeedTableView / AWEAwemeDetailTableView）已各有自己的探针，避免重复计数。
-- (void)layoutSubviews {
-    %orig;
-    if ([self isMemberOfClass:NSClassFromString(@"AWEFeedDataSafeTableView")]) {
-        DYYYGeometryProbe((UITableView *)self, @"datasafe");
-    }
-}
-%end
-
 %hook AWEFeedTableView
 
 - (void)layoutSubviews {
     %orig;
 
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
         DYYYStretchPagerTableToSuperview(self, 0.0);
-        DYYYGeometryProbe(self, @"feed");
 
     } else if (gCurrentTabBarHeight > 0) {
         UIWindow *keyWindow = [DYYYUtils getActiveWindow];
@@ -18021,7 +17965,6 @@ static char kDYYYV29DoneKey; // v439
     // 造成主线程长时间满载（实测冻屏 3 分钟以上）。这里恢复裁剪以降低渲染负载。
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         self.clipsToBounds = YES;
-        DYYYGeometryProbe(self, @"detail");
     }
 
 }
