@@ -16163,7 +16163,10 @@ static BOOL DYYYViewHideGate(void) {
     BOOL isPlayVC = ((PlayVCClass1 && [vc isKindOfClass:PlayVCClass1]) ||
                      (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
                      (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
-    if (isPlayVC && frame.origin.x != 0) {
+    // v745: 这个「吞掉 setFrame」是从 v463 留下来的，为的是评论区打开时别把 video 缩小。
+    // 但它原本只看 VC 类型，页面切走后（搜索/详情/切 Tab）残留的播放器视图会被一直钉在原位，
+    // 表现就是「顶层还挂着一个在播的视频」。现在加一条硬条件：本窗口里确实有评论面板才冻结。
+    if (isPlayVC && frame.origin.x != 0 && [DYYYFullscreenCoordinator hasCommentInWindow:self.window]) {
         return;
     }
     %orig(frame);
