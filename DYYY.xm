@@ -16293,7 +16293,33 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 @end
 
 // v617: 搜索完视频页的贴纸容器 top 约束是 -28，导致内部 852 高的
-// ACCStickerContainerView 被整体上移。把它改成 0，并关掉祖先裁剪。
+// ACCStickerContainerView 被整体上移。
+// v746: v628 清 hack 时这条被一起删掉，-28 又回来了（快照实测 y=-28，贴纸盖住搜索栏）。
+// 只恢复「把负的 top 约束改回 0」这一条，不做关祖先裁剪，避免影响别的层。
+static void DYYYFixStickerTopConstraint(UIView *view) {
+    if (!view || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    UIView *superview = view.superview;
+    if (!superview) return;
+    for (NSLayoutConstraint *constraint in superview.constraints) {
+        if (constraint.firstItem != view) continue;
+        if (constraint.firstAttribute != NSLayoutAttributeTop) continue;
+        if (constraint.constant < -0.01) constraint.constant = 0;
+    }
+}
+
+%hook AWEFeedStickerContainerView
+
+- (void)didMoveToSuperview {
+    %orig;
+    DYYYFixStickerTopConstraint(self);
+}
+
+- (void)layoutSubviews {
+    %orig;
+    DYYYFixStickerTopConstraint(self);
+}
+
+%end
 
 // v621: 搜索视频页判定（贴纸/内层容器共用）
 

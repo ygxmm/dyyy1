@@ -370,6 +370,9 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 
 @interface XIGDanmakuPlayerView : UIView
 @end
+@interface AWEFeedStickerContainerView : UIView
+@end
+
 @interface DDanmakuPlayerView : UIView
 @end
 
