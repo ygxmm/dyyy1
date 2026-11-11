@@ -845,9 +845,17 @@
     state.imageAdjusted = !CGAffineTransformEqualToTransform(target, transform);
     return target;
 }
+static char kDYYYImageFillPendingKey;
+static char kDYYYImageFillAppliedKey;
+
 + (void)fillImageContentContainer:(UIView *)view {
     // v660: 详情图文内容链按 cell−60 布局（原生预留底栏），底部 60pt 露黑。
     // 全屏时把内容视图到 cell 之间的链路归位到 cell 全高。
+    //
+    // v751: 关键修复——原来这里是**在 -layoutSubviews 内部直接改祖先 frame**。
+    // 改祖先 frame 又会让父视图重排，于是「布局→改 frame→再布局」无限循环，
+    // 滑动到图文那一格就整机冻住（主线程被占满，watchdog 10 秒后杀进程）。
+    // 现在只记录意图，真正的改动丢到下一轮 runloop 做一次；同一高度只做一次。
     if (!DYYYGetBool(@"DYYYEnableFullScreen") || !view.window) return;
     UIViewController *owner = [DYYYUtils firstAvailableViewControllerFromView:view];
     if (![self usesFullscreenLayoutForController:owner]) return;
@@ -858,15 +866,32 @@
     if (!cell || cell.bounds.size.height <= 0) return;
     CGFloat height = cell.bounds.size.height;
     if (height - view.bounds.size.height < 1) return;
-    for (UIView *v = view; v && v != cell; v = v.superview) {
-        if (fabs(v.bounds.size.width - cell.bounds.size.width) > 1) break;
-        if (fabs(v.frame.size.height - height) > 0.5) {
-            CGRect frame = v.frame;
-            frame.origin.y = 0;
-            frame.size.height = height;
-            v.frame = frame;
+
+    NSNumber *applied = objc_getAssociatedObject(cell, &kDYYYImageFillAppliedKey);
+    if (applied && fabs(applied.doubleValue - height) < 0.5) return;
+    if (objc_getAssociatedObject(cell, &kDYYYImageFillPendingKey)) return;
+    objc_setAssociatedObject(cell, &kDYYYImageFillPendingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    __weak UIView *weakView = view;
+    __weak UIView *weakCell = cell;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIView *strongCell = weakCell;
+        UIView *strongView = weakView;
+        if (strongCell) objc_setAssociatedObject(strongCell, &kDYYYImageFillPendingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (!strongCell || !strongView) return;
+        CGFloat target = strongCell.bounds.size.height;
+        if (target <= 0) return;
+        for (UIView *v = strongView; v && v != strongCell; v = v.superview) {
+            if (fabs(v.bounds.size.width - strongCell.bounds.size.width) > 1) break;
+            if (fabs(v.frame.size.height - target) > 0.5) {
+                CGRect frame = v.frame;
+                frame.origin.y = 0;
+                frame.size.height = target;
+                v.frame = frame;
+            }
         }
-    }
+        objc_setAssociatedObject(strongCell, &kDYYYImageFillAppliedKey, @(target), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    });
 }
 + (void)layoutImageView:(UIView *)view {
     if (![NSThread isMainThread] || !view.window) return;

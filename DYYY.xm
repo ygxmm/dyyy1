@@ -347,19 +347,31 @@ static void DYYYStartHangWatchdog(void) {
                          dispatch_get_main_queue(), beat);
         };
         dispatch_async(dispatch_get_main_queue(), beat);
+        DYYYTraceWrite(@"\n==== PROBE START (v751) ====");
 
         // 后台检查
         dispatch_queue_t q = dispatch_get_global_queue(QOS_CLASS_UTILITY, 0);
         dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, q);
         dispatch_source_set_timer(timer, DISPATCH_TIME_NOW, (uint64_t)(0.5 * NSEC_PER_SEC),
                                   (uint64_t)(0.1 * NSEC_PER_SEC));
+        static int tick = 0;
         dispatch_source_set_event_handler(timer, ^{
-          uint64_t beatTime = atomic_load(&gDYYYMainBeat);
-          if (!beatTime) return;
           static mach_timebase_info_data_t tb;
           if (tb.denom == 0) mach_timebase_info(&tb);
-          uint64_t elapsedNs = (mach_absolute_time() - beatTime) * tb.numer / tb.denom;
-          if (elapsedNs > 2500ULL * 1000ULL * 1000ULL) {
+          uint64_t beatTime = atomic_load(&gDYYYMainBeat);
+          double ageMs = beatTime ? ((mach_absolute_time() - beatTime) * tb.numer / tb.denom) / 1e6 : -1;
+          tick++;
+          if (tick % 4 == 0) {   // 约每 2 秒
+              uint32_t total = atomic_load(&gDYYYTraceIndex);
+              NSMutableString *line = [NSMutableString stringWithFormat:@"TICK age=%.2fs idx=%u last:", ageMs / 1000.0, total];
+              uint32_t from = (total > 8) ? total - 8 : 0;
+              for (uint32_t i = from; i < total; i++) {
+                  DYYYTraceSlot sl = gDYYYTraceSlots[i & DYYY_TRACE_MASK];
+                  [line appendFormat:@" %@:%u", DYYYTraceTagName(sl.tag), sl.aux];
+              }
+              DYYYTraceWrite(line);
+          }
+          if (beatTime && ageMs > 2500) {
               DYYYDumpHang();
           }
         });
