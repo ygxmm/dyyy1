@@ -212,173 +212,6 @@ static NSURL *DYYYLoginBypassURLByReplacingBundleIdentifier(NSURL *url) {
 //  3. 只在卡住时写文件，正常使用零 I/O。
 //
 
-#import <mach/mach.h>
-#import <dlfcn.h>
-#import <stdatomic.h>
-
-
-#define DYYY_TRACE_SLOTS 256
-#define DYYY_TRACE_MASK (DYYY_TRACE_SLOTS - 1)
-
-typedef struct {
-    uint32_t tag;
-    uint32_t aux;
-    uint64_t when;
-} DYYYTraceSlot;
-
-static DYYYTraceSlot gDYYYTraceSlots[DYYY_TRACE_SLOTS];
-static atomic_uint_fast32_t gDYYYTraceIndex = 0;
-static atomic_ullong gDYYYMainBeat = 0;
-static atomic_bool gDYYYHangDumping = false;
-// 主线程自己的 mach port：在心跳闭包里记一次，后台线程取样时用。
-// 不走 pthread_main_thread_np（C++ 编译时需要 extern "C"，链接会失败）。
-static thread_t gDYYYMainMachThread = MACH_PORT_NULL;
-
-static NSString *DYYYTraceTagName(uint32_t tag) {
-    switch (tag) {
-        case 0: return @"-";
-        case 1: return @"UIView.setFrame";
-        case 2: return @"FeedTable.layout";
-        case 3: return @"DetailTable.layout";
-        case 4: return @"DetailTable.setFrame";
-        case 5: return @"Coordinator.layoutInteraction";
-        case 6: return @"Coordinator.fillImage";
-        case 7: return @"Coordinator.layoutBottomInput";
-        case 8: return @"Cell.layout";
-        case 9: return @"Interaction.viewDidLayout";
-        case 10: return @"Table.stretch";
-        case 11: return @"DetailCell.layout";
-        default: return [NSString stringWithFormat:@"tag#%u", tag];
-    }
-}
-
-static inline void DYYYTrace(uint32_t tag, uint32_t aux) {
-    uint32_t i = atomic_fetch_add_explicit(&gDYYYTraceIndex, 1, memory_order_relaxed);
-    DYYYTraceSlot *slot = &gDYYYTraceSlots[i & DYYY_TRACE_MASK];
-    slot->tag = tag;
-    slot->aux = aux;
-    slot->when = mach_absolute_time();
-}
-
-static void DYYYTraceWrite(NSString *text) {
-    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_hang.log"];
-    FILE *f = fopen(path.fileSystemRepresentation, "a");
-    if (!f) return;
-    fprintf(f, "%s\n", text.UTF8String);
-    fclose(f);
-}
-
-// 取主线程当前 PC/LR（主线程被卡住时，从后台线程读它的线程状态）
-static NSString *DYYYDescribeMainThread(void) {
-    thread_t mainThread = gDYYYMainMachThread;
-    if (mainThread == MACH_PORT_NULL) return @"main thread port 未记录";
-    arm_thread_state64_t st;
-    mach_msg_type_number_t count = ARM_THREAD_STATE64_COUNT;
-    kern_return_t kr = thread_get_state(mainThread, ARM_THREAD_STATE64, (thread_state_t)&st, &count);
-    if (kr != KERN_SUCCESS) return [NSString stringWithFormat:@"thread_get_state kr=%d", kr];
-
-    NSMutableString *out = [NSMutableString string];
-    // 不依赖结构体成员名（不同 SDK 里叫 __pc / pc / __opaque_pc），直接按 ABI 槽位取：
-    // x[0..28] 之后依次是 fp(29) / lr(30) / sp(31) / pc(32)
-    uint64_t *slots = (uint64_t *)&st;
-    uintptr_t regs[2] = { (uintptr_t)slots[32], (uintptr_t)slots[30] };
-    const char *names[2] = { "pc", "lr" };
-    for (int i = 0; i < 2; i++) {
-        Dl_info info;
-        if (dladdr((void *)regs[i], &info) && info.dli_fname) {
-            const char *base = strrchr(info.dli_fname, '/');
-            [out appendFormat:@" %s=%s+%lu", names[i], base ? base + 1 : info.dli_fname,
-                                (unsigned long)(regs[i] - (uintptr_t)info.dli_fbase)];
-            if (info.dli_sname) [out appendFormat:@"(%s)", info.dli_sname];
-        } else {
-            [out appendFormat:@" %s=%#lx", names[i], (unsigned long)regs[i]];
-        }
-    }
-    // 栈回溯（帧指针链，最多 24 层）
-    uintptr_t fp = (uintptr_t)slots[29];
-    for (int depth = 0; depth < 24 && fp; depth++) {
-        uintptr_t *frame = (uintptr_t *)fp;
-        if (!frame || ((uintptr_t)frame & 7)) break;
-        uintptr_t ret = frame[1];
-        uintptr_t next = frame[0];
-        if (!ret) break;
-        Dl_info info;
-        if (dladdr((void *)ret, &info) && info.dli_fname) {
-            const char *base = strrchr(info.dli_fname, '/');
-            [out appendFormat:@"\n    #%d %s+%lu", depth, base ? base + 1 : info.dli_fname,
-                                (unsigned long)(ret - (uintptr_t)info.dli_fbase)];
-            if (info.dli_sname) [out appendFormat:@" %s", info.dli_sname];
-        }
-        if (next <= fp) break;
-        fp = next;
-    }
-    return out;
-}
-
-static void DYYYDumpHang(void) {
-    if (atomic_exchange(&gDYYYHangDumping, true)) return;
-
-    NSMutableString *out = [NSMutableString string];
-    [out appendFormat:@"\n==== HANG %@ ====\n", [NSDate date]];
-    [out appendFormat:@"main:%@\n", DYYYDescribeMainThread()];
-
-    uint32_t total = atomic_load(&gDYYYTraceIndex);
-    uint32_t start = (total > DYYY_TRACE_SLOTS) ? (total - DYYY_TRACE_SLOTS) : 0;
-    for (uint32_t i = start; i < total; i++) {
-        DYYYTraceSlot s = gDYYYTraceSlots[i & DYYY_TRACE_MASK];
-        [out appendFormat:@"  #%u %-30@ aux=%u t=%llu\n", i, DYYYTraceTagName(s.tag), s.aux, s.when];
-    }
-
-    DYYYTraceWrite(out);
-    atomic_store(&gDYYYHangDumping, false);
-}
-
-static void DYYYStartHangWatchdog(void) {
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        // 主队列心跳
-        __block void (^beat)(void);
-        beat = ^{
-          if (gDYYYMainMachThread == MACH_PORT_NULL) {
-              gDYYYMainMachThread = mach_thread_self();
-          }
-          atomic_store(&gDYYYMainBeat, mach_absolute_time());
-          dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
-                         dispatch_get_main_queue(), beat);
-        };
-        dispatch_async(dispatch_get_main_queue(), beat);
-        DYYYTraceWrite(@"\n==== PROBE START (v751) ====");
-
-        // 后台检查
-        dispatch_queue_t q = dispatch_get_global_queue(QOS_CLASS_UTILITY, 0);
-        dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, q);
-        dispatch_source_set_timer(timer, DISPATCH_TIME_NOW, (uint64_t)(0.5 * NSEC_PER_SEC),
-                                  (uint64_t)(0.1 * NSEC_PER_SEC));
-        static int tick = 0;
-        dispatch_source_set_event_handler(timer, ^{
-          static mach_timebase_info_data_t tb;
-          if (tb.denom == 0) mach_timebase_info(&tb);
-          uint64_t beatTime = atomic_load(&gDYYYMainBeat);
-          double ageMs = beatTime ? ((mach_absolute_time() - beatTime) * tb.numer / tb.denom) / 1e6 : -1;
-          tick++;
-          if (tick % 4 == 0) {   // 约每 2 秒
-              uint32_t total = atomic_load(&gDYYYTraceIndex);
-              NSMutableString *line = [NSMutableString stringWithFormat:@"TICK age=%.2fs idx=%u last:", ageMs / 1000.0, total];
-              uint32_t from = (total > 8) ? total - 8 : 0;
-              for (uint32_t i = from; i < total; i++) {
-                  DYYYTraceSlot sl = gDYYYTraceSlots[i & DYYY_TRACE_MASK];
-                  [line appendFormat:@" %@:%u", DYYYTraceTagName(sl.tag), sl.aux];
-              }
-              DYYYTraceWrite(line);
-          }
-          if (beatTime && ageMs > 2500) {
-              DYYYDumpHang();
-          }
-        });
-        dispatch_resume(timer);
-    });
-}
-
 %group DYYYLoginBypassCore
 
 // ===== DYYY 统一日志（变参，动态沙盒路径）=====
@@ -16273,7 +16106,6 @@ static BOOL DYYYViewHideGate(void) {
         %orig(frame);
         return;
     }
-    DYYYTrace(1, (uint32_t)frame.size.height);
     gDYYYSetFrameDepth++;
     int _dyyySfGuard __attribute__((unused, cleanup(DYYYSetFrameDepthDec))) = 0;
     BOOL enableBlur = DYYYGetBoolCached(@"DYYYEnableCommentBlur");
@@ -17328,7 +17160,6 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
 
 - (void)layoutSubviews {
     %orig;
-    DYYYTrace(2, (uint32_t)self.bounds.size.height);
 
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
         DYYYStretchPagerTableToSuperview(self, 0.0);
@@ -18159,7 +17990,6 @@ static char kDYYYV29DoneKey; // v439
 %hook AWEAwemeDetailTableView
 
 - (void)setFrame:(CGRect)frame {
-    DYYYTrace(4, (uint32_t)frame.size.height);
     // v707: 原生每次布局都把表写成「屏高 − 60」（792），而初始偏移就是按这个高度算的。
     // 在写入这一刻直接夹成屏高，表从头到尾都是 852，偏移自然按 852 算。
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
@@ -18174,7 +18004,6 @@ static char kDYYYV29DoneKey; // v439
 
 - (void)layoutSubviews {
     %orig;
-    DYYYTrace(3, (uint32_t)self.bounds.size.height);
 
     // v447: 性能优化——isKindOfClass + 类缓存，替代 NSStringFromClass + containsString
     // 逻辑等价：原来按类名字符串匹配，现在按类继承链匹配，命中范围一致
@@ -18587,7 +18416,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 
 
-    DYYYStartHangWatchdog();
     [DYYYLoginBypassManager configureInitialStateIfNeeded];
 
     [[NSUserDefaults standardUserDefaults] registerDefaults:@{
