@@ -434,12 +434,18 @@ void DYYYStartHighFPSHooks(void) {
     DYYYInstallCFBundleProMotionHookIfNeeded();
     DYYYInstallLoadObserversIfNeeded();
 
-    if (DYYYHighFPSEnabled()) {
-        DYYYApplyHighFPSSettingChange(YES);
-    } else {
-        DYYYCaptureDiskProMotionKeyIfNeeded();
-        NSLog(@"[DYYY][RuntimeHook][HighFPS] 已就绪（默认关闭），diskOriginal ProMotion=%d", gDYYYProMotionDiskKeyValue);
-    }
+    // v753: 这两处会读磁盘 plist（dictionaryWithContentsOfFile:）。
+    // 本函数是从 %ctor（dyld 跑 image initializer）里调的，此时 CoreFoundation 自身的
+    // 初始化未必完成；实测崩溃就停在同一行 +[NSDictionary allocWithZone:]（SIGBUS）。
+    // 改为主队列第一轮再读，功能不变，只是晚几毫秒。
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if (DYYYHighFPSEnabled()) {
+          DYYYApplyHighFPSSettingChange(YES);
+      } else {
+          DYYYCaptureDiskProMotionKeyIfNeeded();
+          NSLog(@"[DYYY][RuntimeHook][HighFPS] 已就绪（默认关闭），diskOriginal ProMotion=%d", gDYYYProMotionDiskKeyValue);
+      }
+    });
 
     [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification
                                                       object:nil
