@@ -215,11 +215,7 @@ static NSURL *DYYYLoginBypassURLByReplacingBundleIdentifier(NSURL *url) {
 #import <mach/mach.h>
 #import <dlfcn.h>
 #import <stdatomic.h>
-#import <pthread.h>
 
-// SDK 里这两个符号在部分头文件组合下不可见，显式声明（libsystem_pthread 导出）
-extern thread_t pthread_mach_thread_np(pthread_t);
-extern pthread_t pthread_main_thread_np(void);
 
 #define DYYY_TRACE_SLOTS 256
 #define DYYY_TRACE_MASK (DYYY_TRACE_SLOTS - 1)
@@ -234,6 +230,9 @@ static DYYYTraceSlot gDYYYTraceSlots[DYYY_TRACE_SLOTS];
 static atomic_uint_fast32_t gDYYYTraceIndex = 0;
 static atomic_ullong gDYYYMainBeat = 0;
 static atomic_bool gDYYYHangDumping = false;
+// 主线程自己的 mach port：在心跳闭包里记一次，后台线程取样时用。
+// 不走 pthread_main_thread_np（C++ 编译时需要 extern "C"，链接会失败）。
+static thread_t gDYYYMainMachThread = MACH_PORT_NULL;
 
 static NSString *DYYYTraceTagName(uint32_t tag) {
     switch (tag) {
@@ -271,7 +270,8 @@ static void DYYYTraceWrite(NSString *text) {
 
 // 取主线程当前 PC/LR（主线程被卡住时，从后台线程读它的线程状态）
 static NSString *DYYYDescribeMainThread(void) {
-    thread_t mainThread = pthread_mach_thread_np(pthread_main_thread_np());
+    thread_t mainThread = gDYYYMainMachThread;
+    if (mainThread == MACH_PORT_NULL) return @"main thread port 未记录";
     arm_thread_state64_t st;
     mach_msg_type_number_t count = ARM_THREAD_STATE64_COUNT;
     kern_return_t kr = thread_get_state(mainThread, ARM_THREAD_STATE64, (thread_state_t)&st, &count);
@@ -339,6 +339,9 @@ static void DYYYStartHangWatchdog(void) {
         // 主队列心跳
         __block void (^beat)(void);
         beat = ^{
+          if (gDYYYMainMachThread == MACH_PORT_NULL) {
+              gDYYYMainMachThread = mach_thread_self();
+          }
           atomic_store(&gDYYYMainBeat, mach_absolute_time());
           dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
                          dispatch_get_main_queue(), beat);
