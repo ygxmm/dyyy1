@@ -16296,10 +16296,15 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 // ACCStickerContainerView 被整体上移。
 // v746: v628 清 hack 时这条被一起删掉，-28 又回来了（快照实测 y=-28，贴纸盖住搜索栏）。
 // 只恢复「把负的 top 约束改回 0」这一条，不做关祖先裁剪，避免影响别的层。
-static void DYYYFixStickerTopConstraint(UIView *view) {
+// v747: 只在挂上父视图时改一次，绝不在 -layoutSubviews 里改。
+// 原生每轮布局都会把 top 复位成 -28，若在布局内部再改回 0，两边就互相触发，变成布局死循环（卡死）。
+static char kDYYYStickerTopFixedKey;
+static void DYYYFixStickerTopConstraintOnce(UIView *view) {
     if (!view || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    if (objc_getAssociatedObject(view, &kDYYYStickerTopFixedKey)) return;
     UIView *superview = view.superview;
     if (!superview) return;
+    objc_setAssociatedObject(view, &kDYYYStickerTopFixedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     for (NSLayoutConstraint *constraint in superview.constraints) {
         if (constraint.firstItem != view) continue;
         if (constraint.firstAttribute != NSLayoutAttributeTop) continue;
@@ -16311,12 +16316,9 @@ static void DYYYFixStickerTopConstraint(UIView *view) {
 
 - (void)didMoveToSuperview {
     %orig;
-    DYYYFixStickerTopConstraint(self);
-}
-
-- (void)layoutSubviews {
-    %orig;
-    DYYYFixStickerTopConstraint(self);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        DYYYFixStickerTopConstraintOnce(self);
+    });
 }
 
 %end
