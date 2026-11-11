@@ -16299,30 +16299,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 // 只恢复「把负的 top 约束改回 0」这一条，不做关祖先裁剪，避免影响别的层。
 // v747: 只在挂上父视图时改一次，绝不在 -layoutSubviews 里改。
 // 原生每轮布局都会把 top 复位成 -28，若在布局内部再改回 0，两边就互相触发，变成布局死循环（卡死）。
-static char kDYYYStickerTopFixedKey;
-static void DYYYFixStickerTopConstraintOnce(UIView *view) {
-    if (!view || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    if (objc_getAssociatedObject(view, &kDYYYStickerTopFixedKey)) return;
-    UIView *superview = view.superview;
-    if (!superview) return;
-    objc_setAssociatedObject(view, &kDYYYStickerTopFixedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    for (NSLayoutConstraint *constraint in superview.constraints) {
-        if (constraint.firstItem != view) continue;
-        if (constraint.firstAttribute != NSLayoutAttributeTop) continue;
-        if (constraint.constant < -0.01) constraint.constant = 0;
-    }
-}
-
-%hook AWEFeedStickerContainerView
-
-- (void)didMoveToSuperview {
-    %orig;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        DYYYFixStickerTopConstraintOnce(self);
-    });
-}
-
-%end
 
 // v621: 搜索视频页判定（贴纸/内层容器共用）
 
