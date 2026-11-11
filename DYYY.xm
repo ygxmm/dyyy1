@@ -2506,9 +2506,10 @@ static void DYYYHDRProbe(NSString *line) {
 %hook AWEDPlayerVideoController_Merge
 
 - (void)setEnablePlayHDRModeIfNeeded {
+    // v747: 不能跳过——这个方法同时承担播放器的模式配置；跳掉会让 Metal 渲染路径不建立，
+    // 表现为整块灰屏/冻屏。屏蔽 HDR 只在数据层（isSourceHDR/hdrType 回答 0）完成。
     if (DYYYShouldDisableAllHDR()) {
-        DYYYHDRProbe(@"[HDR] setEnablePlayHDRModeIfNeeded skipped");
-        return;
+        DYYYHDRProbe(@"[HDR] setEnablePlayHDRModeIfNeeded -> orig (data already SDR)");
     }
     %orig;
 }
@@ -2518,9 +2519,9 @@ static void DYYYHDRProbe(NSString *line) {
 %hook AWEDPlayerPlayControlContainer
 
 - (void)configEnableMetalRenderHDRIfNeeded {
+    // v747: 同上，这条属于渲染配置，必须让原生执行完。
     if (DYYYShouldDisableAllHDR()) {
-        DYYYHDRProbe(@"[HDR] configEnableMetalRenderHDRIfNeeded skipped");
-        return;
+        DYYYHDRProbe(@"[HDR] configEnableMetalRenderHDRIfNeeded -> orig");
     }
     %orig;
 }
