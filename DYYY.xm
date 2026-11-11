@@ -215,6 +215,11 @@ static NSURL *DYYYLoginBypassURLByReplacingBundleIdentifier(NSURL *url) {
 #import <mach/mach.h>
 #import <dlfcn.h>
 #import <stdatomic.h>
+#import <pthread.h>
+
+// SDK 里这两个符号在部分头文件组合下不可见，显式声明（libsystem_pthread 导出）
+extern thread_t pthread_mach_thread_np(pthread_t);
+extern pthread_t pthread_main_thread_np(void);
 
 #define DYYY_TRACE_SLOTS 256
 #define DYYY_TRACE_MASK (DYYY_TRACE_SLOTS - 1)
@@ -273,7 +278,7 @@ static NSString *DYYYDescribeMainThread(void) {
     if (kr != KERN_SUCCESS) return [NSString stringWithFormat:@"thread_get_state kr=%d", kr];
 
     NSMutableString *out = [NSMutableString string];
-    uintptr_t regs[2] = { (uintptr_t)st.__pc, (uintptr_t)st.__lr };
+    uintptr_t regs[2] = { (uintptr_t)st.pc, (uintptr_t)st.lr };
     const char *names[2] = { "pc", "lr" };
     for (int i = 0; i < 2; i++) {
         Dl_info info;
@@ -287,7 +292,7 @@ static NSString *DYYYDescribeMainThread(void) {
         }
     }
     // 栈回溯（帧指针链，最多 24 层）
-    uintptr_t fp = (uintptr_t)st.__fp;
+    uintptr_t fp = (uintptr_t)st.fp;
     for (int depth = 0; depth < 24 && fp; depth++) {
         uintptr_t *frame = (uintptr_t *)fp;
         if (!frame || ((uintptr_t)frame & 7)) break;
