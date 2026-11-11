@@ -40,8 +40,22 @@ jobs:
           make clean
           make package FINALPACKAGE=1
 
+      - name: Collect Dylib Symbols
+        run: |
+          mkdir -p symbols
+          find .theos -name 'DYYY.dylib' -exec cp {} symbols/ \;
+          ls -la symbols || true
+
       - name: Upload DEB
         uses: actions/upload-artifact@v4
         with:
           name: dyyy-deb
           path: packages/*.deb
+
+      # 崩溃日志里的 imageOffset 只有配上这一份二进制才能定位到具体方法。
+      - name: Upload Symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: dyyy-symbols
+          path: symbols/
+          if-no-files-found: warn
