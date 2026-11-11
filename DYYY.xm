@@ -278,7 +278,10 @@ static NSString *DYYYDescribeMainThread(void) {
     if (kr != KERN_SUCCESS) return [NSString stringWithFormat:@"thread_get_state kr=%d", kr];
 
     NSMutableString *out = [NSMutableString string];
-    uintptr_t regs[2] = { (uintptr_t)st.pc, (uintptr_t)st.lr };
+    // 不依赖结构体成员名（不同 SDK 里叫 __pc / pc / __opaque_pc），直接按 ABI 槽位取：
+    // x[0..28] 之后依次是 fp(29) / lr(30) / sp(31) / pc(32)
+    uint64_t *slots = (uint64_t *)&st;
+    uintptr_t regs[2] = { (uintptr_t)slots[32], (uintptr_t)slots[30] };
     const char *names[2] = { "pc", "lr" };
     for (int i = 0; i < 2; i++) {
         Dl_info info;
@@ -292,7 +295,7 @@ static NSString *DYYYDescribeMainThread(void) {
         }
     }
     // 栈回溯（帧指针链，最多 24 层）
-    uintptr_t fp = (uintptr_t)st.fp;
+    uintptr_t fp = (uintptr_t)slots[29];
     for (int depth = 0; depth < 24 && fp; depth++) {
         uintptr_t *frame = (uintptr_t *)fp;
         if (!frame || ((uintptr_t)frame & 7)) break;
