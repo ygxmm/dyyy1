@@ -191,13 +191,12 @@ static CFTypeRef DYYYCFBundleGetValueForInfoDictionaryKey(CFBundleRef bundle, CF
 }
 
 static void DYYYInstallCFBundleProMotionHookIfNeeded(void) {
-    bool expected = false;
-    if (!atomic_compare_exchange_strong(&gDYYYCFBundleHookInstalled, &expected, true)) {
-        return;
-    }
-    MSHookFunction((void *)CFBundleGetValueForInfoDictionaryKey,
-                   (void *)DYYYCFBundleGetValueForInfoDictionaryKey,
-                   (void **)&gOrigCFBundleGetValueForInfoDictionaryKey);
+    // v756: 这里原本用 MSHookFunction 改 CoreFoundation 的 C 函数
+    // （CFBundleGetValueForInfoDictionaryKey）的机器码。它属于「修改系统框架可执行页」，
+    // 在共享缓存 + arm64e + iOS 16 上恢复页保护时可能留下不可执行的页；
+    // 之后任何跳进该页的调用都会 KERN_PROTECTION_FAILURE（实测崩溃点 pc == far，同在 CF+0x5c8c4）。
+    // 稳定性优先，这里不再补丁系统代码；ProMotion 强制失效时功能退化为「跟随系统」。
+    return;
 }
 
 #pragma mark - AWEDisplayLinkDegradeManager
