@@ -6981,12 +6981,13 @@ static void DYYYApplyPlayInteractionElementLayoutFromElement(id element, NSStrin
 
 %hook AWEPlayInteractionProgressController
 
-// v649: 详情页把 sliderYOffset 的异常负值归一到首页基准（+60 = 底栏预留）。
-// 位置由控制器算出，容器/滑块不再做任何位移，杜绝前后跳动。
+// v758: 原生给的是「−底栏预留」的一个负值：详情页 −60、搜索详情页 −144。
+// 旧逻辑统一 +60 只在 −60 那种页面对得上，搜索页会剩 −84，滑块整体高 84pt。
+// 全屏下互动层已经是整屏，滑块就该贴容器底，所以负值一律归零。
 - (double)sliderYOffset {
     double offset = %orig;
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return offset;
-    if (offset < -0.5 && offset > -300.0) return offset + 60.0;
+    if (offset < -0.5 && offset > -400.0) return 0.0;
     return offset;
 }
 
