@@ -368,7 +368,12 @@
     }
 }
 + (void)layoutInteraction:(UIViewController *)controller {
-    if (![NSThread isMainThread] || ![self usesRecommendedLayoutForController:controller]) return;
+    // v757: 原来只认首页推荐（contentSource == homepage_hot），从搜索点开的详情页
+    // 会被直接 return，互动层保持「屏高 − 83（底栏 49 + 安全区 34）」= 769，
+    // 贴着它底边的进度条就整体上移 83。详情页同样需要撑满，这里一并放行。
+    BOOL supported = [self usesRecommendedLayoutForController:controller] ||
+                     [self usesDetailLayoutForController:controller];
+    if (![NSThread isMainThread] || !supported) return;
     UIView *view = controller.viewIfLoaded;
     UIView *parent = view.superview;
     if (!view.window || ![self view:view spansWidthOf:parent]) return;
