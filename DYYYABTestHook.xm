@@ -480,6 +480,10 @@ static void DYYYApplyTabBarHeightToCurrentABTestDataIfNeeded(void) {
 %end
 
 %ctor {
+    // v754: 巨魔注入下 %ctor 早于 Foundation 自身初始化执行，任何 CF 调用都可能
+    // 踩到未就绪的内部结构（SIGBUS）。统一推迟到主队列第一轮，功能不变。
+    dispatch_async(dispatch_get_main_queue(), ^{
+
     // 预初始化队列以避免早期访问为 NULL
     DYYYABTestQueue();
 
@@ -504,5 +508,7 @@ static void DYYYApplyTabBarHeightToCurrentABTestDataIfNeeded(void) {
       if ([DYYYABTestHook isRemoteMode]) {
           [DYYYABTestHook checkForRemoteConfigUpdate:NO];
       }
+    });
+
     });
 }
