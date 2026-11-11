@@ -42,9 +42,15 @@ jobs:
 
       - name: Collect Dylib Symbols
         run: |
+          # 必须取 .theos/obj 里那份（未 strip）；.theos/_ 里的是打包时剥过符号的。
           mkdir -p symbols
-          find .theos -name 'DYYY.dylib' -exec cp {} symbols/ \;
-          ls -la symbols || true
+          find .theos -name 'DYYY.dylib' | while read -r f; do
+            d="symbols/$(dirname "$f")"
+            mkdir -p "$d"
+            cp "$f" "$d/"
+          done
+          find symbols -name 'DYYY.dylib' -exec llvm-nm -a {} \; 2>/dev/null | wc -l || true
+          find symbols -name '*.dylib' -exec ls -la {} \;
 
       - name: Upload DEB
         uses: actions/upload-artifact@v4
