@@ -1501,15 +1501,11 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
 %end
 
 %ctor {
-    // v754: 巨魔注入下 %ctor 早于 Foundation 自身初始化执行，任何 CF 调用都可能
-    // 踩到未就绪的内部结构（SIGBUS）。统一推迟到主队列第一轮，功能不变。
-    dispatch_async(dispatch_get_main_queue(), ^{
 
     if ([[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYUserAgreementAccepted"]) {
         %init;
     }
 
-    });
 }
 
 %group DYYYFilterSetterGroup
@@ -1580,16 +1576,12 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
 %end
 
 %ctor {
-    // v754: 巨魔注入下 %ctor 早于 Foundation 自身初始化执行，任何 CF 调用都可能
-    // 踩到未就绪的内部结构（SIGBUS）。统一推迟到主队列第一轮，功能不变。
-    dispatch_async(dispatch_get_main_queue(), ^{
 
     Class ownerClass = objc_getClass("AWECommentLongPressPanelSwiftImpl.CommentLongPressPanelNormalSectionViewModel");
     if (ownerClass) {
         %init(DYYYFilterSetterGroup, HOOK_TARGET_OWNER_CLASS = ownerClass);
     }
 
-    });
 }
 
 

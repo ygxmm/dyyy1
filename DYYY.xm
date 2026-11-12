@@ -18410,9 +18410,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 %end
 
 %ctor {
-    // v754: 巨魔注入下 %ctor 早于 Foundation 自身初始化执行，任何 CF 调用都可能
-    // 踩到未就绪的内部结构（SIGBUS）。统一推迟到主队列第一轮，功能不变。
-    dispatch_async(dispatch_get_main_queue(), ^{
 
 
 
@@ -18607,15 +18604,11 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
     }
 
-    });
 }
 
 
 // ===== 隐藏"暂时没有更多了"底部占位（只对详情页，主页不动） =====
 %ctor {
-    // v754: 巨魔注入下 %ctor 早于 Foundation 自身初始化执行，任何 CF 调用都可能
-    // 踩到未就绪的内部结构（SIGBUS）。统一推迟到主队列第一轮，功能不变。
-    dispatch_async(dispatch_get_main_queue(), ^{
 
     Class cls = objc_getClass("AWEFeedRefreshFooter");
     if (!cls) return;
@@ -18642,7 +18635,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
         if (isDetail) {
             [self setHidden:YES];
         }
-    });
     method_setImplementation(m, newImp);
 
     });
@@ -18723,9 +18715,6 @@ static void v179_dcvLayout(id self, SEL _cmd) {
 }
 
 %ctor {
-    // v754: 巨魔注入下 %ctor 早于 Foundation 自身初始化执行，任何 CF 调用都可能
-    // 踩到未就绪的内部结构（SIGBUS）。统一推迟到主队列第一轮，功能不变。
-    dispatch_async(dispatch_get_main_queue(), ^{
 
     @autoreleasepool {
         Class cls = objc_getClass("AWEAwemeDetailCellViewController");
@@ -18737,7 +18726,6 @@ static void v179_dcvLayout(id self, SEL _cmd) {
         }
     }
 
-    });
 }
 
 // v212: 评论面板内 section bg 强制透明（保 DYYY 原版毛玻璃可见）
@@ -18765,9 +18753,6 @@ static void v212_setBg(id self, SEL _cmd, id color) {
 
 
 %ctor {
-    // v754: 巨魔注入下 %ctor 早于 Foundation 自身初始化执行，任何 CF 调用都可能
-    // 踩到未就绪的内部结构（SIGBUS）。统一推迟到主队列第一轮，功能不变。
-    dispatch_async(dispatch_get_main_queue(), ^{
 
     @autoreleasepool {
         Class cls = objc_getClass("AWEBaseListSectionBackgroundView");
@@ -18779,7 +18764,6 @@ static void v212_setBg(id self, SEL _cmd, id color) {
         }
     }
 
-    });
 }
 
 // v220: 取 videoModel 里最高码率档的 playAddr（给"保存视频"用）
@@ -19214,9 +19198,6 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 %end
 
 %ctor {
-    // v754: 巨魔注入下 %ctor 早于 Foundation 自身初始化执行，任何 CF 调用都可能
-    // 踩到未就绪的内部结构（SIGBUS）。统一推迟到主队列第一轮，功能不变。
-    dispatch_async(dispatch_get_main_queue(), ^{
 
     gDYYYMediaManagedViews = [NSHashTable weakObjectsHashTable];
     gDYYYMediaControllers = [NSHashTable weakObjectsHashTable];
@@ -19226,7 +19207,6 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
         %init(DYYYMediaAdaptiveLayoutHook);
     }
 
-    });
 }
 
 
@@ -19392,11 +19372,7 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
 
 
 %ctor {
-    // v754: 巨魔注入下 %ctor 早于 Foundation 自身初始化执行，任何 CF 调用都可能
-    // 踩到未就绪的内部结构（SIGBUS）。统一推迟到主队列第一轮，功能不变。
-    dispatch_async(dispatch_get_main_queue(), ^{
 
     %init(DYYYDetailHeightHook);
 
-    });
 }
