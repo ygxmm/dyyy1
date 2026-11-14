@@ -12861,8 +12861,12 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
         DYYYNearbyLogLine([NSString stringWithFormat:@"[SETDS] cls=%@ n=%lu",
                            dsClass, (unsigned long)[(NSArray *)dataSource count]]);
     }
+    // v770: 探针证实——同城表读的是 dataSource（原始数据源），不是 filteredDataSource。
+    // 所以这里必须过滤，否则 filtered 侧过滤得再对，屏幕上也还是全量。
+    // 过滤函数内部已有“结果为空则退回原列表”的保护，不会出现空页。
     if ([dsClass isEqualToString:@"AWENewNearbyListDataController"]) {
-        %orig(dataSource);
+        NSArray *nearbyFiltered = DYYYNearbyFilterByTime(dataSource, self);
+        %orig(nearbyFiltered == (NSArray *)dataSource ? dataSource : [nearbyFiltered mutableCopy]);
         return;
     }
     NSArray *filtered = [DYYYUtils arrayByRemovingAdvertisements:dataSource];
