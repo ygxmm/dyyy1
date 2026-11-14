@@ -2573,3 +2573,20 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property (nonatomic) long long isSourceHDR;
 @property (nonatomic) long long hdrType;
 @end
+
+@interface AWEDPlayerVideoDisplayOptState : NSObject
+@property (nonatomic, assign) BOOL enableHDR;
+@property (nonatomic, strong) NSString *HDRVideoMode;
+@end
+
+@interface AWEDPlayerVideoConfig : NSObject
+@property (nonatomic, assign) BOOL enableMetalRenderHDR;
+@end
+
+@interface AWEPlayVideoPlayerContext : NSObject
+@property (nonatomic, assign) BOOL enableHDR;
+@end
+
+@interface AWEDPlayerSettings : NSObject
++ (BOOL)hdrAutomaticIdentification;
+@end
