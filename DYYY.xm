@@ -16348,6 +16348,50 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 // v747: 只在挂上父视图时改一次，绝不在 -layoutSubviews 里改。
 // 原生每轮布局都会把 top 复位成 -28，若在布局内部再改回 0，两边就互相触发，变成布局死循环（卡死）。
 
+// v761: 同城只套用「推荐视频时限」这一条（DYYYFilterTimeLimit，单位天，0=关闭）。
+// 位置就在同城自己的模型过滤入口上，不碰数据源、不碰布局。
+// 关键：全部被时限过滤掉时退回原列表，避免「同城一刷没有视频」。
+static id DYYYFilterNearbyByTimeLimit(id models) {
+    if (![models isKindOfClass:[NSArray class]] || [(NSArray *)models count] == 0) {
+        return models;
+    }
+    NSInteger days = [[NSUserDefaults standardUserDefaults] integerForKey:@"DYYYFilterTimeLimit"];
+    if (days <= 0) return models;
+
+    NSTimeInterval cutoff = [[NSDate date] timeIntervalSince1970] - (NSTimeInterval)days * 86400.0;
+    NSMutableArray *kept = [NSMutableArray arrayWithCapacity:[(NSArray *)models count]];
+    for (id model in (NSArray *)models) {
+        if (![model isKindOfClass:%c(AWEAwemeModel)]) {
+            [kept addObject:model];
+            continue;
+        }
+        NSNumber *createTime = [(AWEAwemeModel *)model createTime];
+        if (![createTime isKindOfClass:[NSNumber class]]) {
+            [kept addObject:model];   // 字段缺失放行，宁多勿错杀
+            continue;
+        }
+        if (createTime.doubleValue >= cutoff) [kept addObject:model];
+    }
+    if (kept.count == 0) return models;   // 全被过滤 → 保持原样
+    return kept;
+}
+
+%hook AWENewNearbyListDataController
+
+- (id)__filterAwemeModels:(id)models {
+    return DYYYFilterNearbyByTimeLimit(%orig);
+}
+
+%end
+
+%hook AWEMultiTabNearbyListDataController
+
+- (id)__filterAwemeModels:(id)models {
+    return DYYYFilterNearbyByTimeLimit(%orig);
+}
+
+%end
+
 // v621: 搜索视频页判定（贴纸/内层容器共用）
 
 %hook AWEPlayInteractionViewController
