@@ -12789,11 +12789,11 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
                     [hostName isEqualToString:@"AWENearbyC2FeedDataController"] ||
                     [hostName isEqualToString:@"AWENearbyInnerListDataController"];
     if (!isNearby) return arr;
-    // 自然日口径：从今天 00:00 往前推 (nearbyDays-1) 天的 00:00 起算
-    // nearbyDays=1 → 今天 00:00 后；=2 → 昨天 00:00 后（今天+昨天）
+    // v763: 自然日口径 —— 填 N 表示「今天 + 往前 N 天」，不含更早。
+    // 例：14 号填 1 → 保留 14 号与 13 号（13 号 00:00 之后）；填 2 → 再加 12 号。
     NSCalendar *cal = [NSCalendar currentCalendar];
     NSDate *startOfToday = [cal startOfDayForDate:[NSDate date]];
-    NSDate *cutoffDate = [cal dateByAddingUnit:NSCalendarUnitDay value:-(nearbyDays - 1) toDate:startOfToday options:0];
+    NSDate *cutoffDate = [cal dateByAddingUnit:NSCalendarUnitDay value:-(NSInteger)nearbyDays toDate:startOfToday options:0];
     NSTimeInterval cutoff = [cutoffDate timeIntervalSince1970];
     NSMutableArray *kept = [NSMutableArray arrayWithCapacity:arr.count];
     for (id m in arr) {
