@@ -12836,9 +12836,11 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
     double firstTs = 0;
     @try { firstTs = [[first valueForKey:@"createTime"] doubleValue]; } @catch (__unused NSException *e) {}
     if (firstTs > 1e12) firstTs /= 1000.0;
-    DYYYNearbyLog([NSString stringWithFormat:@"[FILTER] host=%@ in=%lu out=%lu days=%ld cutoff=%.0f first=%@ ts=%.0f%@",
+    NSString *firstRef = @"";
+    @try { firstRef = [[first valueForKey:@"referString"] description] ?: @""; } @catch (__unused NSException *e) {}
+    DYYYNearbyLog([NSString stringWithFormat:@"[FILTER] host=%@ in=%lu out=%lu days=%ld cutoff=%.0f ref=%@ ts=%.0f%@",
                    hostNameForLog, (unsigned long)arr.count, (unsigned long)kept.count, (long)nearbyDays,
-                   cutoff, first ? NSStringFromClass([first class]) : @"nil", firstTs,
+                   cutoff, firstRef, firstTs,
                    kept.count == 0 ? @" (empty->fallback)" : @""]);
 
     if (kept.count == 0 && arr.count > 0) {
@@ -12907,6 +12909,13 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
     // v762: 同城各套控制器都只在 setFilteredDataSource: 里过滤；
     // 原始 dataSource 必须保持原长，否则宿主 currentIndex 会越界回退到第一条。
     NSString *selfName = NSStringFromClass([self class]);
+    if ([selfName rangeOfString:@"Nearby"].location != NSNotFound) {
+        id firstObj = [(NSArray *)dataSource firstObject];
+        NSString *ref = @"";
+        @try { ref = [[firstObj valueForKey:@"referString"] description] ?: @""; } @catch (__unused NSException *e) {}
+        DYYYNearbyLog([NSString stringWithFormat:@"[SETDS] cls=%@ n=%lu ref=%@",
+                       selfName, (unsigned long)[(NSArray *)dataSource count], ref]);
+    }
     if ([selfName isEqualToString:@"AWENewNearbyListDataController"] ||
         [selfName isEqualToString:@"AWEMultiTabNearbyListDataController"] ||
         [selfName isEqualToString:@"AWENearbyC2FeedDataController"] ||
