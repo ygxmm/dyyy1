@@ -12891,6 +12891,56 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
 // v772: 同城表读的是 dataSource，直接缩短它会触发 currentIndex 越界（v770 已验证回退第一条）。
 // 正确入口是数据控制器自己的模型过滤步骤 __filterAwemeModels:（41.1 头文件有声明）：
 // 它返回的数组就是后续 p_generateFeedListWithAwemes: 的输入，长度从头就是对的。
+// v773: 图文/动图适配层在「首次显示」时用的是旧状态，内部媒体容器保持原始比例
+// （实测 393×294.75、y=278.6 → 上下黑边、文案被压到底部）；滑走再滑回来就正常，
+// 说明原生只需再跑一次 layout。所以这里不碰任何 frame，只在“内容没铺满”时补一次布局。
+static BOOL DYYYViewUnderfills(UIView *view, int depth) {
+    if (depth > 4) return NO;
+    for (UIView *child in view.subviews) {
+        if (fabs(child.bounds.size.width - view.bounds.size.width) <= 1.0 &&
+            child.bounds.size.height > 1.0 &&
+            child.bounds.size.height < view.bounds.size.height * 0.8) {
+            return YES;
+        }
+        if (DYYYViewUnderfills(child, depth + 1)) return YES;
+    }
+    return NO;
+}
+
+static void DYYYRelayoutOnceIfNeeded(UIView *view) {
+    static char kDYYYLastRelayoutKey;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen") || !view.window) return;
+    if (view.bounds.size.height < 400.0) return;
+    if (!DYYYViewUnderfills(view, 0)) return;
+    CFTimeInterval now = CACurrentMediaTime();
+    NSNumber *last = objc_getAssociatedObject(view, &kDYYYLastRelayoutKey);
+    if (last && now - last.doubleValue < 0.5) return;
+    objc_setAssociatedObject(view, &kDYYYLastRelayoutKey, @(now), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    __weak UIView *weakView = view;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      UIView *strongView = weakView;
+      // 只把“需要重算”的标记自上而下打一遍，不改任何 frame。
+      void (^mark)(UIView *, int);
+      __block void (^markRef)(UIView *, int);
+      mark = ^(UIView *v, int depth) {
+        if (!v || depth > 4) return;
+        [v setNeedsLayout];
+        for (UIView *child in v.subviews) markRef(child, depth + 1);
+      };
+      markRef = mark;
+      mark(strongView, 0);
+    });
+}
+
+%hook AWELivePhotoContentAdapterCellView
+
+- (void)layoutSubviews {
+    %orig;
+    DYYYRelayoutOnceIfNeeded((UIView *)self);
+}
+
+%end
+
 %hook AWENewNearbyListDataController
 
 - (id)__filterAwemeModels:(id)models {
