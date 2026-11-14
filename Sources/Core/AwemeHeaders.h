@@ -2114,6 +2114,9 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @interface AWEDPlayerVideoDisplayOptState : NSObject
 - (BOOL)enableHDR;
 - (void)setEnableHDR:(BOOL)enableHDR;
+// 41.1 转储 AWEDPlayerVideoDisplayOptState.h:38-41
+- (id)HDRVideoMode;
+- (void)setHDRVideoMode:(id)mode;
 @end
 
 @interface AWEPlayVideoPlayerContext : NSObject
@@ -2209,6 +2212,10 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 
 @interface AWEFeedABTestServiceObjc : NSObject
 + (BOOL)enableProfilePreloadHDRBrightnessFilter;
+@end
+
+@interface AWEDPlayerSettings : NSObject
++ (BOOL)hdrAutomaticIdentification;
 @end
 
 @interface AWEDPlayerVideoConfig : NSObject
@@ -2574,19 +2581,3 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property (nonatomic) long long hdrType;
 @end
 
-@interface AWEDPlayerVideoDisplayOptState : NSObject
-@property (nonatomic, assign) BOOL enableHDR;
-@property (nonatomic, strong) NSString *HDRVideoMode;
-@end
-
-@interface AWEDPlayerVideoConfig : NSObject
-@property (nonatomic, assign) BOOL enableMetalRenderHDR;
-@end
-
-@interface AWEPlayVideoPlayerContext : NSObject
-@property (nonatomic, assign) BOOL enableHDR;
-@end
-
-@interface AWEDPlayerSettings : NSObject
-+ (BOOL)hdrAutomaticIdentification;
-@end
