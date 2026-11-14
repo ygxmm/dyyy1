@@ -12820,9 +12820,11 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
 
 - (void)calculateFilteredDataSource {
     %orig;
-    NSArray *current = [self filteredDataSource];
-    NSArray *kept = DYYYNearbyFilterByTime(current, self);
-    if (kept != current) [self setFilteredDataSource:[kept mutableCopy]];
+    // 本地头文件里这三个类没收录 filteredDataSource 系列的声明，统一走 id 调用。
+    id controller = (id)self;
+    NSArray *current = [controller filteredDataSource];
+    NSArray *kept = DYYYNearbyFilterByTime(current, controller);
+    if (kept != current) [controller setFilteredDataSource:[kept mutableCopy]];
 }
 
 %end
@@ -12831,9 +12833,11 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
 
 - (void)calculateFilteredDataSource {
     %orig;
-    NSArray *current = [self filteredDataSource];
-    NSArray *kept = DYYYNearbyFilterByTime(current, self);
-    if (kept != current) [self setFilteredDataSource:[kept mutableCopy]];
+    // 本地头文件里这三个类没收录 filteredDataSource 系列的声明，统一走 id 调用。
+    id controller = (id)self;
+    NSArray *current = [controller filteredDataSource];
+    NSArray *kept = DYYYNearbyFilterByTime(current, controller);
+    if (kept != current) [controller setFilteredDataSource:[kept mutableCopy]];
 }
 
 %end
@@ -12842,9 +12846,11 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
 
 - (void)calculateFilteredDataSource {
     %orig;
-    NSArray *current = [self filteredDataSource];
-    NSArray *kept = DYYYNearbyFilterByTime(current, self);
-    if (kept != current) [self setFilteredDataSource:[kept mutableCopy]];
+    // 本地头文件里这三个类没收录 filteredDataSource 系列的声明，统一走 id 调用。
+    id controller = (id)self;
+    NSArray *current = [controller filteredDataSource];
+    NSArray *kept = DYYYNearbyFilterByTime(current, controller);
+    if (kept != current) [controller setFilteredDataSource:[kept mutableCopy]];
 }
 
 %end
