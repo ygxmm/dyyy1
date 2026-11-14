@@ -12776,49 +12776,21 @@ static void DYYYHideProfilePostGuideView(UIView *view) {
 // 数据源 getter 会在详情/合集滚动枚举期间被频繁读取；过滤只能发生在写入边界，
 // 不能在 getter 内原地修改宿主持有的 NSMutableArray，否则会触发快速枚举突变异常。
 
-// v765: 只读日志（不改行为）。用于确认同城到底走了哪条链路、为什么没有过滤。
-// 写到 Documents/dyyy_nearby.log，最多 300 行，相同签名只写一次。
-static void DYYYNearbyLog(NSString *line) {
-    static NSMutableSet *seen = nil;
-    static int count = 0;
-    if (!seen) seen = [NSMutableSet set];
-    if (count > 300 || [seen containsObject:line]) return;
-    [seen addObject:line];
-    count++;
-    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_nearby.log"];
-    FILE *f = fopen(path.fileSystemRepresentation, "a");
-    if (!f) return;
-    fprintf(f, "%s\n", line.UTF8String);
-    fclose(f);
-}
-
 static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
-    // v762: 优先用「推荐视频时限」这个键（与推荐侧同一个设置），没有再用同城自己的旧键。
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSInteger nearbyDays = [defaults integerForKey:@"DYYYFilterTimeLimit"];
-    if (nearbyDays <= 0) nearbyDays = [defaults integerForKey:@"DYYYNearbyFilterTimeLimit"];
-    NSString *hostNameForLog = host ? NSStringFromClass([host class]) : @"nil";
-    if (nearbyDays <= 0 || arr.count == 0) {
-        DYYYNearbyLog([NSString stringWithFormat:@"[SKIP] host=%@ in=%lu days=%ld",
-                       hostNameForLog, (unsigned long)arr.count, (long)nearbyDays]);
-        return arr;
-    }
-    // 41.1 的同城有多套数据控制器：单列 / 多标签 / 团购，全部都要过。
+    // v767: 同城过滤的逻辑一行不动，只把「读哪个键」改成设置页里真正存在的那个。
+    // 之前读 DYYYNearbyFilterTimeLimit，但设置页从来没有这一项，所以永远是 0（关闭），
+    // 用户填的其实是「推荐视频时限」。两个键都认：先读推荐键，没填再退回同城旧键。
+    NSUserDefaults *nearbyDefaults = [NSUserDefaults standardUserDefaults];
+    NSInteger nearbyDays = [nearbyDefaults integerForKey:@"DYYYFilterTimeLimit"];
+    if (nearbyDays <= 0) nearbyDays = [nearbyDefaults integerForKey:@"DYYYNearbyFilterTimeLimit"];
+    if (nearbyDays <= 0 || arr.count == 0) return arr;
     NSString *hostName = host ? NSStringFromClass([host class]) : @"";
-    BOOL isNearby = [hostName isEqualToString:@"AWENewNearbyListDataController"] ||
-                    [hostName isEqualToString:@"AWEMultiTabNearbyListDataController"] ||
-                    [hostName isEqualToString:@"AWENearbyC2FeedDataController"] ||
-                    [hostName isEqualToString:@"AWENearbyInnerListDataController"];
-    if (!isNearby) {
-        DYYYNearbyLog([NSString stringWithFormat:@"[NOTNEARBY] host=%@ in=%lu",
-                       hostNameForLog, (unsigned long)arr.count]);
-        return arr;
-    }
-    // v763: 自然日口径 —— 填 N 表示「今天 + 往前 N 天」，不含更早。
-    // 例：14 号填 1 → 保留 14 号与 13 号（13 号 00:00 之后）；填 2 → 再加 12 号。
+    if (![hostName isEqualToString:@"AWENewNearbyListDataController"]) return arr;
+    // 自然日口径：从今天 00:00 往前推 (nearbyDays-1) 天的 00:00 起算
+    // nearbyDays=1 → 今天 00:00 后；=2 → 昨天 00:00 后（今天+昨天）
     NSCalendar *cal = [NSCalendar currentCalendar];
     NSDate *startOfToday = [cal startOfDayForDate:[NSDate date]];
-    NSDate *cutoffDate = [cal dateByAddingUnit:NSCalendarUnitDay value:-(NSInteger)nearbyDays toDate:startOfToday options:0];
+    NSDate *cutoffDate = [cal dateByAddingUnit:NSCalendarUnitDay value:-(nearbyDays - 1) toDate:startOfToday options:0];
     NSTimeInterval cutoff = [cutoffDate timeIntervalSince1970];
     NSMutableArray *kept = [NSMutableArray arrayWithCapacity:arr.count];
     for (id m in arr) {
@@ -12832,70 +12804,11 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
             [kept addObject:m];
         }
     }
-    id first = arr.firstObject;
-    double firstTs = 0;
-    @try { firstTs = [[first valueForKey:@"createTime"] doubleValue]; } @catch (__unused NSException *e) {}
-    if (firstTs > 1e12) firstTs /= 1000.0;
-    NSString *firstRef = @"";
-    @try { firstRef = [[first valueForKey:@"referString"] description] ?: @""; } @catch (__unused NSException *e) {}
-    DYYYNearbyLog([NSString stringWithFormat:@"[FILTER] host=%@ in=%lu out=%lu days=%ld cutoff=%.0f ref=%@ ts=%.0f%@",
-                   hostNameForLog, (unsigned long)arr.count, (unsigned long)kept.count, (long)nearbyDays,
-                   cutoff, firstRef, firstTs,
-                   kept.count == 0 ? @" (empty->fallback)" : @""]);
-
     if (kept.count == 0 && arr.count > 0) {
         return arr;
     }
     return kept;
 }
-
-// v764: 41.1 的同城控制器各自重写了 calculateFilteredDataSource，内部直接给 ivar 赋值，
-// 不会经过 -setFilteredDataSource:，所以只钩 setter 等于没钩（这就是"填1还出现几个月前"的原因）。
-// 这里在它们算完之后再过滤一次；没有更早的原生调用点可依赖，这是唯一可靠的入口。
-%hook AWENewNearbyListDataController
-
-- (void)calculateFilteredDataSource {
-    %orig;
-    // 本地头文件里这三个类没收录 filteredDataSource 系列的声明，统一走 id 调用。
-    id controller = (id)self;
-    NSArray *current = [controller filteredDataSource];
-    DYYYNearbyLog([NSString stringWithFormat:@"[CALC] cls=%@ filtered=%lu",
-                   NSStringFromClass([self class]), (unsigned long)[current count]]);
-    NSArray *kept = DYYYNearbyFilterByTime(current, controller);
-    if (kept != current) [controller setFilteredDataSource:[kept mutableCopy]];
-}
-
-%end
-
-%hook AWEMultiTabNearbyListDataController
-
-- (void)calculateFilteredDataSource {
-    %orig;
-    // 本地头文件里这三个类没收录 filteredDataSource 系列的声明，统一走 id 调用。
-    id controller = (id)self;
-    NSArray *current = [controller filteredDataSource];
-    DYYYNearbyLog([NSString stringWithFormat:@"[CALC] cls=%@ filtered=%lu",
-                   NSStringFromClass([self class]), (unsigned long)[current count]]);
-    NSArray *kept = DYYYNearbyFilterByTime(current, controller);
-    if (kept != current) [controller setFilteredDataSource:[kept mutableCopy]];
-}
-
-%end
-
-%hook AWENearbyInnerListDataController
-
-- (void)calculateFilteredDataSource {
-    %orig;
-    // 本地头文件里这三个类没收录 filteredDataSource 系列的声明，统一走 id 调用。
-    id controller = (id)self;
-    NSArray *current = [controller filteredDataSource];
-    DYYYNearbyLog([NSString stringWithFormat:@"[CALC] cls=%@ filtered=%lu",
-                   NSStringFromClass([self class]), (unsigned long)[current count]]);
-    NSArray *kept = DYYYNearbyFilterByTime(current, controller);
-    if (kept != current) [controller setFilteredDataSource:[kept mutableCopy]];
-}
-
-%end
 
 %hook AWEListDataController
 
@@ -12906,20 +12819,7 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
         return;
     }
     // 同城：保持原长，避免宿主 currentIndex 越界回退第一个；过滤交给 setFilteredDataSource:
-    // v762: 同城各套控制器都只在 setFilteredDataSource: 里过滤；
-    // 原始 dataSource 必须保持原长，否则宿主 currentIndex 会越界回退到第一条。
-    NSString *selfName = NSStringFromClass([self class]);
-    if ([selfName rangeOfString:@"Nearby"].location != NSNotFound) {
-        id firstObj = [(NSArray *)dataSource firstObject];
-        NSString *ref = @"";
-        @try { ref = [[firstObj valueForKey:@"referString"] description] ?: @""; } @catch (__unused NSException *e) {}
-        DYYYNearbyLog([NSString stringWithFormat:@"[SETDS] cls=%@ n=%lu ref=%@",
-                       selfName, (unsigned long)[(NSArray *)dataSource count], ref]);
-    }
-    if ([selfName isEqualToString:@"AWENewNearbyListDataController"] ||
-        [selfName isEqualToString:@"AWEMultiTabNearbyListDataController"] ||
-        [selfName isEqualToString:@"AWENearbyC2FeedDataController"] ||
-        [selfName isEqualToString:@"AWENearbyInnerListDataController"]) {
+    if ([NSStringFromClass([self class]) isEqualToString:@"AWENewNearbyListDataController"]) {
         %orig(dataSource);
         return;
     }
