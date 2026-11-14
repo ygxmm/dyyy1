@@ -2588,3 +2588,8 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @interface AWEMultiTabNearbyListDataController : NSObject
 - (id)__filterAwemeModels:(id)models;
 @end
+@interface AWENearbyInnerListDataController : NSObject
+- (void)calculateFilteredDataSource;
+- (id)filteredDataSource;
+- (void)setFilteredDataSource:(id)dataSource;
+@end

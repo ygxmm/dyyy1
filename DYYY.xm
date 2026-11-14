@@ -12813,6 +12813,42 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
     return kept;
 }
 
+// v764: 41.1 的同城控制器各自重写了 calculateFilteredDataSource，内部直接给 ivar 赋值，
+// 不会经过 -setFilteredDataSource:，所以只钩 setter 等于没钩（这就是"填1还出现几个月前"的原因）。
+// 这里在它们算完之后再过滤一次；没有更早的原生调用点可依赖，这是唯一可靠的入口。
+%hook AWENewNearbyListDataController
+
+- (void)calculateFilteredDataSource {
+    %orig;
+    NSArray *current = [self filteredDataSource];
+    NSArray *kept = DYYYNearbyFilterByTime(current, self);
+    if (kept != current) [self setFilteredDataSource:[kept mutableCopy]];
+}
+
+%end
+
+%hook AWEMultiTabNearbyListDataController
+
+- (void)calculateFilteredDataSource {
+    %orig;
+    NSArray *current = [self filteredDataSource];
+    NSArray *kept = DYYYNearbyFilterByTime(current, self);
+    if (kept != current) [self setFilteredDataSource:[kept mutableCopy]];
+}
+
+%end
+
+%hook AWENearbyInnerListDataController
+
+- (void)calculateFilteredDataSource {
+    %orig;
+    NSArray *current = [self filteredDataSource];
+    NSArray *kept = DYYYNearbyFilterByTime(current, self);
+    if (kept != current) [self setFilteredDataSource:[kept mutableCopy]];
+}
+
+%end
+
 %hook AWEListDataController
 
 - (void)setDataSource:(NSMutableArray *)dataSource {
