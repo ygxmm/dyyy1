@@ -12776,6 +12776,10 @@ static void DYYYHideProfilePostGuideView(UIView *view) {
 // 数据源 getter 会在详情/合集滚动枚举期间被频繁读取；过滤只能发生在写入边界，
 // 不能在 getter 内原地修改宿主持有的 NSMutableArray，否则会触发快速枚举突变异常。
 
+// v771: 同城页是否在屏。用于「模型生成期」按时间丢弃作品——数组从头就是短的，
+// 索引自洽，不会再触发 v770 那种 currentIndex 越界回退第一条。
+static BOOL gDYYYNearbyPageActive = NO;
+
 // v769: 只读日志（不改行为），用于定位同城时限为何不生效。最多 400 行，同签名只写一次。
 static void DYYYNearbyLogLine(NSString *line) {
     static NSMutableSet *seen = nil;
@@ -12861,12 +12865,8 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
         DYYYNearbyLogLine([NSString stringWithFormat:@"[SETDS] cls=%@ n=%lu",
                            dsClass, (unsigned long)[(NSArray *)dataSource count]]);
     }
-    // v770: 探针证实——同城表读的是 dataSource（原始数据源），不是 filteredDataSource。
-    // 所以这里必须过滤，否则 filtered 侧过滤得再对，屏幕上也还是全量。
-    // 过滤函数内部已有“结果为空则退回原列表”的保护，不会出现空页。
     if ([dsClass isEqualToString:@"AWENewNearbyListDataController"]) {
-        NSArray *nearbyFiltered = DYYYNearbyFilterByTime(dataSource, self);
-        %orig(nearbyFiltered == (NSArray *)dataSource ? dataSource : [nearbyFiltered mutableCopy]);
+        %orig(dataSource);
         return;
     }
     NSArray *filtered = [DYYYUtils arrayByRemovingAdvertisements:dataSource];
@@ -12888,6 +12888,22 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
 %end
 
 // v769: 展示层探针——记录每个 cell 绑定的作品时间，判断"屏幕上看到的"是否就是要过滤的那批。
+%hook AWENearbyFullScreenViewController
+
+- (void)viewWillAppear:(BOOL)animated {
+    %orig;
+    gDYYYNearbyPageActive = YES;
+    DYYYNearbyLogLine(@"[PAGE] nearby appear");
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    %orig;
+    gDYYYNearbyPageActive = NO;
+    DYYYNearbyLogLine(@"[PAGE] nearby disappear");
+}
+
+%end
+
 %hook AWEFeedCellViewController
 
 - (void)setModel:(id)model {
@@ -13592,6 +13608,30 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
         }
         if (shouldDisableHDR) {
             DYYYStripHDRHintsFromAwemeModel(self);
+        }
+
+        // v771: 同城页在屏时，超期作品直接不生成模型（不是事后删数组）。
+        if (gDYYYNearbyPageActive && !shouldFilter) {
+            NSInteger nearbyDays = DYYYIntegerSetting(@"DYYYNearbyFilterTimeLimit");
+            if (nearbyDays > 0) {
+                NSNumber *ct = [(AWEAwemeModel *)self createTime];
+                double ts = [ct respondsToSelector:@selector(doubleValue)] ? ct.doubleValue : 0;
+                if (ts > 1e12) ts /= 1000.0;
+                if (ts > 0) {
+                    NSCalendar *cal = [NSCalendar currentCalendar];
+                    NSDate *startOfToday = [cal startOfDayForDate:[NSDate date]];
+                    NSDate *cutoffDate = [cal dateByAddingUnit:NSCalendarUnitDay
+                                                        value:-(nearbyDays - 1)
+                                                       toDate:startOfToday
+                                                      options:0];
+                    NSTimeInterval cutoff = [cutoffDate timeIntervalSince1970];
+                    if (ts < cutoff) {
+                        DYYYNearbyLogLine([NSString stringWithFormat:@"[DROP] ts=%.0f cutoff=%.0f days=%ld",
+                                           ts, cutoff, (long)nearbyDays]);
+                        return nil;
+                    }
+                }
+            }
         }
     }
     return orig;
