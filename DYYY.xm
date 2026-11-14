@@ -16370,7 +16370,10 @@ static id DYYYFilterNearbyByTimeLimit(id models) {
             [kept addObject:model];   // 字段缺失放行，宁多勿错杀
             continue;
         }
-        if (createTime.doubleValue >= cutoff) [kept addObject:model];
+        // 与推荐侧完全一致的规则：毫秒时间戳先归一到秒；0/缺失放行。
+        NSTimeInterval ts = createTime.doubleValue;
+        if (ts > 1e12) ts /= 1000.0;
+        if (ts <= 0 || ts >= cutoff) [kept addObject:model];
     }
     if (kept.count == 0) return models;   // 全被过滤 → 保持原样
     return kept;
