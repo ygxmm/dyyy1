@@ -12776,18 +12776,43 @@ static void DYYYHideProfilePostGuideView(UIView *view) {
 // 数据源 getter 会在详情/合集滚动枚举期间被频繁读取；过滤只能发生在写入边界，
 // 不能在 getter 内原地修改宿主持有的 NSMutableArray，否则会触发快速枚举突变异常。
 
+// v769: 只读日志（不改行为），用于定位同城时限为何不生效。最多 400 行，同签名只写一次。
+static void DYYYNearbyLogLine(NSString *line) {
+    static NSMutableSet *seen = nil;
+    static int count = 0;
+    if (!seen) seen = [NSMutableSet set];
+    if (count > 400 || [seen containsObject:line]) return;
+    [seen addObject:line];
+    count++;
+    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_nearby.log"];
+    FILE *f = fopen(path.fileSystemRepresentation, "a");
+    if (!f) return;
+    fprintf(f, "%s\n", line.UTF8String);
+    fclose(f);
+}
+
 // 数值类设置统一读法：兼容 NSNumber 与文本输入存进去的 NSString。
 static NSInteger DYYYIntegerSetting(NSString *key) {
     id value = [[NSUserDefaults standardUserDefaults] objectForKey:key];
-    if ([value respondsToSelector:@selector(integerValue)]) return [value integerValue];
-    return 0;
+    NSInteger result = [value respondsToSelector:@selector(integerValue)] ? [value integerValue] : 0;
+    if ([key isEqualToString:@"DYYYNearbyFilterTimeLimit"] || [key isEqualToString:@"DYYYFilterTimeLimit"]) {
+        DYYYNearbyLogLine([NSString stringWithFormat:@"[SETTING] %@ class=%@ value=%@ -> %ld",
+                           key, value ? NSStringFromClass([value class]) : @"nil",
+                           value ? [value description] : @"nil", (long)result]);
+    }
+    return result;
 }
 
 static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
     // v768: 文本输入框保存的是 NSString，而 integerForKey: 只认 NSNumber（存字符串时恒返回 0），
     // 所以「填 1」一直等于没填。统一改成取对象再转整数。
     NSInteger nearbyDays = DYYYIntegerSetting(@"DYYYNearbyFilterTimeLimit");
-    if (nearbyDays <= 0 || arr.count == 0) return arr;
+    NSString *hostNameForLog = host ? NSStringFromClass([host class]) : @"nil";
+    if (nearbyDays <= 0 || arr.count == 0) {
+        DYYYNearbyLogLine([NSString stringWithFormat:@"[SKIP] host=%@ in=%lu days=%ld",
+                           hostNameForLog, (unsigned long)arr.count, (long)nearbyDays]);
+        return arr;
+    }
     NSString *hostName = host ? NSStringFromClass([host class]) : @"";
     if (![hostName isEqualToString:@"AWENewNearbyListDataController"]) return arr;
     // 自然日口径：从今天 00:00 往前推 (nearbyDays-1) 天的 00:00 起算
@@ -12808,6 +12833,14 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
             [kept addObject:m];
         }
     }
+    id first = arr.firstObject;
+    double firstTs = 0;
+    @try { firstTs = [[first valueForKey:@"createTime"] doubleValue]; } @catch (__unused NSException *e) {}
+    if (firstTs > 1e12) firstTs /= 1000.0;
+    DYYYNearbyLogLine([NSString stringWithFormat:@"[FILTER] host=%@ in=%lu out=%lu days=%ld cutoff=%.0f firstTs=%.0f%@",
+                       hostNameForLog, (unsigned long)arr.count, (unsigned long)kept.count, (long)nearbyDays,
+                       cutoff, firstTs, kept.count == 0 ? @" (empty->fallback)" : @""]);
+
     if (kept.count == 0 && arr.count > 0) {
         return arr;
     }
@@ -12823,7 +12856,12 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
         return;
     }
     // 同城：保持原长，避免宿主 currentIndex 越界回退第一个；过滤交给 setFilteredDataSource:
-    if ([NSStringFromClass([self class]) isEqualToString:@"AWENewNearbyListDataController"]) {
+    NSString *dsClass = NSStringFromClass([self class]);
+    if ([dsClass rangeOfString:@"Nearby"].location != NSNotFound) {
+        DYYYNearbyLogLine([NSString stringWithFormat:@"[SETDS] cls=%@ n=%lu",
+                           dsClass, (unsigned long)[(NSArray *)dataSource count]]);
+    }
+    if ([dsClass isEqualToString:@"AWENewNearbyListDataController"]) {
         %orig(dataSource);
         return;
     }
@@ -12841,6 +12879,23 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
     NSArray *filtered = [DYYYUtils arrayByRemovingAdvertisements:filteredDataSource];
     filtered = DYYYNearbyFilterByTime(filtered, self);
     %orig(filtered);
+}
+
+%end
+
+// v769: 展示层探针——记录每个 cell 绑定的作品时间，判断"屏幕上看到的"是否就是要过滤的那批。
+%hook AWEFeedCellViewController
+
+- (void)setModel:(id)model {
+    %orig(model);
+    @try {
+        id ts = [model valueForKey:@"createTime"];
+        id ref = [model valueForKey:@"referString"];
+        if (ts) {
+            DYYYNearbyLogLine([NSString stringWithFormat:@"[DISPLAY] ts=%@ ref=%@",
+                               ts, ref ?: @"nil"]);
+        }
+    } @catch (__unused NSException *e) {}
 }
 
 %end
