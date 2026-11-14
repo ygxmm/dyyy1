@@ -2483,18 +2483,9 @@ static void DYYYHDRProbe(NSString *line) {
 
 // v740: 41.0 播放链路自己有一份 HDR 结论（AWEDPlayerVideoInfoModel.isSourceHDR/hdrType），
 // 并在 setEnablePlayHDRModeIfNeeded 里决定是否开 HDR 模式；只改 API 模型上的字段拦不住。
-// v760: 41.1 的 HDR 不只在模型上，显示层还有三个开关；只改数据层拦不住。
-// 这些都是头文件里声明过的属性，钩属性不会碰系统代码页。
+// v760: 41.1 的 HDR 不只在模型上，显示层还有开关；enableHDR 已在下方钩过，
+// 这里只补此前没有的三处（头文件里都声明过，属属性钩，不碰系统代码页）。
 %hook AWEDPlayerVideoDisplayOptState
-
-- (BOOL)enableHDR {
-    if (DYYYShouldDisableAllHDR()) return NO;
-    return %orig;
-}
-
-- (void)setEnableHDR:(BOOL)value {
-    %orig(DYYYShouldDisableAllHDR() ? NO : value);
-}
 
 - (id)HDRVideoMode {
     if (DYYYShouldDisableAllHDR()) return nil;
@@ -2515,19 +2506,6 @@ static void DYYYHDRProbe(NSString *line) {
 }
 
 - (void)setEnableMetalRenderHDR:(BOOL)value {
-    %orig(DYYYShouldDisableAllHDR() ? NO : value);
-}
-
-%end
-
-%hook AWEPlayVideoPlayerContext
-
-- (BOOL)enableHDR {
-    if (DYYYShouldDisableAllHDR()) return NO;
-    return %orig;
-}
-
-- (void)setEnableHDR:(BOOL)value {
     %orig(DYYYShouldDisableAllHDR() ? NO : value);
 }
 
