@@ -2581,3 +2581,11 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property (nonatomic) long long hdrType;
 @end
 
+// 41.1 转储 AWENewNearbyListDataController.h:164 / AWEMultiTabNearbyListDataController.h:158
+@interface AWENewNearbyListDataController : NSObject
+- (id)__filterAwemeModels:(id)models;
+@end
+
+@interface AWEMultiTabNearbyListDataController : NSObject
+- (id)__filterAwemeModels:(id)models;
+@end

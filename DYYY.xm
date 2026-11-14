@@ -12888,6 +12888,33 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
 %end
 
 // v769: 展示层探针——记录每个 cell 绑定的作品时间，判断"屏幕上看到的"是否就是要过滤的那批。
+// v772: 同城表读的是 dataSource，直接缩短它会触发 currentIndex 越界（v770 已验证回退第一条）。
+// 正确入口是数据控制器自己的模型过滤步骤 __filterAwemeModels:（41.1 头文件有声明）：
+// 它返回的数组就是后续 p_generateFeedListWithAwemes: 的输入，长度从头就是对的。
+%hook AWENewNearbyListDataController
+
+- (id)__filterAwemeModels:(id)models {
+    id orig = %orig;
+    NSArray *kept = DYYYNearbyFilterByTime(orig, self);
+    DYYYNearbyLogLine([NSString stringWithFormat:@"[MODELFILTER] cls=AWENewNearby in=%lu out=%lu",
+                       (unsigned long)[(NSArray *)orig count], (unsigned long)[kept count]]);
+    return kept;
+}
+
+%end
+
+%hook AWEMultiTabNearbyListDataController
+
+- (id)__filterAwemeModels:(id)models {
+    id orig = %orig;
+    NSArray *kept = DYYYNearbyFilterByTime(orig, self);
+    DYYYNearbyLogLine([NSString stringWithFormat:@"[MODELFILTER] cls=AWEMultiTab in=%lu out=%lu",
+                       (unsigned long)[(NSArray *)orig count], (unsigned long)[kept count]]);
+    return kept;
+}
+
+%end
+
 %hook AWENearbyFullScreenViewController
 
 - (void)viewWillAppear:(BOOL)animated {
