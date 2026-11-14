@@ -12776,13 +12776,17 @@ static void DYYYHideProfilePostGuideView(UIView *view) {
 // 数据源 getter 会在详情/合集滚动枚举期间被频繁读取；过滤只能发生在写入边界，
 // 不能在 getter 内原地修改宿主持有的 NSMutableArray，否则会触发快速枚举突变异常。
 
+// 数值类设置统一读法：兼容 NSNumber 与文本输入存进去的 NSString。
+static NSInteger DYYYIntegerSetting(NSString *key) {
+    id value = [[NSUserDefaults standardUserDefaults] objectForKey:key];
+    if ([value respondsToSelector:@selector(integerValue)]) return [value integerValue];
+    return 0;
+}
+
 static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
-    // v767: 同城过滤的逻辑一行不动，只把「读哪个键」改成设置页里真正存在的那个。
-    // 之前读 DYYYNearbyFilterTimeLimit，但设置页从来没有这一项，所以永远是 0（关闭），
-    // 用户填的其实是「推荐视频时限」。两个键都认：先读推荐键，没填再退回同城旧键。
-    NSUserDefaults *nearbyDefaults = [NSUserDefaults standardUserDefaults];
-    NSInteger nearbyDays = [nearbyDefaults integerForKey:@"DYYYFilterTimeLimit"];
-    if (nearbyDays <= 0) nearbyDays = [nearbyDefaults integerForKey:@"DYYYNearbyFilterTimeLimit"];
+    // v768: 文本输入框保存的是 NSString，而 integerForKey: 只认 NSNumber（存字符串时恒返回 0），
+    // 所以「填 1」一直等于没填。统一改成取对象再转整数。
+    NSInteger nearbyDays = DYYYIntegerSetting(@"DYYYNearbyFilterTimeLimit");
     if (nearbyDays <= 0 || arr.count == 0) return arr;
     NSString *hostName = host ? NSStringFromClass([host class]) : @"";
     if (![hostName isEqualToString:@"AWENewNearbyListDataController"]) return arr;
@@ -13002,8 +13006,8 @@ static DYYYRecommendationFilterConfig *DYYYBuildRecommendationFilterConfig(NSUIn
     config.skipAIInteraction = [defaults boolForKey:@"DYYYSkipAIInteraction"];
     config.shouldDisableHDR = DYYYShouldDisableAllHDR();
     config.filterHDR = DYYYShouldFilterGlobalHDR();
-    config.minLikesThreshold = MAX([defaults integerForKey:@"DYYYFilterLowLikes"], 0);
-    config.daysThreshold = MAX([defaults integerForKey:@"DYYYFilterTimeLimit"], 0);
+    config.minLikesThreshold = MAX(DYYYIntegerSetting(@"DYYYFilterLowLikes"), 0);
+    config.daysThreshold = MAX(DYYYIntegerSetting(@"DYYYFilterTimeLimit"), 0);
     config.keywords = DYYYNormalizedFilterTokens([defaults objectForKey:@"DYYYFilterKeywords"]);
     config.propKeywords = DYYYNormalizedFilterTokens([defaults objectForKey:@"DYYYFilterProp"]);
     config.userIDs = DYYYNormalizedFilterUserIDs([defaults objectForKey:@"DYYYFilterUsers"]);
