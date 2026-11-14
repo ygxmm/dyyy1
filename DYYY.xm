@@ -12776,19 +12776,44 @@ static void DYYYHideProfilePostGuideView(UIView *view) {
 // 数据源 getter 会在详情/合集滚动枚举期间被频繁读取；过滤只能发生在写入边界，
 // 不能在 getter 内原地修改宿主持有的 NSMutableArray，否则会触发快速枚举突变异常。
 
+// v765: 只读日志（不改行为）。用于确认同城到底走了哪条链路、为什么没有过滤。
+// 写到 Documents/dyyy_nearby.log，最多 300 行，相同签名只写一次。
+static void DYYYNearbyLog(NSString *line) {
+    static NSMutableSet *seen = nil;
+    static int count = 0;
+    if (!seen) seen = [NSMutableSet set];
+    if (count > 300 || [seen containsObject:line]) return;
+    [seen addObject:line];
+    count++;
+    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_nearby.log"];
+    FILE *f = fopen(path.fileSystemRepresentation, "a");
+    if (!f) return;
+    fprintf(f, "%s\n", line.UTF8String);
+    fclose(f);
+}
+
 static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
     // v762: 优先用「推荐视频时限」这个键（与推荐侧同一个设置），没有再用同城自己的旧键。
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSInteger nearbyDays = [defaults integerForKey:@"DYYYFilterTimeLimit"];
     if (nearbyDays <= 0) nearbyDays = [defaults integerForKey:@"DYYYNearbyFilterTimeLimit"];
-    if (nearbyDays <= 0 || arr.count == 0) return arr;
+    NSString *hostNameForLog = host ? NSStringFromClass([host class]) : @"nil";
+    if (nearbyDays <= 0 || arr.count == 0) {
+        DYYYNearbyLog([NSString stringWithFormat:@"[SKIP] host=%@ in=%lu days=%ld",
+                       hostNameForLog, (unsigned long)arr.count, (long)nearbyDays]);
+        return arr;
+    }
     // 41.1 的同城有多套数据控制器：单列 / 多标签 / 团购，全部都要过。
     NSString *hostName = host ? NSStringFromClass([host class]) : @"";
     BOOL isNearby = [hostName isEqualToString:@"AWENewNearbyListDataController"] ||
                     [hostName isEqualToString:@"AWEMultiTabNearbyListDataController"] ||
                     [hostName isEqualToString:@"AWENearbyC2FeedDataController"] ||
                     [hostName isEqualToString:@"AWENearbyInnerListDataController"];
-    if (!isNearby) return arr;
+    if (!isNearby) {
+        DYYYNearbyLog([NSString stringWithFormat:@"[NOTNEARBY] host=%@ in=%lu",
+                       hostNameForLog, (unsigned long)arr.count]);
+        return arr;
+    }
     // v763: 自然日口径 —— 填 N 表示「今天 + 往前 N 天」，不含更早。
     // 例：14 号填 1 → 保留 14 号与 13 号（13 号 00:00 之后）；填 2 → 再加 12 号。
     NSCalendar *cal = [NSCalendar currentCalendar];
@@ -12807,6 +12832,15 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
             [kept addObject:m];
         }
     }
+    id first = arr.firstObject;
+    double firstTs = 0;
+    @try { firstTs = [[first valueForKey:@"createTime"] doubleValue]; } @catch (__unused NSException *e) {}
+    if (firstTs > 1e12) firstTs /= 1000.0;
+    DYYYNearbyLog([NSString stringWithFormat:@"[FILTER] host=%@ in=%lu out=%lu days=%ld cutoff=%.0f first=%@ ts=%.0f%@",
+                   hostNameForLog, (unsigned long)arr.count, (unsigned long)kept.count, (long)nearbyDays,
+                   cutoff, first ? NSStringFromClass([first class]) : @"nil", firstTs,
+                   kept.count == 0 ? @" (empty->fallback)" : @""]);
+
     if (kept.count == 0 && arr.count > 0) {
         return arr;
     }
@@ -12823,6 +12857,8 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
     // 本地头文件里这三个类没收录 filteredDataSource 系列的声明，统一走 id 调用。
     id controller = (id)self;
     NSArray *current = [controller filteredDataSource];
+    DYYYNearbyLog([NSString stringWithFormat:@"[CALC] cls=%@ filtered=%lu",
+                   NSStringFromClass([self class]), (unsigned long)[current count]]);
     NSArray *kept = DYYYNearbyFilterByTime(current, controller);
     if (kept != current) [controller setFilteredDataSource:[kept mutableCopy]];
 }
@@ -12836,6 +12872,8 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
     // 本地头文件里这三个类没收录 filteredDataSource 系列的声明，统一走 id 调用。
     id controller = (id)self;
     NSArray *current = [controller filteredDataSource];
+    DYYYNearbyLog([NSString stringWithFormat:@"[CALC] cls=%@ filtered=%lu",
+                   NSStringFromClass([self class]), (unsigned long)[current count]]);
     NSArray *kept = DYYYNearbyFilterByTime(current, controller);
     if (kept != current) [controller setFilteredDataSource:[kept mutableCopy]];
 }
@@ -12849,6 +12887,8 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
     // 本地头文件里这三个类没收录 filteredDataSource 系列的声明，统一走 id 调用。
     id controller = (id)self;
     NSArray *current = [controller filteredDataSource];
+    DYYYNearbyLog([NSString stringWithFormat:@"[CALC] cls=%@ filtered=%lu",
+                   NSStringFromClass([self class]), (unsigned long)[current count]]);
     NSArray *kept = DYYYNearbyFilterByTime(current, controller);
     if (kept != current) [controller setFilteredDataSource:[kept mutableCopy]];
 }
