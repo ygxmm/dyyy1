@@ -12822,7 +12822,13 @@ static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
         return;
     }
     // 同城：保持原长，避免宿主 currentIndex 越界回退第一个；过滤交给 setFilteredDataSource:
-    if ([NSStringFromClass([self class]) isEqualToString:@"AWENewNearbyListDataController"]) {
+    // v762: 同城各套控制器都只在 setFilteredDataSource: 里过滤；
+    // 原始 dataSource 必须保持原长，否则宿主 currentIndex 会越界回退到第一条。
+    NSString *selfName = NSStringFromClass([self class]);
+    if ([selfName isEqualToString:@"AWENewNearbyListDataController"] ||
+        [selfName isEqualToString:@"AWEMultiTabNearbyListDataController"] ||
+        [selfName isEqualToString:@"AWENearbyC2FeedDataController"] ||
+        [selfName isEqualToString:@"AWENearbyInnerListDataController"]) {
         %orig(dataSource);
         return;
     }
