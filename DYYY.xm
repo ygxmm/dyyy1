@@ -12777,10 +12777,18 @@ static void DYYYHideProfilePostGuideView(UIView *view) {
 // 不能在 getter 内原地修改宿主持有的 NSMutableArray，否则会触发快速枚举突变异常。
 
 static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
-    NSInteger nearbyDays = [[NSUserDefaults standardUserDefaults] integerForKey:@"DYYYNearbyFilterTimeLimit"];
+    // v762: 优先用「推荐视频时限」这个键（与推荐侧同一个设置），没有再用同城自己的旧键。
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSInteger nearbyDays = [defaults integerForKey:@"DYYYFilterTimeLimit"];
+    if (nearbyDays <= 0) nearbyDays = [defaults integerForKey:@"DYYYNearbyFilterTimeLimit"];
     if (nearbyDays <= 0 || arr.count == 0) return arr;
+    // 41.1 的同城有多套数据控制器：单列 / 多标签 / 团购，全部都要过。
     NSString *hostName = host ? NSStringFromClass([host class]) : @"";
-    if (![hostName isEqualToString:@"AWENewNearbyListDataController"]) return arr;
+    BOOL isNearby = [hostName isEqualToString:@"AWENewNearbyListDataController"] ||
+                    [hostName isEqualToString:@"AWEMultiTabNearbyListDataController"] ||
+                    [hostName isEqualToString:@"AWENearbyC2FeedDataController"] ||
+                    [hostName isEqualToString:@"AWENearbyInnerListDataController"];
+    if (!isNearby) return arr;
     // 自然日口径：从今天 00:00 往前推 (nearbyDays-1) 天的 00:00 起算
     // nearbyDays=1 → 今天 00:00 后；=2 → 昨天 00:00 后（今天+昨天）
     NSCalendar *cal = [NSCalendar currentCalendar];
@@ -16347,53 +16355,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 // 只恢复「把负的 top 约束改回 0」这一条，不做关祖先裁剪，避免影响别的层。
 // v747: 只在挂上父视图时改一次，绝不在 -layoutSubviews 里改。
 // 原生每轮布局都会把 top 复位成 -28，若在布局内部再改回 0，两边就互相触发，变成布局死循环（卡死）。
-
-// v761: 同城只套用「推荐视频时限」这一条（DYYYFilterTimeLimit，单位天，0=关闭）。
-// 位置就在同城自己的模型过滤入口上，不碰数据源、不碰布局。
-// 关键：全部被时限过滤掉时退回原列表，避免「同城一刷没有视频」。
-static id DYYYFilterNearbyByTimeLimit(id models) {
-    if (![models isKindOfClass:[NSArray class]] || [(NSArray *)models count] == 0) {
-        return models;
-    }
-    NSInteger days = [[NSUserDefaults standardUserDefaults] integerForKey:@"DYYYFilterTimeLimit"];
-    if (days <= 0) return models;
-
-    NSTimeInterval cutoff = [[NSDate date] timeIntervalSince1970] - (NSTimeInterval)days * 86400.0;
-    NSMutableArray *kept = [NSMutableArray arrayWithCapacity:[(NSArray *)models count]];
-    for (id model in (NSArray *)models) {
-        if (![model isKindOfClass:%c(AWEAwemeModel)]) {
-            [kept addObject:model];
-            continue;
-        }
-        NSNumber *createTime = [(AWEAwemeModel *)model createTime];
-        if (![createTime isKindOfClass:[NSNumber class]]) {
-            [kept addObject:model];   // 字段缺失放行，宁多勿错杀
-            continue;
-        }
-        // 与推荐侧完全一致的规则：毫秒时间戳先归一到秒；0/缺失放行。
-        NSTimeInterval ts = createTime.doubleValue;
-        if (ts > 1e12) ts /= 1000.0;
-        if (ts <= 0 || ts >= cutoff) [kept addObject:model];
-    }
-    if (kept.count == 0) return models;   // 全被过滤 → 保持原样
-    return kept;
-}
-
-%hook AWENewNearbyListDataController
-
-- (id)__filterAwemeModels:(id)models {
-    return DYYYFilterNearbyByTimeLimit(%orig);
-}
-
-%end
-
-%hook AWEMultiTabNearbyListDataController
-
-- (id)__filterAwemeModels:(id)models {
-    return DYYYFilterNearbyByTimeLimit(%orig);
-}
-
-%end
 
 // v621: 搜索视频页判定（贴纸/内层容器共用）
 
