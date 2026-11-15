@@ -2448,16 +2448,6 @@ static NSInteger DYYYResFromGearName(NSString *name) {
     return 0;
 }
 
-%hook AWEVideoBSModel
-- (NSString *)hdrType {
-    if (DYYYShouldDisableAllHDR()) return @"0";
-    return %orig;
-}
-- (NSString *)hdrBit {
-    if (DYYYShouldDisableAllHDR()) return @"8";
-    return %orig;
-}
-%end
 
 // v728: 41.0 新增了全局 HDR 闸门（头文件 AWEHDRModelManager.h）：
 //   + (BOOL)enableVideoHDR;  + (BOOL)useOneKeyHDR;
@@ -2473,18 +2463,21 @@ static NSInteger DYYYResFromGearName(NSString *name) {
 //   1) 数据层：码率模型 / 播放器 info 模型回答 SDR；
 //   2) 显示层：enableHDR / MetalRenderHDR / 自动识别全部关闭（AWED 与 BDSim 两套播放器）；
 //   3) 色彩管线字段 HDRVideoMode 保持真实值，只做 nil 兜底（改它会导致过曝）。
-%hook AWEDPlayerVideoDisplayOptState
+// ===== HDR 屏蔽：唯一总开关（41.1）=====
+// AWEHDRPlaybackSettingService.isHDRPlaybackEnabled 是播放侧是否走 HDR 的总闸门。
+// 实测：播放全程为 1；强制返回 NO 后回到 SDR 且不过曝，页面/详情页正常。
+%hook AWEHDRPlaybackSettingService
 
-- (BOOL)enableHDR {
+- (BOOL)isHDRPlaybackEnabled {
     if (DYYYShouldDisableAllHDR()) {
         return NO;
     }
     return %orig;
 }
 
-- (void)setEnableHDR:(BOOL)enableHDR {
-    %orig(DYYYShouldDisableAllHDR() ? NO : enableHDR);
-}
+%end
+
+%hook AWEDPlayerVideoDisplayOptState
 
 - (id)HDRVideoMode {
     // v787: 这个字段参与色彩管线选择，必须返回 App 自己存的值。
@@ -2495,92 +2488,11 @@ static NSInteger DYYYResFromGearName(NSString *name) {
 
 %end
 
-%hook AWEDPlayerVideoConfig
 
-- (BOOL)enableMetalRenderHDR {
-    if (DYYYShouldDisableAllHDR()) return NO;
-    return %orig;
-}
 
-- (void)setEnableMetalRenderHDR:(BOOL)value {
-    %orig(DYYYShouldDisableAllHDR() ? NO : value);
-}
 
-%end
 
-%hook AWEDPlayerSettings
 
-+ (BOOL)hdrAutomaticIdentification {
-    if (DYYYShouldDisableAllHDR()) return NO;
-    return %orig;
-}
-
-%end
-
-%hook AWEDPlayerVideoInfoModel
-
-- (long long)isSourceHDR {
-    long long v = %orig;
-    if (DYYYShouldDisableAllHDR()) {
-        return 0;
-    }
-    return v;
-}
-
-- (void)setIsSourceHDR:(long long)v {
-    if (DYYYShouldDisableAllHDR()) {
-        %orig(0);
-        return;
-    }
-    %orig(v);
-}
-
-- (long long)hdrType {
-    long long v = %orig;
-    if (DYYYShouldDisableAllHDR()) {
-        return 0;
-    }
-    return v;
-}
-
-%end
-
-%hook AWEDPlayerVideoController_Merge
-
-- (void)setEnablePlayHDRModeIfNeeded {
-    // v747: 不能跳过——这个方法同时承担播放器的模式配置；跳掉会让 Metal 渲染路径不建立，
-    // 表现为整块灰屏/冻屏。屏蔽 HDR 只在数据层（isSourceHDR/hdrType 回答 0）完成。
-    if (DYYYShouldDisableAllHDR()) {
-    }
-    %orig;
-}
-
-%end
-
-%hook AWEDPlayerPlayControlContainer
-
-- (void)configEnableMetalRenderHDRIfNeeded {
-    // v747: 同上，这条属于渲染配置，必须让原生执行完。
-    if (DYYYShouldDisableAllHDR()) {
-    }
-    %orig;
-}
-
-%end
-
-%hook AWEHDRModelManager
-
-+ (BOOL)enableVideoHDR {
-    if (DYYYShouldDisableAllHDR()) return NO;
-    return %orig;
-}
-
-+ (BOOL)useOneKeyHDR {
-    if (DYYYShouldDisableAllHDR()) return NO;
-    return %orig;
-}
-
-%end
 
 %hook AWEVideoModel
 
@@ -2677,28 +2589,6 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
     return %orig;
 }
 
-
-- (void)setHasFilterHDR:(BOOL)hasFilterHDR {
-    %orig(DYYYShouldDisableAllHDR() ? NO : hasFilterHDR);
-}
-
-- (BOOL)hasFilterHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (void)setIsSourceHDR:(NSInteger)isSourceHDR {
-    %orig(DYYYShouldDisableAllHDR() ? 0 : isSourceHDR);
-}
-
-- (NSInteger)isSourceHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return 0;
-    }
-    return %orig;
-}
 
 %end
 
@@ -3227,20 +3117,6 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
 
 %hook AVPlayer
 
-+ (AVPlayerHDRMode)availableHDRModes {
-    if (DYYYShouldDisableAllHDR()) {
-        return 0;
-    }
-    return %orig;
-}
-
-+ (BOOL)eligibleForHDRPlayback {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
 + (instancetype)playerWithURL:(NSURL *)URL {
     AVPlayer *player = %orig;
     DYYYDisableAVPlayerItemHDRMetadata(player.currentItem);
@@ -3308,17 +3184,6 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
     return self;
 }
 
-- (void)setAppliesPerFrameHDRDisplayMetadata:(BOOL)appliesPerFrameHDRDisplayMetadata {
-    %orig(DYYYShouldDisableAllHDR() ? NO : appliesPerFrameHDRDisplayMetadata);
-}
-
-- (BOOL)appliesPerFrameHDRDisplayMetadata {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
 %end
 
 %hook AVPlayerLayer
@@ -3337,600 +3202,45 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
 
 %end
 
-%hook AWEKnowledgeABTestSettings
-
-+ (BOOL)enableHDRAutomaticIdentification {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-%end
-
-%hook AWEFeedABSettings
-
-+ (BOOL)enableHDRBrightnessOpt {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-+ (BOOL)enableProfilePreloadHDRBrightnessFilter {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-+ (BOOL)enableDynamicGaussianBlurHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-+ (BOOL)enableHDRFullModelAdaptation {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-+ (BOOL)hdrAutomaticIdentification {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-%end
-
-%hook AWEFeedABTestServiceObjc
-
-+ (BOOL)enableProfilePreloadHDRBrightnessFilter {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-%end
-
-%hook BDSimPlayerBizConfig
-
-- (BOOL)enableHDRBrightnessOpt {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (BOOL)enableHDRFullModelAdaptation {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (BOOL)hdrAutomaticIdentification {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-%end
-
-%hook AWEBDSimPlayerBizConfig
-
-- (BOOL)enableHDRBrightnessOpt {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (BOOL)enableHDRFullModelAdaptation {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (BOOL)hdrAutomaticIdentification {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-%end
-
-%hook AWEVideoPlayerConfiguration
-
-+ (void)setHDRBrightnessStrategy:(id)strategy {
-    if (!DYYYShouldDisableAllHDR()) {
-        %orig;
-    }
-}
-
-+ (double)getHDRBrightnessOffset:(id)configuration brightness:(double)brightness {
-    if (DYYYShouldDisableAllHDR()) {
-        return 0.0;
-    }
-    return %orig;
-}
-
-%end
-
-%hook AWEPlayVideoPlayerContext
-
-- (BOOL)enableHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (void)setEnableHDR:(BOOL)enableHDR {
-    %orig(DYYYShouldDisableAllHDR() ? NO : enableHDR);
-}
-
-%end
-
-%hook AWEDPlayerVideoModel
-
-- (BOOL)awe_isHDRVideo {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (void)setAwe_isHDRVideo:(BOOL)awe_isHDRVideo {
-    %orig(DYYYShouldDisableAllHDR() ? NO : awe_isHDRVideo);
-}
-
-%end
-
-%hook AWEPlayVideoViewController
-
-- (BOOL)enableHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (void)setEnableHDR:(BOOL)enableHDR {
-    %orig(DYYYShouldDisableAllHDR() ? NO : enableHDR);
-}
-
-- (BOOL)awe_isCurrentVideoHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (void)setPlayerLutFilter:(id)lutFilter HDRLutImage:(id)HDRLutImage {
-    %orig(lutFilter, DYYYShouldDisableAllHDR() ? nil : HDRLutImage);
-}
 
 
-%end
+
+
+
+
+
+
 
 // v790: 推荐页 HDR 的真正开关在 BDSimStreamContext。
 // 实测：playback 时只有这个字段在 0/1 切换，且其它 EDR/色调映射 setter 都没被调用。
 // 只在 getter 层回答 NO（不动 setter），否则会破坏页面状态机（实测会导致页面打不开）。
-%hook BDSimStreamContext
 
-- (BOOL)enableHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
 
-%end
 
-%hook AWEDPlayerBrightnessContainer
 
-- (BOOL)awe_isCurrentVideoHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
 
-%end
 
-%hook AWEVideoPlayerScreenBrightnessManager
 
-- (BOOL)isHDRVideo {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
 
-- (void)setIsHDRVideo:(BOOL)isHDRVideo {
-    // 播放器复用时会重新写入当前作品的 HDR 状态，需同时清除写入值和读取结果。
-    %orig(DYYYShouldDisableAllHDR() ? NO : isHDRVideo);
-}
 
-%end
 
-%hook ALMOwnPlayerWrapper
 
-- (void)setLutFilter:(id)lutFilter HDRLutImage:(id)HDRLutImage {
-    %orig(lutFilter, DYYYShouldDisableAllHDR() ? nil : HDRLutImage);
-}
 
-%end
 
-%hook ALMSysPlayerWrapper
 
-- (void)setLutFilter:(id)lutFilter HDRLutImage:(id)HDRLutImage {
-    %orig(lutFilter, DYYYShouldDisableAllHDR() ? nil : HDRLutImage);
-}
 
-%end
 
-%hook ALMVideoPlayerConfig
 
-+ (void)setPlayerEffectHDRLutImageEnable:(BOOL)enable {
-    %orig(DYYYShouldDisableAllHDR() ? NO : enable);
-}
 
-%end
 
-%hook IESVideoPlayerConfig
 
-+ (void)setPlayerEffectHDRLutImageEnable:(BOOL)enable {
-    %orig(DYYYShouldDisableAllHDR() ? NO : enable);
-}
 
-%end
 
-%hook AWEIMModuleService
 
-- (BOOL)im_forceHDRToSDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return YES;
-    }
-    return %orig;
-}
 
-%end
 
-%hook IESIMVideoPlayerWrapper
-
-- (void)setupHDREnable:(BOOL)enable {
-    %orig(DYYYShouldDisableAllHDR() ? NO : enable);
-}
-
-%end
-
-%hook AWEIMVideoBrowserCollectionViewCell
-
-- (void)setEnablePlayHDR:(BOOL)enable {
-    %orig(DYYYShouldDisableAllHDR() ? NO : enable);
-}
-
-%end
-
-%hook AWEECOMIMAppSettingsService
-
-+ (BOOL)enableVideoPreviewSupportHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-%end
-
-%hook IESLiveAudienceHDRController
-
-+ (BOOL)currentHDRStatusForRoomID:(id)roomID {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-+ (BOOL)isCurrentRoomSupportHDR:(id)roomID roomModel:(id)roomModel {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-+ (BOOL)isFeedCanEnableHDRFeature {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-+ (BOOL)isInnerFeedCanEnableHDRFeature {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-+ (BOOL)isUserEnableHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-+ (BOOL)p_isHDRFeatureEnable {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-+ (void)setUserEnableHDR:(BOOL)enableHDR {
-    %orig(DYYYShouldDisableAllHDR() ? NO : enableHDR);
-}
-
-+ (BOOL)shouldShowHDRSwitchForRoom:(id)room {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-%end
-
-%hook IESLivePlayerController
-
-- (BOOL)isVideoSDR2HDRSupport {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (void)setEnableVideoSDR2HDR:(BOOL)enable callTrace:(id)callTrace {
-    %orig(DYYYShouldDisableAllHDR() ? NO : enable, callTrace);
-}
-
-- (BOOL)enableCloseSDR2HDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return YES;
-    }
-    return %orig;
-}
-
-%end
-
-%hook AWELivePreStreamPlayer
-
-- (void)changeSDR2HDRWithStrategy {
-    if (!DYYYShouldDisableAllHDR()) {
-        %orig;
-    }
-}
-
-%end
-
-%hook HTSLiveStreamPlayer
-
-- (void)setEnableVideoSDR2HDR:(BOOL)enable callTrace:(id)callTrace {
-    %orig(DYYYShouldDisableAllHDR() ? NO : enable, callTrace);
-}
-
-- (void)changeSDR2HDRWithStrategy {
-    if (!DYYYShouldDisableAllHDR()) {
-        %orig;
-    }
-}
-
-%end
-
-%hook IESLiveStreamPlayerVideoAudioEffectPlugin
-
-- (void)setEnableVideoSDR2HDR:(BOOL)enable callTrace:(id)callTrace {
-    %orig(DYYYShouldDisableAllHDR() ? NO : enable, callTrace);
-}
-
-- (void)changeSDR2HDRWithStrategy {
-    if (!DYYYShouldDisableAllHDR()) {
-        %orig;
-    }
-}
-
-%end
-
-%hook TVLManager
-
-- (BOOL)shouldForbidHDR10Render {
-    if (DYYYShouldDisableAllHDR()) {
-        return YES;
-    }
-    return %orig;
-}
-
-- (void)setShouldForbidHDR10Render:(BOOL)shouldForbid {
-    %orig(DYYYShouldDisableAllHDR() ? YES : shouldForbid);
-}
-
-- (void)setupVideoSDR2HDR:(id)config {
-    if (!DYYYShouldDisableAllHDR()) {
-        %orig;
-    }
-}
-
-%end
-
-%hook TVLPlayerItemPreferences
-
-- (BOOL)forbidSDR2HDRInPreview {
-    if (DYYYShouldDisableAllHDR()) {
-        return YES;
-    }
-    return %orig;
-}
-
-- (void)setForbidSDR2HDRInPreview:(BOOL)forbid {
-    %orig(DYYYShouldDisableAllHDR() ? YES : forbid);
-}
-
-- (BOOL)enableUseSDR2HDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (void)setEnableUseSDR2HDR:(BOOL)enable {
-    %orig(DYYYShouldDisableAllHDR() ? NO : enable);
-}
-
-%end
-
-%hook TVLSettingsManager
-
-- (BOOL)enableMetalRenderHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-%end
-
-%hook IESFiltersManager
-
-- (void)setHDRIndensity:(double)intensity {
-    %orig(DYYYShouldDisableAllHDR() ? 0.0 : intensity);
-}
-
-%end
-
-%hook BDImageDecoderFactory
-
-+ (BOOL)isHDRImageData:(id)data withHeifDecoderClass:(Class)decoderClass {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-%end
-
-%hook BDImageDecoderImageIO
-
-- (BOOL)isHDRCGImage:(CGImageRef)image decodedToHDR:(BOOL)decodedToHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (id)hdrOptionsFor:(id)image decodedToHDR:(BOOL *)decodedToHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        if (decodedToHDR) {
-            *decodedToHDR = NO;
-        }
-        return nil;
-    }
-    return %orig;
-}
-
-%end
-
-%hook BDImageDecoderHeic
-
-+ (BOOL)isHDRData:(id)data {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (BOOL)isHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (void)setIsHDR:(BOOL)isHDR {
-    %orig(DYYYShouldDisableAllHDR() ? NO : isHDR);
-}
-
-%end
-
-%hook BDImageDecoderBVC2
-
-- (BOOL)isHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (void)setIsHDR:(BOOL)isHDR {
-    %orig(DYYYShouldDisableAllHDR() ? NO : isHDR);
-}
-
-%end
-
-%hook BDImageDecoderWebP
-
-- (BOOL)isHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (void)setIsHDR:(BOOL)isHDR {
-    %orig(DYYYShouldDisableAllHDR() ? NO : isHDR);
-}
-
-%end
-
-%hook BDImage
-
-- (BOOL)isHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (void)setIsHDR:(BOOL)isHDR {
-    %orig(DYYYShouldDisableAllHDR() ? NO : isHDR);
-}
-
-%end
 
 %hook HDRMTUIImageView
-
-- (instancetype)initWithFrame:(CGRect)frame hdrEnabled:(BOOL)hdrEnabled {
-    return %orig(frame, DYYYShouldDisableAllHDR() ? NO : hdrEnabled);
-}
-
-- (BOOL)hdrEnabled {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (void)setHdrEnabled:(BOOL)hdrEnabled {
-    %orig(DYYYShouldDisableAllHDR() ? NO : hdrEnabled);
-}
 
 - (void)setImage:(UIImage *)image {
     if (DYYYShouldDisableAllHDR()) {
@@ -13424,18 +12734,6 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
     return %orig;
 }
 
-- (BOOL)awe_enableHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (id)awe_HDRValueFor:(long long)value enableHDR:(BOOL)enableHDR {
-    return %orig(value, DYYYShouldDisableAllHDR() ? NO : enableHDR);
-}
-
-%new
 - (BOOL)dyyy_shouldExcludeFromGlobalHDRFilter {
     NSString *referString = [self.referString lowercaseString];
     if (referString.length == 0) {
@@ -16947,14 +16245,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 %hook AWEDPlayerFeedPlayerViewController
 
-- (BOOL)enableHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-
 - (void)viewDidLayoutSubviews {
     %orig;
     [DYYYFullscreenCoordinator layoutPlayerContainer:self];
@@ -16983,13 +16273,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 %hook AWEDPlayerViewController_Merge
 
-
-- (BOOL)enableHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
 
 - (void)viewDidLayoutSubviews {
     %orig;
