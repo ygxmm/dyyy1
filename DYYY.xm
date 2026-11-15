@@ -2468,12 +2468,22 @@ static NSInteger DYYYResFromGearName(NSString *name) {
 // 播放链路先问这里，再决定要不要走 HDR；只改 model 上的 hdrType/hdrBit 已经拦不住。
 // ===== v740 HDR 播放侧探针 =====
 static void DYYYHDRProbe(NSString *line) {
+    // 默认关闭：这些 getter 会被播放器多线程高频调用。
+    // 之前在无锁状态下读写 NSMutableSet，开启屏蔽 HDR 后容易偶发 EXC_BAD_ACCESS。
+    static BOOL enabled = NO;   // 需要抓日志时改成 YES
+    if (!enabled) return;
+
+    static os_unfair_lock lock = OS_UNFAIR_LOCK_INIT;
     static NSMutableSet *seen = nil;
     static int count = 0;
+
+    os_unfair_lock_lock(&lock);
     if (!seen) seen = [NSMutableSet set];
-    if (count > 200 || [seen containsObject:line]) return;
-    [seen addObject:line];
-    count++;
+    BOOL skip = (count > 50) || [seen containsObject:line];
+    if (!skip) { [seen addObject:line]; count++; }
+    os_unfair_lock_unlock(&lock);
+    if (skip) return;
+
     NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_hdr.log"];
     FILE *f = fopen(path.fileSystemRepresentation, "a");
     if (!f) return;
@@ -2488,12 +2498,14 @@ static void DYYYHDRProbe(NSString *line) {
 %hook AWEDPlayerVideoDisplayOptState
 
 - (id)HDRVideoMode {
-    if (DYYYShouldDisableAllHDR()) return nil;
+    // 不能返回 nil：BDSimStreamContext / BDSimPlayEventTrackingService 会把这个值
+    // 塞进埋点字典，nil 会抛 "attempt to insert nil object" 直接闪退。
+    if (DYYYShouldDisableAllHDR()) return @"";
     return %orig;
 }
 
 - (void)setHDRVideoMode:(id)mode {
-    %orig(DYYYShouldDisableAllHDR() ? nil : mode);
+    %orig(DYYYShouldDisableAllHDR() ? @"" : mode);
 }
 
 %end
