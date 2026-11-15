@@ -12938,7 +12938,9 @@ static void DYYYHandleImageAdapter(id adapter) {
     if (!view.window || view.bounds.size.height < 400.0) return;
 
     unsigned long long mode = ULLONG_MAX;
-    @try { mode = (unsigned long long)[adapter currentCellContentMode]; } @catch (__unused NSException *e) {}
+    if ([adapter respondsToSelector:@selector(currentCellContentMode)]) {
+        mode = ((unsigned long long (*)(id, SEL))objc_msgSend)(adapter, @selector(currentCellContentMode));
+    }
 
     BOOL fills = DYYYImageContentFills(view);
     if (fills) {
@@ -12946,7 +12948,9 @@ static void DYYYHandleImageAdapter(id adapter) {
             gDYYYGoodContentMode = mode;
         }
     } else if (gDYYYGoodContentMode != ULLONG_MAX && mode != gDYYYGoodContentMode) {
-        @try { [adapter setCurrentCellContentMode:gDYYYGoodContentMode]; } @catch (__unused NSException *e) {}
+        if ([adapter respondsToSelector:@selector(setCurrentCellContentMode:)]) {
+            ((void (*)(id, SEL, unsigned long long))objc_msgSend)(adapter, @selector(setCurrentCellContentMode:), gDYYYGoodContentMode);
+        }
         __weak UIView *weakView = view;
         dispatch_async(dispatch_get_main_queue(), ^{ [weakView setNeedsLayout]; });
     }
