@@ -12907,6 +12907,53 @@ static BOOL DYYYViewUnderfills(UIView *view, int depth) {
     return NO;
 }
 
+// v775: 图文/动图「掉到底部」的本质：ImageContentView 内层容器按上一次的内容状态算尺寸，
+// 滑到该格时复用的是旧状态（素材比例 294/487，居中），换成新图/重新配置后才按整屏算。
+// 适配器有声明过的 setter：-setCurrentCellContentMode:
+// 枚举值转储里没有，所以这里做「运行时学习」：哪个格子铺满了就记住它的 mode，
+// 没铺满的格子把记住的值设回去，再让它重排一次。不改任何 frame。
+static unsigned long long gDYYYGoodContentMode = ULLONG_MAX;
+
+static BOOL DYYYImageContentFills(UIView *adapter) {
+    for (UIView *child in adapter.subviews) {
+        NSString *name = NSStringFromClass([child class]);
+        if ([name rangeOfString:@"ImageContentView"].location == NSNotFound) continue;
+        for (UIView *scroll in child.subviews) {
+            if (![scroll isKindOfClass:[UIScrollView class]]) continue;
+            for (UIView *content in scroll.subviews) {
+                for (UIView *inner in content.subviews) {
+                    if (fabs(inner.bounds.size.width - adapter.bounds.size.width) <= 1.0) {
+                        return fabs(inner.bounds.size.height - adapter.bounds.size.height) <= 1.0;
+                    }
+                }
+            }
+        }
+    }
+    return YES;   // 结构不认识就当作正常，避免误改
+}
+
+static void DYYYHandleImageAdapter(id adapter) {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    UIView *view = (UIView *)adapter;
+    if (!view.window || view.bounds.size.height < 400.0) return;
+
+    unsigned long long mode = ULLONG_MAX;
+    @try { mode = (unsigned long long)[adapter currentCellContentMode]; } @catch (__unused NSException *e) {}
+
+    BOOL fills = DYYYImageContentFills(view);
+    if (fills) {
+        if (gDYYYGoodContentMode == ULLONG_MAX && mode != ULLONG_MAX) {
+            gDYYYGoodContentMode = mode;
+        }
+    } else if (gDYYYGoodContentMode != ULLONG_MAX && mode != gDYYYGoodContentMode) {
+        @try { [adapter setCurrentCellContentMode:gDYYYGoodContentMode]; } @catch (__unused NSException *e) {}
+        __weak UIView *weakView = view;
+        dispatch_async(dispatch_get_main_queue(), ^{ [weakView setNeedsLayout]; });
+    }
+    DYYYNearbyLogLine([NSString stringWithFormat:@"[IMGADAPTER] cls=%@ mode=%llu fills=%d good=%llu",
+                       NSStringFromClass([view class]), mode, fills ? 1 : 0, gDYYYGoodContentMode]);
+}
+
 static void DYYYRelayoutOnceIfNeeded(UIView *view) {
     static char kDYYYLastRelayoutKey;
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen") || !view.window) return;
@@ -12949,7 +12996,7 @@ static void DYYYRelayoutOnceIfNeeded(UIView *view) {
 
 - (void)layoutSubviews {
     %orig;
-    DYYYRelayoutOnceIfNeeded((UIView *)self);
+    DYYYHandleImageAdapter(self);
 }
 
 %end
@@ -12962,7 +13009,7 @@ static void DYYYRelayoutOnceIfNeeded(UIView *view) {
 
 - (void)layoutSubviews {
     %orig;
-    DYYYRelayoutOnceIfNeeded((UIView *)self);
+    DYYYHandleImageAdapter(self);
 }
 
 %end
