@@ -2452,10 +2452,15 @@ static NSInteger DYYYResFromGearName(NSString *name) {
     return 0;
 }
 
-// v784: 不再篡改码率模型的 hdrType/hdrBit。
-// 这两个字段参与色彩管线选择，强行改成 SDR 会让播放器按 SDR 解释 HDR 码流，高光直接过曝。
-// 屏蔽 HDR 改由显示层开关（enableHDR / enableMetalRenderHDR 等）完成。
 %hook AWEVideoBSModel
+- (NSString *)hdrType {
+    if (DYYYShouldDisableAllHDR()) return @"0";
+    return %orig;
+}
+- (NSString *)hdrBit {
+    if (DYYYShouldDisableAllHDR()) return @"8";
+    return %orig;
+}
 %end
 
 // v728: 41.0 新增了全局 HDR 闸门（头文件 AWEHDRModelManager.h）：
@@ -2492,8 +2497,12 @@ static void DYYYHDRProbe(NSString *line) {
 // 这里只补此前没有的三处（头文件里都声明过，属属性钩，不碰系统代码页）。
 %hook AWEDPlayerVideoDisplayOptState
 
-// v784: HDRVideoMode 必须返回 App 自己存的值。
-// 返回 nil 会在埋点字典里崩，返回空串则会让播放器走错色彩路径（过曝）。
+- (id)HDRVideoMode {
+    // v787: 这个字段参与色彩管线选择，必须返回 App 自己存的值。
+    // 返回 nil 会在埋点字典里崩；返回 @"" 会让播放器按 SDR 解释 HDR 码流导致过曝。
+    id mode = %orig;
+    return mode ? mode : @"";
+}
 
 %end
 
@@ -2521,11 +2530,32 @@ static void DYYYHDRProbe(NSString *line) {
 
 %hook AWEDPlayerVideoInfoModel
 
-// v785: 播放器自己的 HDR 结论必须压成 0。
-// 码率模型上的 hdrType/hdrBit 与 HDRVideoMode 保持真实值（改了会过曝），
-// 但 info 模型若返回真实 HDR，播放器会按 HDR 建渲染链，而显示层已被关掉 → 白屏。
-- (long long)isSourceHDR { return 0; }
-- (void)setIsSourceHDR:(long long)v { %orig(0); }
+- (long long)isSourceHDR {
+    long long v = %orig;
+    if (DYYYShouldDisableAllHDR()) {
+        DYYYHDRProbe([NSString stringWithFormat:@"[HDR] info.isSourceHDR orig=%lld -> 0", v]);
+        return 0;
+    }
+    return v;
+}
+
+- (void)setIsSourceHDR:(long long)v {
+    if (DYYYShouldDisableAllHDR()) {
+        DYYYHDRProbe([NSString stringWithFormat:@"[HDR] info.setIsSourceHDR(%lld) -> 0", v]);
+        %orig(0);
+        return;
+    }
+    %orig(v);
+}
+
+- (long long)hdrType {
+    long long v = %orig;
+    if (DYYYShouldDisableAllHDR()) {
+        DYYYHDRProbe([NSString stringWithFormat:@"[HDR] info.hdrType orig=%lld -> 0", v]);
+        return 0;
+    }
+    return v;
+}
 
 %end
 
@@ -2636,14 +2666,12 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 }
 
 - (NSArray *)bitrateModels {
-    // v786: 屏蔽 HDR 时优先只留 SDR 档，让播放器直接播 SDR，避免"HDR 码流按 SDR 解释"的过曝。
+    return %orig; // v435: pure passthrough
+    return %orig; // v434: pure passthrough, HDR handled by getter hooks
     NSArray *originalModels = %orig;
 
     if (DYYYShouldDisableAllHDR()) {
-        NSArray *sdrModels = DYYYFilteredSDRBitrateModels(originalModels);
-        if (sdrModels.count > 0) {
-            originalModels = sdrModels;
-        }
+        originalModels = DYYYFilteredSDRBitrateModels(originalModels);
     }
 
     if (!DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality")) {
@@ -2692,12 +2720,12 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 }
 
 - (NSArray *)manualBitrateModels {
+    return %orig; // v435: pure passthrough
+    return %orig; // v434: pure passthrough, HDR handled by getter hooks
     NSArray *models = %orig;
     if (DYYYShouldDisableAllHDR()) {
-        NSArray *sdrModels = DYYYFilteredSDRBitrateModels(models);
-        if (sdrModels.count > 0) {
-            models = sdrModels;
-        }
+        models = DYYYFilteredSDRBitrateModels(models);
+        DYYYStripHDRHintsFromBitrateModels(models);
     }
     return models;
 }
@@ -2707,12 +2735,11 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 }
 
 - (NSArray *)bitrateRawData {
+    return %orig; // v435: pure passthrough
+    return %orig; // v434: pure passthrough, HDR handled by getter hooks
     NSArray *rawData = %orig;
     if (DYYYShouldDisableAllHDR()) {
-        NSArray *sdrData = DYYYFilteredSDRRawBitrateData(rawData);
-        if (sdrData.count > 0) {
-            rawData = sdrData;
-        }
+        rawData = DYYYFilteredSDRRawBitrateData(rawData);
     }
     return rawData;
 }
