@@ -17,6 +17,7 @@
 + (CGFloat)bottomOccupiedHeightForView:(UIView *)view;
 + (void)layoutBottomInput:(UIView *)view controller:(UIViewController *)controller;
 + (void)layoutInteraction:(UIViewController *)controller;
++ (BOOL)isInsideNearbyPage:(UIViewController *)controller;
 + (void)layoutInformationLabel:(UIView *)label;
 + (void)rememberInteractionGuide:(UIViewController *)controller;
 + (CGRect)frameForInteractionView:(UIView *)view proposed:(CGRect)frame;
