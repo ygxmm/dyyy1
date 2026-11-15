@@ -16449,8 +16449,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 - (void)viewDidLayoutSubviews {
     %orig;
-- (void)viewDidLayoutSubviews {
-    %orig;
 
     // v781 只读探针：确认同城页的真实 VC 链 / referString，以及互动层高度。
     // 不改任何行为，写完即删。
@@ -16484,23 +16482,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
             NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
             if (!fh) [line writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:NULL];
             else { [fh seekToEndOfFile]; [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]]; [fh closeFile]; }
-        }
-    }
-
-    // v777: 41.1 把头像/点赞/翻页器/时间的排布改成「按视图尺寸+断点」计算，
-    // 并且只在尺寸变化时重算（AWEPlayInteractionViewController.h:324）。
-    // 我们撑高互动层后没有触发它，元素就停在旧锚点（实测 stack 底边 791.67 → 851.67，
-    // 差值 60，正是互动层 792 → 852 的差）。这里按声明在尺寸变化后补一次调用。
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        static char kDYYYLastInteractionSizeKey;
-        CGSize size = self.viewIfLoaded.bounds.size;
-        NSValue *last = objc_getAssociatedObject(self, &kDYYYLastInteractionSizeKey);
-        if (!last || !CGSizeEqualToSize(last.CGSizeValue, size)) {
-            objc_setAssociatedObject(self, &kDYYYLastInteractionSizeKey,
-                                     [NSValue valueWithCGSize:size], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            if (NO) {
-                [self awe_updateFoldElementLayoutIfViewSizeChanged];
-            }
         }
     }
 
