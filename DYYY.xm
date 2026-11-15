@@ -12907,119 +12907,6 @@ static BOOL DYYYViewUnderfills(UIView *view, int depth) {
     return NO;
 }
 
-// v775: 图文/动图「掉到底部」的本质：ImageContentView 内层容器按上一次的内容状态算尺寸，
-// 滑到该格时复用的是旧状态（素材比例 294/487，居中），换成新图/重新配置后才按整屏算。
-// 适配器有声明过的 setter：-setCurrentCellContentMode:
-// 枚举值转储里没有，所以这里做「运行时学习」：哪个格子铺满了就记住它的 mode，
-// 没铺满的格子把记住的值设回去，再让它重排一次。不改任何 frame。
-static unsigned long long gDYYYGoodContentMode = ULLONG_MAX;
-
-static BOOL DYYYImageContentFills(UIView *adapter) {
-    for (UIView *child in adapter.subviews) {
-        NSString *name = NSStringFromClass([child class]);
-        if ([name rangeOfString:@"ImageContentView"].location == NSNotFound) continue;
-        for (UIView *scroll in child.subviews) {
-            if (![scroll isKindOfClass:[UIScrollView class]]) continue;
-            for (UIView *content in scroll.subviews) {
-                for (UIView *inner in content.subviews) {
-                    if (fabs(inner.bounds.size.width - adapter.bounds.size.width) <= 1.0) {
-                        return fabs(inner.bounds.size.height - adapter.bounds.size.height) <= 1.0;
-                    }
-                }
-            }
-        }
-    }
-    return YES;   // 结构不认识就当作正常，避免误改
-}
-
-static void DYYYHandleImageAdapter(id adapter) {
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    UIView *view = (UIView *)adapter;
-    if (!view.window || view.bounds.size.height < 400.0) return;
-
-    unsigned long long mode = ULLONG_MAX;
-    if ([adapter respondsToSelector:@selector(currentCellContentMode)]) {
-        mode = ((unsigned long long (*)(id, SEL))objc_msgSend)(adapter, @selector(currentCellContentMode));
-    }
-
-    BOOL fills = DYYYImageContentFills(view);
-    if (fills) {
-        if (gDYYYGoodContentMode == ULLONG_MAX && mode != ULLONG_MAX) {
-            gDYYYGoodContentMode = mode;
-        }
-    } else if (gDYYYGoodContentMode != ULLONG_MAX && mode != gDYYYGoodContentMode) {
-        if ([adapter respondsToSelector:@selector(setCurrentCellContentMode:)]) {
-            ((void (*)(id, SEL, unsigned long long))objc_msgSend)(adapter, @selector(setCurrentCellContentMode:), gDYYYGoodContentMode);
-        }
-        __weak UIView *weakView = view;
-        dispatch_async(dispatch_get_main_queue(), ^{ [weakView setNeedsLayout]; });
-    }
-    DYYYNearbyLogLine([NSString stringWithFormat:@"[IMGADAPTER] cls=%@ mode=%llu fills=%d good=%llu",
-                       NSStringFromClass([view class]), mode, fills ? 1 : 0, gDYYYGoodContentMode]);
-}
-
-static void DYYYRelayoutOnceIfNeeded(UIView *view) {
-    static char kDYYYLastRelayoutKey;
-    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen") || !view.window) return;
-    if (view.bounds.size.height < 400.0) return;
-    if (!DYYYViewUnderfills(view, 0)) return;
-    CFTimeInterval now = CACurrentMediaTime();
-    NSNumber *last = objc_getAssociatedObject(view, &kDYYYLastRelayoutKey);
-    if (last && now - last.doubleValue < 0.5) return;
-    objc_setAssociatedObject(view, &kDYYYLastRelayoutKey, @(now), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    __weak UIView *weakView = view;
-    dispatch_async(dispatch_get_main_queue(), ^{
-      UIView *strongView = weakView;
-      // 只把“需要重算”的标记自上而下打一遍，不改任何 frame。
-      void (^mark)(UIView *, int);
-      __block void (^markRef)(UIView *, int);
-      mark = ^(UIView *v, int depth) {
-        if (!v || depth > 4) return;
-        [v setNeedsLayout];
-        for (UIView *child in v.subviews) markRef(child, depth + 1);
-      };
-      markRef = mark;
-      mark(strongView, 0);
-    });
-}
-
-%hook AWELivePhotoContentAdapterCellView
-
-- (void)layoutSubviews {
-    %orig;
-    DYYYRelayoutOnceIfNeeded((UIView *)self);
-}
-
-%end
-
-// v774: 图文/动图的适配层是 Swift 类（运行时名字带点号），不能用 %hook 直接写，
-// 按项目已有写法：先定义组，再用 objc_getClass 找到类后 %init。
-%group DYYYImageAdapterGroup
-
-%hook DYYYImageAdapterView
-
-- (void)layoutSubviews {
-    %orig;
-    DYYYHandleImageAdapter(self);
-}
-
-%end
-
-%end
-
-%group DYYYLivePhotoAdapterGroup
-
-%hook DYYYLivePhotoAdapterView
-
-- (void)layoutSubviews {
-    %orig;
-    DYYYHandleImageAdapter(self);
-}
-
-%end
-
-%end
-
 %hook AWENewNearbyListDataController
 
 - (id)__filterAwemeModels:(id)models {
@@ -16661,6 +16548,23 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 - (void)viewDidLayoutSubviews {
     %orig;
 
+    // v777: 41.1 把头像/点赞/翻页器/时间的排布改成「按视图尺寸+断点」计算，
+    // 并且只在尺寸变化时重算（AWEPlayInteractionViewController.h:324）。
+    // 我们撑高互动层后没有触发它，元素就停在旧锚点（实测 stack 底边 791.67 → 851.67，
+    // 差值 60，正是互动层 792 → 852 的差）。这里按声明在尺寸变化后补一次调用。
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        static char kDYYYLastInteractionSizeKey;
+        CGSize size = self.viewIfLoaded.bounds.size;
+        NSValue *last = objc_getAssociatedObject(self, &kDYYYLastInteractionSizeKey);
+        if (!last || !CGSizeEqualToSize(last.CGSizeValue, size)) {
+            objc_setAssociatedObject(self, &kDYYYLastInteractionSizeKey,
+                                     [NSValue valueWithCGSize:size], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            if ([self respondsToSelector:@selector(awe_updateFoldElementLayoutIfViewSizeChanged)]) {
+                [self awe_updateFoldElementLayoutIfViewSizeChanged];
+            }
+        }
+    }
+
     // v593: 离屏 cell 不跑 DYYY 的重活（黑条扫描 / 按钮重建 / 高度归位）。
     // 详情页里同时存在首页、附近、关注、搜索多个 cell，全跑一遍是明显的滚动卡顿来源。
     UIView *earlyView = self.viewIfLoaded;
@@ -18857,15 +18761,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
             %init(BDMultiContentImageViewGroup, BDMultiContentContainer_ImageContentView = imageContentClass);
         }
         // v774: 图文/动图的适配层（Swift，运行时类名带点号）
-        Class imageAdapterClass = objc_getClass("AWEMultiContentImpl.ImageContentAdapterCellView");
-        if (imageAdapterClass) {
-            %init(DYYYImageAdapterGroup, DYYYImageAdapterView = imageAdapterClass);
-        }
-        Class livePhotoAdapterClass = objc_getClass("AWEMultiContentImpl.LivePhotoContentAdapterView");
-        if (livePhotoAdapterClass) {
-            %init(DYYYLivePhotoAdapterGroup, DYYYLivePhotoAdapterView = livePhotoAdapterClass);
-        }
-
         // 动态获取 Swift 类并初始化对应的组
         Class commentSearchAnchorViewClass = objc_getClass("AWECommentSearchAnchorView");
         if (commentSearchAnchorViewClass) {

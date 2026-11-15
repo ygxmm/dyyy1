@@ -2466,6 +2466,7 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 - (void)showSharePanel;
 - (void)performLikeAction;
 - (void)showDislikeOnVideo;
+- (void)awe_updateFoldElementLayoutIfViewSizeChanged;
 @end
 
 
