@@ -2521,7 +2521,12 @@ static void DYYYHDRProbe(NSString *line) {
 
 %hook AWEDPlayerVideoInfoModel
 
-// v784: 同上，isSourceHDR / hdrType 保持真实值，避免色彩管线错判。
+// v785: 播放器自己的 HDR 结论必须压成 0。
+// 码率模型上的 hdrType/hdrBit 与 HDRVideoMode 保持真实值（改了会过曝），
+// 但 info 模型若返回真实 HDR，播放器会按 HDR 建渲染链，而显示层已被关掉 → 白屏。
+- (long long)isSourceHDR { return 0; }
+- (void)setIsSourceHDR:(long long)v { %orig(0); }
+- (long long)hdrType { return 0; }
 
 %end
 
