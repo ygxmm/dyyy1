@@ -367,6 +367,21 @@
         [self invalidateGuides];
     }
 }
+// v776: 同城页原生把互动层放在 792（852 − 60，给底栏留位），底对齐的头像/点赞/翻页器/时间
+// 都以 792 为锚点。我们按“首页推荐”规则把它撑到 852 后，整摞 UI 跟着贴到屏幕最底
+// （实测：stack 底边 791.67 → 851.67，差 60）。所以同城页必须跳过这一步。
++ (BOOL)isInsideNearbyPage:(UIViewController *)controller {
+    for (UIViewController *parent = controller; parent; parent = parent.parentViewController) {
+        NSString *name = NSStringFromClass([parent class]);
+        if ([name isEqualToString:@"AWENearbyContainerViewController"] ||
+            [name isEqualToString:@"AWENearbyFullScreenViewController"] ||
+            [name isEqualToString:@"AWENearbySkyLightViewController"]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
 + (void)layoutInteraction:(UIViewController *)controller {
     // v757: 原来只认首页推荐（contentSource == homepage_hot），从搜索点开的详情页
     // 会被直接 return，互动层保持「屏高 − 83（底栏 49 + 安全区 34）」= 769，
@@ -374,6 +389,7 @@
     BOOL supported = [self usesRecommendedLayoutForController:controller] ||
                      [self usesDetailLayoutForController:controller];
     if (![NSThread isMainThread] || !supported) return;
+    if ([self isInsideNearbyPage:controller]) return;   // v776: 同城保持原生 792
     UIView *view = controller.viewIfLoaded;
     UIView *parent = view.superview;
     if (!view.window || ![self view:view spansWidthOf:parent]) return;
