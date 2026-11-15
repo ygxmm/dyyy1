@@ -2526,7 +2526,6 @@ static void DYYYHDRProbe(NSString *line) {
 // 但 info 模型若返回真实 HDR，播放器会按 HDR 建渲染链，而显示层已被关掉 → 白屏。
 - (long long)isSourceHDR { return 0; }
 - (void)setIsSourceHDR:(long long)v { %orig(0); }
-- (long long)hdrType { return 0; }
 
 %end
 
@@ -2637,12 +2636,14 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 }
 
 - (NSArray *)bitrateModels {
-    return %orig; // v435: pure passthrough
-    return %orig; // v434: pure passthrough, HDR handled by getter hooks
+    // v786: 屏蔽 HDR 时优先只留 SDR 档，让播放器直接播 SDR，避免"HDR 码流按 SDR 解释"的过曝。
     NSArray *originalModels = %orig;
 
     if (DYYYShouldDisableAllHDR()) {
-        originalModels = DYYYFilteredSDRBitrateModels(originalModels);
+        NSArray *sdrModels = DYYYFilteredSDRBitrateModels(originalModels);
+        if (sdrModels.count > 0) {
+            originalModels = sdrModels;
+        }
     }
 
     if (!DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality")) {
@@ -2691,12 +2692,12 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 }
 
 - (NSArray *)manualBitrateModels {
-    return %orig; // v435: pure passthrough
-    return %orig; // v434: pure passthrough, HDR handled by getter hooks
     NSArray *models = %orig;
     if (DYYYShouldDisableAllHDR()) {
-        models = DYYYFilteredSDRBitrateModels(models);
-        DYYYStripHDRHintsFromBitrateModels(models);
+        NSArray *sdrModels = DYYYFilteredSDRBitrateModels(models);
+        if (sdrModels.count > 0) {
+            models = sdrModels;
+        }
     }
     return models;
 }
@@ -2706,11 +2707,12 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 }
 
 - (NSArray *)bitrateRawData {
-    return %orig; // v435: pure passthrough
-    return %orig; // v434: pure passthrough, HDR handled by getter hooks
     NSArray *rawData = %orig;
     if (DYYYShouldDisableAllHDR()) {
-        rawData = DYYYFilteredSDRRawBitrateData(rawData);
+        NSArray *sdrData = DYYYFilteredSDRRawBitrateData(rawData);
+        if (sdrData.count > 0) {
+            rawData = sdrData;
+        }
     }
     return rawData;
 }
