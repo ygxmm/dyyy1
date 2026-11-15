@@ -16545,6 +16545,25 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         self.view.frame = frame;
     }
     [DYYYFullscreenCoordinator rememberInteractionGuide:self];
+
+    // v780: 同城页的互动层必须固定为原生页高「屏高 − 60」。
+    // 原因：图文格在 layoutInteraction 撑到 852 后会提前 return，后面的“减去底栏”永远不执行，
+    // 于是头像/点赞/翻页器/时间这些底对齐元素贴到屏幕最底（实测 stack 底边 851.67，应为 791.67）。
+    // 这里在最后统一按原生值收敛一次，视频格/图文格一视同仁。
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") &&
+        [DYYYFullscreenCoordinator isInsideNearbyPage:self]) {
+        UIView *hostView = self.viewIfLoaded;
+        UIView *hostSuper = hostView.superview;
+        if (hostView.window && hostSuper && hostView.bounds.size.width > 1 &&
+            fabs(hostView.bounds.size.width - hostSuper.bounds.size.width) <= 1.0) {
+            CGFloat targetHeight = MAX(0, CGRectGetHeight(hostSuper.bounds) - 60.0);
+            if (targetHeight > 400.0 && fabs(CGRectGetHeight(hostView.frame) - targetHeight) > 0.5) {
+                CGRect fixed = hostView.frame;
+                fixed.size.height = targetHeight;
+                hostView.frame = fixed;
+            }
+        }
+    }
     }
 
 
