@@ -12943,9 +12943,22 @@ static void DYYYRelayoutOnceIfNeeded(UIView *view) {
 
 // v774: 图文/动图的适配层是 Swift 类（运行时名字带点号），不能用 %hook 直接写，
 // 按项目已有写法：先定义组，再用 objc_getClass 找到类后 %init。
-%group DYYYMultiContentAdapterGroup
+%group DYYYImageAdapterGroup
 
-%hook DYYYMultiContentAdapterView
+%hook DYYYImageAdapterView
+
+- (void)layoutSubviews {
+    %orig;
+    DYYYRelayoutOnceIfNeeded((UIView *)self);
+}
+
+%end
+
+%end
+
+%group DYYYLivePhotoAdapterGroup
+
+%hook DYYYLivePhotoAdapterView
 
 - (void)layoutSubviews {
     %orig;
@@ -18795,11 +18808,11 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
         // v774: 图文/动图的适配层（Swift，运行时类名带点号）
         Class imageAdapterClass = objc_getClass("AWEMultiContentImpl.ImageContentAdapterCellView");
         if (imageAdapterClass) {
-            %init(DYYYMultiContentAdapterGroup, DYYYMultiContentAdapterView = imageAdapterClass);
+            %init(DYYYImageAdapterGroup, DYYYImageAdapterView = imageAdapterClass);
         }
         Class livePhotoAdapterClass = objc_getClass("AWEMultiContentImpl.LivePhotoContentAdapterView");
         if (livePhotoAdapterClass) {
-            %init(DYYYMultiContentAdapterGroup, DYYYMultiContentAdapterView = livePhotoAdapterClass);
+            %init(DYYYLivePhotoAdapterGroup, DYYYLivePhotoAdapterView = livePhotoAdapterClass);
         }
 
         // 动态获取 Swift 类并初始化对应的组
