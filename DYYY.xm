@@ -2495,7 +2495,23 @@ static void DYYYHDRProbe(NSString *line) {
 // 并在 setEnablePlayHDRModeIfNeeded 里决定是否开 HDR 模式；只改 API 模型上的字段拦不住。
 // v760: 41.1 的 HDR 不只在模型上，显示层还有开关；enableHDR 已在下方钩过，
 // 这里只补此前没有的三处（头文件里都声明过，属属性钩，不碰系统代码页）。
+// ===== HDR 屏蔽：显示层（41.1）=====
+// 策略（单一入口）：
+//   1) 数据层：码率模型 / 播放器 info 模型回答 SDR；
+//   2) 显示层：enableHDR / MetalRenderHDR / 自动识别全部关闭（AWED 与 BDSim 两套播放器）；
+//   3) 色彩管线字段 HDRVideoMode 保持真实值，只做 nil 兜底（改它会导致过曝）。
 %hook AWEDPlayerVideoDisplayOptState
+
+- (BOOL)enableHDR {
+    if (DYYYShouldDisableAllHDR()) {
+        return NO;
+    }
+    return %orig;
+}
+
+- (void)setEnableHDR:(BOOL)enableHDR {
+    %orig(DYYYShouldDisableAllHDR() ? NO : enableHDR);
+}
 
 - (id)HDRVideoMode {
     // v787: 这个字段参与色彩管线选择，必须返回 App 自己存的值。
@@ -2666,25 +2682,13 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 }
 
 - (NSArray *)bitrateModels {
-    return %orig; // v435: pure passthrough
-    return %orig; // v434: pure passthrough, HDR handled by getter hooks
     NSArray *originalModels = %orig;
 
-    if (DYYYShouldDisableAllHDR()) {
-        originalModels = DYYYFilteredSDRBitrateModels(originalModels);
-    }
-
-    if (!DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality")) {
+    if (!DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality") || originalModels.count < 2) {
         return originalModels;
     }
 
-    if (originalModels.count < 2) {
-        return originalModels;
-    }
-
-    // 按比特率降序排列，最高画质档位置于首位。
-    // 这里刻意保留完整档位表而不裁剪成单档：只留最高码率会让播放器在带宽下滑时无档可退，
-    // 只能停在原地反复重缓冲，表现为播放中途卡住。保留低码率档后仍可自适应降级。
+    // 按比特率降序，最高画质档位放首位；保留完整档位表以便带宽下降时自适应。
     return [originalModels sortedArrayWithOptions:NSSortStable
                                   usingComparator:^NSComparisonResult(id lhs, id rhs) {
                                     NSInteger leftBitrate = DYYYBitrateForBitrateModel(lhs);
@@ -2696,15 +2700,9 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
                                   }];
 }
 
-- (void)setBitrateModels:(NSArray *)bitrateModels {
-    %orig;
-}
 
-- (void)setManualBitrateModels:(NSArray *)manualBitrateModels {
-    %orig;
-}
 
-// v217_origin: 播放器可能读 bitrateModels_origin，也排序
+
 - (NSArray *)bitrateModels_origin {
     NSArray *orig = %orig;
     if (DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality") && orig.count >= 2) {
@@ -2720,29 +2718,15 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 }
 
 - (NSArray *)manualBitrateModels {
-    return %orig; // v435: pure passthrough
-    return %orig; // v434: pure passthrough, HDR handled by getter hooks
-    NSArray *models = %orig;
-    if (DYYYShouldDisableAllHDR()) {
-        models = DYYYFilteredSDRBitrateModels(models);
-        DYYYStripHDRHintsFromBitrateModels(models);
-    }
-    return models;
+    return %orig;
 }
 
-- (void)setBitrateRawData:(NSArray *)bitrateRawData {
-    %orig;
-}
+
 
 - (NSArray *)bitrateRawData {
-    return %orig; // v435: pure passthrough
-    return %orig; // v434: pure passthrough, HDR handled by getter hooks
-    NSArray *rawData = %orig;
-    if (DYYYShouldDisableAllHDR()) {
-        rawData = DYYYFilteredSDRRawBitrateData(rawData);
-    }
-    return rawData;
+    return %orig;
 }
+
 
 - (void)setHasFilterHDR:(BOOL)hasFilterHDR {
     %orig(DYYYShouldDisableAllHDR() ? NO : hasFilterHDR);
@@ -3643,21 +3627,6 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
         return 0.0;
     }
     return %orig;
-}
-
-%end
-
-%hook AWEDPlayerVideoDisplayOptState
-
-- (BOOL)enableHDR {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (void)setEnableHDR:(BOOL)enableHDR {
-    %orig(DYYYShouldDisableAllHDR() ? NO : enableHDR);
 }
 
 %end
