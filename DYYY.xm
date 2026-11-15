@@ -2452,15 +2452,10 @@ static NSInteger DYYYResFromGearName(NSString *name) {
     return 0;
 }
 
+// v784: 不再篡改码率模型的 hdrType/hdrBit。
+// 这两个字段参与色彩管线选择，强行改成 SDR 会让播放器按 SDR 解释 HDR 码流，高光直接过曝。
+// 屏蔽 HDR 改由显示层开关（enableHDR / enableMetalRenderHDR 等）完成。
 %hook AWEVideoBSModel
-- (NSString *)hdrType {
-    if (DYYYShouldDisableAllHDR()) return @"0";
-    return %orig;
-}
-- (NSString *)hdrBit {
-    if (DYYYShouldDisableAllHDR()) return @"8";
-    return %orig;
-}
 %end
 
 // v728: 41.0 新增了全局 HDR 闸门（头文件 AWEHDRModelManager.h）：
@@ -2497,16 +2492,8 @@ static void DYYYHDRProbe(NSString *line) {
 // 这里只补此前没有的三处（头文件里都声明过，属属性钩，不碰系统代码页）。
 %hook AWEDPlayerVideoDisplayOptState
 
-- (id)HDRVideoMode {
-    // 不能返回 nil：BDSimStreamContext / BDSimPlayEventTrackingService 会把这个值
-    // 塞进埋点字典，nil 会抛 "attempt to insert nil object" 直接闪退。
-    if (DYYYShouldDisableAllHDR()) return @"";
-    return %orig;
-}
-
-- (void)setHDRVideoMode:(id)mode {
-    %orig(DYYYShouldDisableAllHDR() ? @"" : mode);
-}
+// v784: HDRVideoMode 必须返回 App 自己存的值。
+// 返回 nil 会在埋点字典里崩，返回空串则会让播放器走错色彩路径（过曝）。
 
 %end
 
@@ -2534,32 +2521,7 @@ static void DYYYHDRProbe(NSString *line) {
 
 %hook AWEDPlayerVideoInfoModel
 
-- (long long)isSourceHDR {
-    long long v = %orig;
-    if (DYYYShouldDisableAllHDR()) {
-        DYYYHDRProbe([NSString stringWithFormat:@"[HDR] info.isSourceHDR orig=%lld -> 0", v]);
-        return 0;
-    }
-    return v;
-}
-
-- (void)setIsSourceHDR:(long long)v {
-    if (DYYYShouldDisableAllHDR()) {
-        DYYYHDRProbe([NSString stringWithFormat:@"[HDR] info.setIsSourceHDR(%lld) -> 0", v]);
-        %orig(0);
-        return;
-    }
-    %orig(v);
-}
-
-- (long long)hdrType {
-    long long v = %orig;
-    if (DYYYShouldDisableAllHDR()) {
-        DYYYHDRProbe([NSString stringWithFormat:@"[HDR] info.hdrType orig=%lld -> 0", v]);
-        return 0;
-    }
-    return v;
-}
+// v784: 同上，isSourceHDR / hdrType 保持真实值，避免色彩管线错判。
 
 %end
 
