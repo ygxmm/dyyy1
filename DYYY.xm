@@ -3688,24 +3688,16 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
 
 %end
 
-// v788: 41.1 推荐流用的是 BDSimMediaPlayer（不是 AWEDPlayer*），
-// 之前的屏蔽只挂了详情页那套，所以推荐页 HDR 一直生效。
-%hook BDSimMediaPlayer
+// v790: 推荐页 HDR 的真正开关在 BDSimStreamContext。
+// 实测：playback 时只有这个字段在 0/1 切换，且其它 EDR/色调映射 setter 都没被调用。
+// 只在 getter 层回答 NO（不动 setter），否则会破坏页面状态机（实测会导致页面打不开）。
+%hook BDSimStreamContext
 
 - (BOOL)enableHDR {
     if (DYYYShouldDisableAllHDR()) {
         return NO;
     }
     return %orig;
-}
-
-- (void)setEnableHDR:(BOOL)enableHDR {
-    %orig(DYYYShouldDisableAllHDR() ? NO : enableHDR);
-}
-
-// 不能跳过：这个方法同时建立播放器渲染链（v747 的灰屏/白屏教训），只在数据层关 HDR。
-- (void)setEnablePlayHDRMode {
-    %orig;
 }
 
 %end
