@@ -16447,43 +16447,31 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
     return offset < -1.0 ? 0.5 : offset;
 }
 
+// v782: 同城页的互动层高度必须在布局开始之前就是原生页高（屏高 − 底栏占位），
+// 不能等到 viewDidLayoutSubviews 再纠正。探针实测每页都先经过 h=852 的一趟，
+// 折叠元素在这一趟按 852 排好；下一趟层高改成 792 时原生只改尺寸、不重排折叠元素，
+// 头像/点赞/翻页器/时间就停在离底 0（stack 底边 851.67，应为 791.67）。
+// 底栏占位由原生给出（同城实测 60），拿不到时退回 60。
+- (void)viewWillLayoutSubviews {
+    %orig;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    if (![DYYYFullscreenCoordinator isInsideNearbyPage:self]) return;
+    UIView *view = self.viewIfLoaded;
+    UIView *superview = view.superview;
+    if (!superview) return;
+    if (fabs(view.bounds.size.width - superview.bounds.size.width) > 1.0) return;
+    CGFloat occupied = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:view];
+    if (occupied <= 0.5) occupied = 60.0;
+    CGFloat target = MAX(0, CGRectGetHeight(superview.bounds) - occupied);
+    if (target < 400) return;
+    CGRect frame = view.frame;
+    if (fabs(CGRectGetHeight(frame) - target) <= 0.5) return;
+    frame.size.height = target;
+    view.frame = frame;
+}
+
 - (void)viewDidLayoutSubviews {
     %orig;
-
-    // v781 只读探针：确认同城页的真实 VC 链 / referString，以及互动层高度。
-    // 不改任何行为，写完即删。
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        static char kNearProbeKey;
-        UIView *pv = self.viewIfLoaded;
-        NSString *ref = nil;
-        NSMutableArray *names = [NSMutableArray array];
-        for (UIViewController *p = self; p && names.count < 6; p = p.parentViewController) {
-            [names addObject:NSStringFromClass([p class])];
-            if (!ref && [p respondsToSelector:@selector(referString)]) {
-                id r = [(id)p performSelector:@selector(referString)];
-                if ([r isKindOfClass:[NSString class]] && [r length] > 0) ref = r;
-            }
-        }
-        CGFloat h = CGRectGetHeight(pv.bounds);
-        NSString *sig = [NSString stringWithFormat:@"%.1f|%@", h, ref ?: @"-"];
-        if (![sig isEqual:objc_getAssociatedObject(self, &kNearProbeKey)]) {
-            objc_setAssociatedObject(self, &kNearProbeKey, sig, OBJC_ASSOCIATION_COPY_NONATOMIC);
-            CGFloat sup = pv.superview ? CGRectGetHeight(pv.superview.bounds) : -1;
-            NSString *line = [NSString stringWithFormat:
-                @"[NEAR] h=%.1f sup=%.1f ref=%@ rec=%d img=%d near=%d occ=%.1f tab=%lu chain=%@\n",
-                h, sup, ref ?: @"-",
-                (int)[DYYYFullscreenCoordinator usesRecommendedLayoutForController:self],
-                (int)[DYYYFullscreenCoordinator isImageContentController:self],
-                (int)[DYYYFullscreenCoordinator isInsideNearbyPage:self],
-                [DYYYFullscreenCoordinator bottomOccupiedHeightForView:pv],
-                (unsigned long)[[DYYYFullscreenCoordinator performSelector:@selector(tabBars)] count],
-                [names componentsJoinedByString:@"<"]];
-            NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_near.log"];
-            NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
-            if (!fh) [line writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:NULL];
-            else { [fh seekToEndOfFile]; [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]]; [fh closeFile]; }
-        }
-    }
 
     // v593: 离屏 cell 不跑 DYYY 的重活（黑条扫描 / 按钮重建 / 高度归位）。
     // 详情页里同时存在首页、附近、关注、搜索多个 cell，全跑一遍是明显的滚动卡顿来源。
@@ -16563,25 +16551,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         self.view.frame = frame;
     }
     [DYYYFullscreenCoordinator rememberInteractionGuide:self];
-
-    // v780: 同城页的互动层必须固定为原生页高「屏高 − 60」。
-    // 原因：图文格在 layoutInteraction 撑到 852 后会提前 return，后面的“减去底栏”永远不执行，
-    // 于是头像/点赞/翻页器/时间这些底对齐元素贴到屏幕最底（实测 stack 底边 851.67，应为 791.67）。
-    // 这里在最后统一按原生值收敛一次，视频格/图文格一视同仁。
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") &&
-        [DYYYFullscreenCoordinator isInsideNearbyPage:self]) {
-        UIView *hostView = self.viewIfLoaded;
-        UIView *hostSuper = hostView.superview;
-        if (hostView.window && hostSuper && hostView.bounds.size.width > 1 &&
-            fabs(hostView.bounds.size.width - hostSuper.bounds.size.width) <= 1.0) {
-            CGFloat targetHeight = MAX(0, CGRectGetHeight(hostSuper.bounds) - 60.0);
-            if (targetHeight > 400.0 && fabs(CGRectGetHeight(hostView.frame) - targetHeight) > 0.5) {
-                CGRect fixed = hostView.frame;
-                fixed.size.height = targetHeight;
-                hostView.frame = fixed;
-            }
-        }
-    }
     }
 
 
