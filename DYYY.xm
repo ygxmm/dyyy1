@@ -158,7 +158,6 @@ static UIViewController *DYYYDetailPagerForController(UIViewController *vc) {
 }
 
 
-
 // 只处理“详情页 / 全屏 feed”的大画面：全宽且高度 >= 屏高 70%。
 // 搜索列表里的小卡片不满足，直接放行，避免被误拉满。
 
@@ -2418,9 +2417,6 @@ static BOOL DYYYShouldBlockFeedNowPlayingSystemInfoWrite(void) {
 %end
 
 static BOOL DYYYShouldDisableAllHDR(void);
-static NSArray *DYYYFilteredSDRBitrateModels(NSArray *models);
-static NSArray *DYYYFilteredSDRRawBitrateData(NSArray *rawData);
-static void DYYYStripHDRHintsFromBitrateModels(NSArray *models);
 
 // 读取单个码率档位的比特率；档位类型不符或字段缺失时返回 -1，排序时会被沉到末尾。
 static NSInteger DYYYBitrateForBitrateModel(id model) {
@@ -2467,29 +2463,6 @@ static NSInteger DYYYResFromGearName(NSString *name) {
 //   + (BOOL)enableVideoHDR;  + (BOOL)useOneKeyHDR;
 // 播放链路先问这里，再决定要不要走 HDR；只改 model 上的 hdrType/hdrBit 已经拦不住。
 // ===== v740 HDR 播放侧探针 =====
-static void DYYYHDRProbe(NSString *line) {
-    // 默认关闭：这些 getter 会被播放器多线程高频调用。
-    // 之前在无锁状态下读写 NSMutableSet，开启屏蔽 HDR 后容易偶发 EXC_BAD_ACCESS。
-    static BOOL enabled = NO;   // 需要抓日志时改成 YES
-    if (!enabled) return;
-
-    static os_unfair_lock lock = OS_UNFAIR_LOCK_INIT;
-    static NSMutableSet *seen = nil;
-    static int count = 0;
-
-    os_unfair_lock_lock(&lock);
-    if (!seen) seen = [NSMutableSet set];
-    BOOL skip = (count > 50) || [seen containsObject:line];
-    if (!skip) { [seen addObject:line]; count++; }
-    os_unfair_lock_unlock(&lock);
-    if (skip) return;
-
-    NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_hdr.log"];
-    FILE *f = fopen(path.fileSystemRepresentation, "a");
-    if (!f) return;
-    fprintf(f, "%s\n", line.UTF8String);
-    fclose(f);
-}
 
 // v740: 41.0 播放链路自己有一份 HDR 结论（AWEDPlayerVideoInfoModel.isSourceHDR/hdrType），
 // 并在 setEnablePlayHDRModeIfNeeded 里决定是否开 HDR 模式；只改 API 模型上的字段拦不住。
@@ -2549,7 +2522,6 @@ static void DYYYHDRProbe(NSString *line) {
 - (long long)isSourceHDR {
     long long v = %orig;
     if (DYYYShouldDisableAllHDR()) {
-        DYYYHDRProbe([NSString stringWithFormat:@"[HDR] info.isSourceHDR orig=%lld -> 0", v]);
         return 0;
     }
     return v;
@@ -2557,7 +2529,6 @@ static void DYYYHDRProbe(NSString *line) {
 
 - (void)setIsSourceHDR:(long long)v {
     if (DYYYShouldDisableAllHDR()) {
-        DYYYHDRProbe([NSString stringWithFormat:@"[HDR] info.setIsSourceHDR(%lld) -> 0", v]);
         %orig(0);
         return;
     }
@@ -2567,7 +2538,6 @@ static void DYYYHDRProbe(NSString *line) {
 - (long long)hdrType {
     long long v = %orig;
     if (DYYYShouldDisableAllHDR()) {
-        DYYYHDRProbe([NSString stringWithFormat:@"[HDR] info.hdrType orig=%lld -> 0", v]);
         return 0;
     }
     return v;
@@ -2581,7 +2551,6 @@ static void DYYYHDRProbe(NSString *line) {
     // v747: 不能跳过——这个方法同时承担播放器的模式配置；跳掉会让 Metal 渲染路径不建立，
     // 表现为整块灰屏/冻屏。屏蔽 HDR 只在数据层（isSourceHDR/hdrType 回答 0）完成。
     if (DYYYShouldDisableAllHDR()) {
-        DYYYHDRProbe(@"[HDR] setEnablePlayHDRModeIfNeeded -> orig (data already SDR)");
     }
     %orig;
 }
@@ -2593,7 +2562,6 @@ static void DYYYHDRProbe(NSString *line) {
 - (void)configEnableMetalRenderHDRIfNeeded {
     // v747: 同上，这条属于渲染配置，必须让原生执行完。
     if (DYYYShouldDisableAllHDR()) {
-        DYYYHDRProbe(@"[HDR] configEnableMetalRenderHDRIfNeeded -> orig");
     }
     %orig;
 }
@@ -2701,8 +2669,6 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 }
 
 
-
-
 - (NSArray *)bitrateModels_origin {
     NSArray *orig = %orig;
     if (DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality") && orig.count >= 2) {
@@ -2720,7 +2686,6 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 - (NSArray *)manualBitrateModels {
     return %orig;
 }
-
 
 
 - (NSArray *)bitrateRawData {
@@ -2756,8 +2721,6 @@ static NSString *const kDYYYHDRModeKey = @"DYYYHDRMode";
 static NSString *const kDYYYHDRModeOff = @"关闭";
 static NSString *const kDYYYHDRModeDisable = @"全局屏蔽HDR效果";
 static NSString *const kDYYYHDRModeFilter = @"全局过滤HDR作品";
-static char kDYYYHDRStrippedAwemeModelKey;
-static char kDYYYHDRStrippedVideoModelKey;
 static char kDYYYHDROnlyAwemeModelKey;
 static char kDYYYHDROnlyVideoModelKey;
 
@@ -3175,120 +3138,6 @@ static BOOL DYYYAwemeModelHasOnlyHDRBitrateModels(id aweme) {
     return onlyHDR;
 }
 
-static NSArray *DYYYFilteredSDRRawBitrateData(NSArray *rawData) {
-    if (![rawData isKindOfClass:[NSArray class]] || rawData.count == 0) {
-        return rawData;
-    }
-
-    NSMutableArray *sdrData = [NSMutableArray arrayWithCapacity:rawData.count];
-    NSUInteger hdrCount = 0;
-    for (id entry in rawData) {
-        if ([entry isKindOfClass:[NSDictionary class]] && DYYYRawBitrateDictionaryLooksHDR((NSDictionary *)entry)) {
-            hdrCount++;
-            continue;
-        }
-        [sdrData addObject:entry];
-    }
-
-    if (hdrCount == 0 || sdrData.count == 0) {
-        return rawData;
-    }
-
-    return [sdrData copy];
-}
-
-static NSArray *DYYYFilteredSDRBitrateModels(NSArray *models) {
-    if (![models isKindOfClass:[NSArray class]] || models.count == 0) {
-        return models;
-    }
-
-    NSMutableArray *sdrModels = [NSMutableArray arrayWithCapacity:models.count];
-    NSUInteger hdrCount = 0;
-    for (id model in models) {
-        if (DYYYBitrateModelLooksHDR(model)) {
-            hdrCount++;
-            continue;
-        }
-        [sdrModels addObject:model];
-    }
-
-    // 只有 HDR 档的作品在模型层过滤；这里不清空列表，避免播放器拿不到可播档导致有声黑屏。
-    if (hdrCount == 0 || sdrModels.count == 0) {
-        return models;
-    }
-
-    return [sdrModels copy];
-}
-
-static void DYYYStripHDRHintsFromBitrateModels(NSArray *models) {
-    if (![models isKindOfClass:[NSArray class]]) {
-        return;
-    }
-
-    for (id model in models) {
-        if ([model respondsToSelector:@selector(setHdrType:)]) {
-            DYYYSetKVCValueIfPossible(model, @"hdrType", @"0");
-        }
-        if ([model respondsToSelector:@selector(setHdrBit:)]) {
-            DYYYSetKVCValueIfPossible(model, @"hdrBit", @"8");
-        }
-    }
-}
-
-static void DYYYStripHDRHintsFromVideoModel(id video) {
-    return; // v433: no-op, getter hooks cover all reads
-    if (!DYYYShouldDisableAllHDR() || !video) {
-        return;
-    }
-
-    if (objc_getAssociatedObject(video, &kDYYYHDRStrippedVideoModelKey)) {
-        return;
-    }
-    objc_setAssociatedObject(video, &kDYYYHDRStrippedVideoModelKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
-    if ([video respondsToSelector:@selector(setIsSourceHDR:)]) {
-        ((void (*)(id, SEL, NSInteger))objc_msgSend)(video, @selector(setIsSourceHDR:), 0);
-    }
-    if ([video respondsToSelector:@selector(setHasFilterHDR:)]) {
-        ((void (*)(id, SEL, BOOL))objc_msgSend)(video, @selector(setHasFilterHDR:), NO);
-    }
-
-    NSArray *bitrateModels = DYYYKVCValueIfPossible(video, @"bitrateModels");
-    NSArray *filteredBitrateModels = DYYYFilteredSDRBitrateModels(bitrateModels);
-    (void)filteredBitrateModels;
-    DYYYStripHDRHintsFromBitrateModels(bitrateModels);
-
-    NSArray *manualBitrateModels = DYYYKVCValueIfPossible(video, @"manualBitrateModels");
-    NSArray *filteredManualBitrateModels = DYYYFilteredSDRBitrateModels(manualBitrateModels);
-    (void)filteredManualBitrateModels;
-    DYYYStripHDRHintsFromBitrateModels(manualBitrateModels);
-
-    NSArray *bitrateRawData = DYYYValuePreferringIvar(video, "_bitrateRawData", @"bitrateRawData");
-    NSArray *filteredBitrateRawData = DYYYFilteredSDRRawBitrateData(bitrateRawData);
-    (void)filteredBitrateRawData;
-}
-
-static void DYYYStripHDRHintsFromAwemeModel(id aweme) {
-    return; // v433: no-op, getter hooks cover all reads
-    if (!DYYYShouldDisableAllHDR() || !aweme) {
-        return;
-    }
-
-    if (objc_getAssociatedObject(aweme, &kDYYYHDRStrippedAwemeModelKey)) {
-        return;
-    }
-    objc_setAssociatedObject(aweme, &kDYYYHDRStrippedAwemeModelKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
-    id video = DYYYValuePreferringIvar(aweme, "_video", @"video");
-    DYYYStripHDRHintsFromVideoModel(video);
-
-    NSArray *albumImages = DYYYValuePreferringIvar(aweme, "_albumImages", @"albumImages");
-    if ([albumImages isKindOfClass:[NSArray class]]) {
-        for (id imageModel in albumImages) {
-            DYYYStripHDRHintsFromVideoModel(DYYYValuePreferringIvar(imageModel, "_clipVideo", @"clipVideo"));
-        }
-    }
-}
 
 static id DYYYStandardCADynamicRange(void) {
     static id standardDynamicRange = nil;
@@ -12878,7 +12727,6 @@ static BOOL DYYYViewUnderfills(UIView *view, int depth) {
 %end
 
 
-
 %hook AWEMixVideoListDataController
 
 - (void)setDataSource:(id)dataSource {
@@ -13307,7 +13155,6 @@ static BOOL DYYYStringContainsAnyFilterToken(NSString *value, NSArray<NSString *
         }
 
         if (config.shouldDisableHDR) {
-            DYYYStripHDRHintsFromAwemeModel(m);
         }
 
         // 5. 低赞过滤：字段缺失时放行；可解析到数值时严格按阈值过滤。
@@ -13566,7 +13413,6 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
             return nil;
         }
         if (shouldDisableHDR) {
-            DYYYStripHDRHintsFromAwemeModel(self);
         }
 
     }
@@ -13574,7 +13420,6 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 }
 
 - (void)setVideo:(AWEVideoModel *)video {
-    DYYYStripHDRHintsFromVideoModel(video);
     %orig(video);
 }
 
@@ -13585,7 +13430,6 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 - (void)setAlbumImages:(NSArray<AWEImageAlbumImageModel *> *)albumImages {
     if (DYYYShouldDisableAllHDR()) {
         for (AWEImageAlbumImageModel *imageModel in albumImages) {
-            DYYYStripHDRHintsFromVideoModel(DYYYValuePreferringIvar(imageModel, "_clipVideo", @"clipVideo"));
         }
     }
     %orig;
@@ -17244,7 +17088,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 %end
 
 
-
 // v675: 首页与详情共用同一条表高规则——布局后把分页表撑到父视图满高。
 // minRatio: 详情页传 0.5（转场/布局早期的半成品不动），首页传 0（保持原行为）。
 static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRatio) {
@@ -18516,7 +18359,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 %ctor {
 
 
-
     [DYYYLoginBypassManager configureInitialStateIfNeeded];
 
     [[NSUserDefaults standardUserDefaults] registerDefaults:@{
@@ -19314,13 +19156,6 @@ static void DYYYMediaApplyImageCellState(AWECommentMediaFeedImageCell *cell) {
 }
 
 
-
-
-
-
-
-
-
 // ==================== 详情页几何（v688 收口） ====================
 // 只做两件事，别的一概不碰：
 //   1) 底栏 60pt 的 bottom 约束归零（每轮布局重做，原生会改回去）；
@@ -19467,7 +19302,6 @@ static double DYYYDetailRowHeight(UITableView *table, double nativeH) {
 %end
 
 %end
-
 
 
 %hook AWEAwemePlayVideoViewController
