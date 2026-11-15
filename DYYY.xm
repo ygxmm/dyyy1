@@ -12776,6 +12776,116 @@ static void DYYYHideProfilePostGuideView(UIView *view) {
 // 数据源 getter 会在详情/合集滚动枚举期间被频繁读取；过滤只能发生在写入边界，
 // 不能在 getter 内原地修改宿主持有的 NSMutableArray，否则会触发快速枚举突变异常。
 
+// 数值类设置统一读法：兼容 NSNumber 与文本输入存进去的 NSString。
+static NSInteger DYYYIntegerSetting(NSString *key) {
+    id value = [[NSUserDefaults standardUserDefaults] objectForKey:key];
+    return [value respondsToSelector:@selector(integerValue)] ? [value integerValue] : 0;
+}
+
+static NSArray *DYYYNearbyFilterByTime(NSArray *arr, id host) {
+    // v768: 文本输入框保存的是 NSString，而 integerForKey: 只认 NSNumber（存字符串时恒返回 0），
+    // 所以「填 1」一直等于没填。统一改成取对象再转整数。
+    NSInteger nearbyDays = DYYYIntegerSetting(@"DYYYNearbyFilterTimeLimit");
+    NSString *hostNameForLog = host ? NSStringFromClass([host class]) : @"nil";
+    if (nearbyDays <= 0 || arr.count == 0) return arr;
+    NSString *hostName = host ? NSStringFromClass([host class]) : @"";
+    if (![hostName isEqualToString:@"AWENewNearbyListDataController"]) return arr;
+    // 自然日口径：从今天 00:00 往前推 (nearbyDays-1) 天的 00:00 起算
+    // nearbyDays=1 → 今天 00:00 后；=2 → 昨天 00:00 后（今天+昨天）
+    NSCalendar *cal = [NSCalendar currentCalendar];
+    NSDate *startOfToday = [cal startOfDayForDate:[NSDate date]];
+    NSDate *cutoffDate = [cal dateByAddingUnit:NSCalendarUnitDay value:-(nearbyDays - 1) toDate:startOfToday options:0];
+    NSTimeInterval cutoff = [cutoffDate timeIntervalSince1970];
+    NSMutableArray *kept = [NSMutableArray arrayWithCapacity:arr.count];
+    for (id m in arr) {
+        double ts = 0;
+        @try {
+            id ct = [m valueForKey:@"createTime"];
+            if ([ct respondsToSelector:@selector(doubleValue)]) ts = [ct doubleValue];
+        } @catch (__unused NSException *e) {}
+        if (ts > 1e12) ts /= 1000.0;
+        if (ts > 0 && ts >= cutoff) {
+            [kept addObject:m];
+        }
+    }
+    if (kept.count == 0 && arr.count > 0) {
+        return arr;
+    }
+    return kept;
+}
+
+%hook AWEListDataController
+
+- (void)setDataSource:(NSMutableArray *)dataSource {
+    Class userPostsClass = objc_getClass("AWEUserPostsDataManager");
+    if (userPostsClass && [self isKindOfClass:userPostsClass]) {
+        %orig(dataSource);
+        return;
+    }
+    // 同城：保持原长，避免宿主 currentIndex 越界回退第一个；过滤交给 setFilteredDataSource:
+    NSString *dsClass = NSStringFromClass([self class]);
+    if ([dsClass isEqualToString:@"AWENewNearbyListDataController"]) {
+        %orig(dataSource);
+        return;
+    }
+    NSArray *filtered = [DYYYUtils arrayByRemovingAdvertisements:dataSource];
+    filtered = DYYYNearbyFilterByTime(filtered, self);
+    %orig(filtered);
+}
+
+- (void)setFilteredDataSource:(NSMutableArray *)filteredDataSource {
+    Class userPostsClass = objc_getClass("AWEUserPostsDataManager");
+    if (userPostsClass && [self isKindOfClass:userPostsClass]) {
+        %orig(filteredDataSource);
+        return;
+    }
+    NSArray *filtered = [DYYYUtils arrayByRemovingAdvertisements:filteredDataSource];
+    filtered = DYYYNearbyFilterByTime(filtered, self);
+    %orig(filtered);
+}
+
+%end
+
+// v769: 展示层探针——记录每个 cell 绑定的作品时间，判断"屏幕上看到的"是否就是要过滤的那批。
+// v772: 同城表读的是 dataSource，直接缩短它会触发 currentIndex 越界（v770 已验证回退第一条）。
+// 正确入口是数据控制器自己的模型过滤步骤 __filterAwemeModels:（41.1 头文件有声明）：
+// 它返回的数组就是后续 p_generateFeedListWithAwemes: 的输入，长度从头就是对的。
+// v773: 图文/动图适配层在「首次显示」时用的是旧状态，内部媒体容器保持原始比例
+// （实测 393×294.75、y=278.6 → 上下黑边、文案被压到底部）；滑走再滑回来就正常，
+// 说明原生只需再跑一次 layout。所以这里不碰任何 frame，只在“内容没铺满”时补一次布局。
+static BOOL DYYYViewUnderfills(UIView *view, int depth) {
+    if (depth > 4) return NO;
+    for (UIView *child in view.subviews) {
+        if (fabs(child.bounds.size.width - view.bounds.size.width) <= 1.0 &&
+            child.bounds.size.height > 1.0 &&
+            child.bounds.size.height < view.bounds.size.height * 0.8) {
+            return YES;
+        }
+        if (DYYYViewUnderfills(child, depth + 1)) return YES;
+    }
+    return NO;
+}
+
+%hook AWENewNearbyListDataController
+
+- (id)__filterAwemeModels:(id)models {
+    id orig = %orig;
+    NSArray *kept = DYYYNearbyFilterByTime(orig, self);
+    return kept;
+}
+
+%end
+
+%hook AWEMultiTabNearbyListDataController
+
+- (id)__filterAwemeModels:(id)models {
+    id orig = %orig;
+    NSArray *kept = DYYYNearbyFilterByTime(orig, self);
+    return kept;
+}
+
+%end
+
 
 
 %hook AWEMixVideoListDataController
