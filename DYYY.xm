@@ -2650,24 +2650,9 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 }
 
 - (NSArray *)bitrateModels {
-    NSArray *originalModels = %orig;
-
-    if (!DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality") || originalModels.count < 2) {
-        return originalModels;
-    }
-
-    // 按比特率降序，最高画质档位放首位；保留完整档位表以便带宽下降时自适应。
-    return [originalModels sortedArrayWithOptions:NSSortStable
-                                  usingComparator:^NSComparisonResult(id lhs, id rhs) {
-                                    NSInteger leftBitrate = DYYYBitrateForBitrateModel(lhs);
-                                    NSInteger rightBitrate = DYYYBitrateForBitrateModel(rhs);
-                                    if (leftBitrate == rightBitrate) {
-                                        return NSOrderedSame;
-                                    }
-                                    return leftBitrate > rightBitrate ? NSOrderedAscending : NSOrderedDescending;
-                                  }];
+    // 与改动前一致：纯透传。排序逻辑历史上就在不可达代码里，不复活它。
+    return %orig;
 }
-
 
 - (NSArray *)bitrateModels_origin {
     NSArray *orig = %orig;
