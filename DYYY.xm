@@ -16449,6 +16449,43 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 - (void)viewDidLayoutSubviews {
     %orig;
+- (void)viewDidLayoutSubviews {
+    %orig;
+
+    // v781 只读探针：确认同城页的真实 VC 链 / referString，以及互动层高度。
+    // 不改任何行为，写完即删。
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        static char kNearProbeKey;
+        UIView *pv = self.viewIfLoaded;
+        NSString *ref = nil;
+        NSMutableArray *names = [NSMutableArray array];
+        for (UIViewController *p = self; p && names.count < 6; p = p.parentViewController) {
+            [names addObject:NSStringFromClass([p class])];
+            if (!ref && [p respondsToSelector:@selector(referString)]) {
+                id r = [(id)p performSelector:@selector(referString)];
+                if ([r isKindOfClass:[NSString class]] && [r length] > 0) ref = r;
+            }
+        }
+        CGFloat h = CGRectGetHeight(pv.bounds);
+        NSString *sig = [NSString stringWithFormat:@"%.1f|%@", h, ref ?: @"-"];
+        if (![sig isEqual:objc_getAssociatedObject(self, &kNearProbeKey)]) {
+            objc_setAssociatedObject(self, &kNearProbeKey, sig, OBJC_ASSOCIATION_COPY_NONATOMIC);
+            CGFloat sup = pv.superview ? CGRectGetHeight(pv.superview.bounds) : -1;
+            NSString *line = [NSString stringWithFormat:
+                @"[NEAR] h=%.1f sup=%.1f ref=%@ rec=%d img=%d near=%d occ=%.1f tab=%lu chain=%@\n",
+                h, sup, ref ?: @"-",
+                (int)[DYYYFullscreenCoordinator usesRecommendedLayoutForController:self],
+                (int)[DYYYFullscreenCoordinator isImageContentController:self],
+                (int)[DYYYFullscreenCoordinator isInsideNearbyPage:self],
+                [DYYYFullscreenCoordinator bottomOccupiedHeightForView:pv],
+                (unsigned long)[[DYYYFullscreenCoordinator performSelector:@selector(tabBars)] count],
+                [names componentsJoinedByString:@"<"]];
+            NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/dyyy_near.log"];
+            NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+            if (!fh) [line writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+            else { [fh seekToEndOfFile]; [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]]; [fh closeFile]; }
+        }
+    }
 
     // v777: 41.1 把头像/点赞/翻页器/时间的排布改成「按视图尺寸+断点」计算，
     // 并且只在尺寸变化时重算（AWEPlayInteractionViewController.h:324）。
@@ -16461,7 +16498,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         if (!last || !CGSizeEqualToSize(last.CGSizeValue, size)) {
             objc_setAssociatedObject(self, &kDYYYLastInteractionSizeKey,
                                      [NSValue valueWithCGSize:size], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            if ([self respondsToSelector:@selector(awe_updateFoldElementLayoutIfViewSizeChanged)]) {
+            if (NO) {
                 [self awe_updateFoldElementLayoutIfViewSizeChanged];
             }
         }
