@@ -597,7 +597,7 @@ static NSArray<NSString *> *DYYYInlineOptionsForIdentifier(NSString *identifier)
         @"DYYYScheduleStyle" : @[ @"进度条两侧上下", @"进度条左侧剩余", @"进度条左侧完整", @"进度条右侧剩余", @"进度条右侧完整" ],
         @"DYYYLabelStyle" : @[ @"文案标签显示", @"文案标签隐藏", @"文案标签禁止跳转搜索" ],
         @"DYYYLiveQuality" : @[ @"蓝光帧彩", @"蓝光", @"超清", @"高清", @"标清", @"自动" ],
-        @"DYYYHDRMode" : @[ @"关闭", @"全局屏蔽HDR效果", @"全局过滤HDR作品" ]
+        @"DYYYHDRMode" : @[ @"关闭（交给抖音）", @"全局屏蔽HDR效果", @"全局过滤HDR作品" ]
     };
     return options[identifier];
 }
@@ -2551,8 +2551,8 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
             @"imageName" : @"ic_squaretriangletwo_outlined_20"},
           @{@"identifier" : @"DYYYHDRMode",
             @"title" : @"全局HDR设置",
-            @"subTitle" : @"关闭＝不干预，HDR 显示交给抖音自己的开关（受热更新控制）；屏蔽＝强制走 SDR；过滤＝跳过信息流中的 HDR 作品。",
-            @"detail" : @"关闭",
+            @"subTitle" : @"关闭＝DYYY 完全不干预，HDR 显示由抖音自身的开关与热更新决定；屏蔽＝强制走 SDR；过滤＝跳过信息流中的 HDR 作品。",
+            @"detail" : @"关闭（交给抖音）",
             @"cellType" : @26,
             @"imageName" : @"ic_sun_outlined"}
       ];
@@ -2579,12 +2579,12 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
                 DYYYApplyFPSOverlaySettingChange();
               };
           } else if ([item.identifier isEqualToString:@"DYYYHDRMode"]) {
-              NSString *savedMode = [[NSUserDefaults standardUserDefaults] stringForKey:@"DYYYHDRMode"] ?: @"关闭";
+              NSString *savedMode = [[NSUserDefaults standardUserDefaults] stringForKey:@"DYYYHDRMode"] ?: @"关闭（交给抖音）";
               item.detail = savedMode;
               item.cellTappedBlock = ^{
                 if (DYYYShouldUseInlineOptionsForCurrentScreen(item))
                     return;
-                NSArray *options = @[ @"关闭", @"全局屏蔽HDR效果", @"全局过滤HDR作品" ];
+                NSArray *options = @[ @"关闭（交给抖音）", @"全局屏蔽HDR效果", @"全局过滤HDR作品" ];
                 [DYYYOptionsSelectionView showWithPreferenceKey:@"DYYYHDRMode"
                                                    optionsArray:options
                                                      headerText:@"选择 HDR 处理模式"

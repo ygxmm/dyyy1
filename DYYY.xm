@@ -2477,17 +2477,6 @@ static NSInteger DYYYResFromGearName(NSString *name) {
 
 %end
 
-%hook AWEDPlayerVideoDisplayOptState
-
-- (id)HDRVideoMode {
-    // v787: 这个字段参与色彩管线选择，必须返回 App 自己存的值。
-    // 返回 nil 会在埋点字典里崩；返回 @"" 会让播放器按 SDR 解释 HDR 码流导致过曝。
-    id mode = %orig;
-    return mode ? mode : @"";
-}
-
-%end
-
 
 
 
@@ -2593,7 +2582,7 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 %end
 
 static NSString *const kDYYYHDRModeKey = @"DYYYHDRMode";
-static NSString *const kDYYYHDRModeOff = @"关闭";
+static NSString *const kDYYYHDRModeOff = @"关闭（交给抖音）";
 static NSString *const kDYYYHDRModeDisable = @"全局屏蔽HDR效果";
 static NSString *const kDYYYHDRModeFilter = @"全局过滤HDR作品";
 static char kDYYYHDROnlyAwemeModelKey;
@@ -2625,6 +2614,23 @@ static void DYYYMigrateCombinedHDRModeIfNeeded(void) {
         [defaults removeObjectForKey:@"DYYYDisableAllHDR"];
         [defaults removeObjectForKey:@"DYYYFilterFeedHDR"];
         [defaults setBool:YES forKey:@"DYYYHDRModeMigratedV1"];
+    });
+}
+
+// v792: 「关闭」改名为「关闭（交给抖音）」，语义即完全不干预 HDR。
+// v1 迁移早已跑完，这里单独补一次标签纠正，旧值仍按关闭处理。
+static void DYYYMigrateHDRModeLabelIfNeeded(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        if ([defaults boolForKey:@"DYYYHDRModeLabelV2"]) {
+            return;
+        }
+        NSString *mode = [defaults stringForKey:kDYYYHDRModeKey];
+        if ([mode isEqualToString:@"关闭"]) {
+            [defaults setObject:kDYYYHDRModeOff forKey:kDYYYHDRModeKey];
+        }
+        [defaults setBool:YES forKey:@"DYYYHDRModeLabelV2"];
     });
 }
 
@@ -17630,6 +17636,7 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
     }];
 
     DYYYMigrateCombinedHDRModeIfNeeded();
+    DYYYMigrateHDRModeLabelIfNeeded();
     DYYYMigrateScaleAndSizeSettingsIfNeeded();
     DYYYMigrateScaleAndSizeSettingsV2IfNeeded();
 
