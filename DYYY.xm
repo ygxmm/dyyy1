@@ -2551,22 +2551,23 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 }
 
 - (NSArray *)bitrateModels {
-    // 与改动前一致：纯透传。排序逻辑历史上就在不可达代码里，不复活它。
-    return %orig;
-}
+    // 提高视频画质：按码率降序，最高档放首位，播放器起播就选到最高画质。
+    // 保留完整档位表（只是顺序变了），弱网时播放器仍可自行降档。
+    NSArray *originalModels = %orig;
 
-- (NSArray *)bitrateModels_origin {
-    NSArray *orig = %orig;
-    if (DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality") && orig.count >= 2) {
-        return [orig sortedArrayWithOptions:NSSortStable
-                          usingComparator:^NSComparisonResult(id l, id r) {
-                              NSInteger lb = DYYYBitrateForBitrateModel(l);
-                              NSInteger rb = DYYYBitrateForBitrateModel(r);
-                              if (lb == rb) return NSOrderedSame;
-                              return lb > rb ? NSOrderedAscending : NSOrderedDescending;
-                          }];
+    if (!DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality") || originalModels.count < 2) {
+        return originalModels;
     }
-    return orig;
+
+    return [originalModels sortedArrayWithOptions:NSSortStable
+                                  usingComparator:^NSComparisonResult(id lhs, id rhs) {
+                                    NSInteger leftBitrate = DYYYBitrateForBitrateModel(lhs);
+                                    NSInteger rightBitrate = DYYYBitrateForBitrateModel(rhs);
+                                    if (leftBitrate == rightBitrate) {
+                                        return NSOrderedSame;
+                                    }
+                                    return leftBitrate > rightBitrate ? NSOrderedAscending : NSOrderedDescending;
+                                  }];
 }
 
 - (NSArray *)manualBitrateModels {
