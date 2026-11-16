@@ -2476,7 +2476,8 @@ static NSInteger DYYYResFromGearName(NSString *name) {
         NSInteger res = DYYYResFromGearName(gn);
         NSNumber *brn = [model valueForKey:@"bitrate"];
         NSInteger br = brn ? [brn integerValue] : 0;
-        if (res > bestRes || (res == bestRes && br > bestBr)) {
+        // 选档规则：码率最高优先（提高画质以码率为准），码率相同再比分辨率。
+        if (br > bestBr || (br == bestBr && res > bestRes)) {
             bestRes = res; bestBr = br; highestBitrateModel = model;
         }
     }
@@ -2506,7 +2507,7 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
                 NSInteger res = DYYYResFromGearName(gn);
                 NSNumber *brn = [m valueForKey:@"bitrate"];
                 NSInteger br = brn ? [brn integerValue] : 0;
-                if (res > bestRes || (res == bestRes && br > bestBr)) {
+                if (br > bestBr || (br == bestBr && res > bestRes)) {
                     bestRes = res; bestBr = br; top = m;
                 }
             }
