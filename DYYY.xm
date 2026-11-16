@@ -3211,10 +3211,6 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
 
 
 
-// v790: 推荐页 HDR 的真正开关在 BDSimStreamContext。
-// 实测：playback 时只有这个字段在 0/1 切换，且其它 EDR/色调映射 setter 都没被调用。
-// 只在 getter 层回答 NO（不动 setter），否则会破坏页面状态机（实测会导致页面打不开）。
-
 
 
 
