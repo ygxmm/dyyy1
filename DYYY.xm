@@ -2771,6 +2771,22 @@ static inline BOOL DYYYLayerHookNeeded(void) {
     return lastVal;
 }
 
+// 头像加号可能由异步动画重建图层，需要在 CALayer 写入点继续压制。
+static BOOL DYYYShouldForceHideAvatarActionLayer(CALayer *layer);
+static BOOL DYYYShouldClearAvatarActionLayer(CALayer *layer);
+static void DYYYPrepareAvatarActionSublayer(CALayer *parentLayer, CALayer *sublayer);
+
+// 收藏按钮在部分视频中会异步重建图片/动画图层，标记后在写入点继续压制。
+static char kDYYYFeedVideoCollectButtonHiddenViewKey;
+static char kDYYYFeedVideoCollectButtonHiddenLayerKey;
+static char kDYYYFeedVideoCollectButtonDeferredApplyKey;
+
+static BOOL DYYYShouldForceHideFeedVideoCollectButtonLayer(CALayer *layer);
+static BOOL DYYYShouldClearFeedVideoCollectButtonLayer(CALayer *layer);
+static void DYYYPrepareFeedVideoCollectButtonSublayer(CALayer *parentLayer, CALayer *sublayer);
+static BOOL DYYYShouldForceHideFeedVideoCollectButtonView(UIView *view);
+static void DYYYMarkFeedVideoCollectButtonViewHidden(UIView *view);
+
 %hook CALayer
 
 - (void)setHidden:(BOOL)hidden {
