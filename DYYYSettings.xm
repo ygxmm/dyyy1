@@ -2551,7 +2551,7 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
             @"imageName" : @"ic_squaretriangletwo_outlined_20"},
           @{@"identifier" : @"DYYYHDRMode",
             @"title" : @"全局HDR设置",
-            @"subTitle" : @"开启并选择后全局屏蔽HDR效果/过滤HDR作品。",
+            @"subTitle" : @"关闭＝不干预，HDR 显示交给抖音自己的开关（受热更新控制）；屏蔽＝强制走 SDR；过滤＝跳过信息流中的 HDR 作品。",
             @"detail" : @"关闭",
             @"cellType" : @26,
             @"imageName" : @"ic_sun_outlined"}
@@ -2592,6 +2592,8 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
                                                selectionChanged:^(NSString *selectedValue) {
                                                  item.detail = selectedValue;
                                                  [item refreshCell];
+                                                 // 播放器在起播时已确定 HDR 状态，切换档位后需重新起播才生效
+                                                 [DYYYUtils showToast:@"HDR 设置已更新，切换视频后生效"];
                                                }];
               };
           }

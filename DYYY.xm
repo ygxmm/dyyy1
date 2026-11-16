@@ -12723,10 +12723,6 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 }
 
 - (void)setAlbumImages:(NSArray<AWEImageAlbumImageModel *> *)albumImages {
-    if (DYYYShouldDisableAllHDR()) {
-        for (AWEImageAlbumImageModel *imageModel in albumImages) {
-        }
-    }
     %orig;
 }
 
