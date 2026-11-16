@@ -2551,23 +2551,9 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 }
 
 - (NSArray *)bitrateModels {
-    // 提高视频画质：按码率降序，最高档放首位，播放器起播就选到最高画质。
-    // 保留完整档位表（只是顺序变了），弱网时播放器仍可自行降档。
-    NSArray *originalModels = %orig;
-
-    if (!DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality") || originalModels.count < 2) {
-        return originalModels;
-    }
-
-    return [originalModels sortedArrayWithOptions:NSSortStable
-                                  usingComparator:^NSComparisonResult(id lhs, id rhs) {
-                                    NSInteger leftBitrate = DYYYBitrateForBitrateModel(lhs);
-                                    NSInteger rightBitrate = DYYYBitrateForBitrateModel(rhs);
-                                    if (leftBitrate == rightBitrate) {
-                                        return NSOrderedSame;
-                                    }
-                                    return leftBitrate > rightBitrate ? NSOrderedAscending : NSOrderedDescending;
-                                  }];
+    // v730 行为：纯透传。提高画质只靠上面的 playURL / currentPlayingURLKey 两个钩子，
+    // 不重排档位表——重排会让播放器起播锁在最高档，弱网时退不下来。
+    return %orig;
 }
 
 - (NSArray *)manualBitrateModels {
