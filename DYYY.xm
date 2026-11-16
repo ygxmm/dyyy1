@@ -12807,16 +12807,27 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 }
 
 - (void)setDescriptionString:(NSString *)desc {
+    // 注意：这里必须守住 nil / 非字符串。
+    // 以前直接把 desc 丢给 NSRegularExpression，作品没有文案时 desc 为 nil，
+    // 正则内部抛 NSInvalidArgumentException，主线程未捕获直接 abort（真机崩溃日志已确认）。
     NSString *labelStyle = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYLabelStyle"];
     BOOL hideLabel = [labelStyle isEqualToString:@"文案标签隐藏"];
-    if (hideLabel) {
-        // 过滤掉所有以 # 开头的标签
-        NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"#\\S+" options:0 error:nil];
-        NSString *filtered = [regex stringByReplacingMatchesInString:desc options:0 range:NSMakeRange(0, desc.length) withTemplate:@""];
-        // 去除首尾空白字符
-        filtered = [filtered stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        // 为空则赋nil，避免显示空行
-        desc = filtered.length > 0 ? filtered : nil;
+    if (hideLabel && [desc isKindOfClass:[NSString class]] && desc.length > 0) {
+        static NSRegularExpression *hashTagRegex = nil;
+        static dispatch_once_t onceToken;
+        dispatch_once(&onceToken, ^{
+          hashTagRegex = [NSRegularExpression regularExpressionWithPattern:@"#\\S+" options:0 error:nil];
+        });
+        @try {
+            // 过滤掉所有以 # 开头的标签
+            NSString *filtered = [hashTagRegex stringByReplacingMatchesInString:desc options:0 range:NSMakeRange(0, desc.length) withTemplate:@""];
+            // 去除首尾空白字符
+            filtered = [filtered stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            // 为空则赋nil，避免显示空行
+            desc = filtered.length > 0 ? filtered : nil;
+        } @catch (__unused NSException *exception) {
+            // 正则异常时保持原文案，绝不让异常冒到主线程
+        }
     }
     %orig(desc);
 }
