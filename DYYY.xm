@@ -2416,8 +2416,6 @@ static BOOL DYYYShouldBlockFeedNowPlayingSystemInfoWrite(void) {
 
 %end
 
-static BOOL DYYYShouldDisableAllHDR(void);
-
 // 读取单个码率档位的比特率；档位类型不符或字段缺失时返回 -1，排序时会被沉到末尾。
 static NSInteger DYYYBitrateForBitrateModel(id model) {
     Class bitrateModelClass = %c(AWEVideoBSModel);
@@ -2449,33 +2447,6 @@ static NSInteger DYYYResFromGearName(NSString *name) {
 }
 
 
-// v728: 41.0 新增了全局 HDR 闸门（头文件 AWEHDRModelManager.h）：
-//   + (BOOL)enableVideoHDR;  + (BOOL)useOneKeyHDR;
-// 播放链路先问这里，再决定要不要走 HDR；只改 model 上的 hdrType/hdrBit 已经拦不住。
-// ===== v740 HDR 播放侧探针 =====
-
-// v740: 41.0 播放链路自己有一份 HDR 结论（AWEDPlayerVideoInfoModel.isSourceHDR/hdrType），
-// 并在 setEnablePlayHDRModeIfNeeded 里决定是否开 HDR 模式；只改 API 模型上的字段拦不住。
-// v760: 41.1 的 HDR 不只在模型上，显示层还有开关；enableHDR 已在下方钩过，
-// 这里只补此前没有的三处（头文件里都声明过，属属性钩，不碰系统代码页）。
-// ===== HDR 屏蔽：显示层（41.1）=====
-// 策略（单一入口）：
-//   1) 数据层：码率模型 / 播放器 info 模型回答 SDR；
-//   2) 显示层：enableHDR / MetalRenderHDR / 自动识别全部关闭（AWED 与 BDSim 两套播放器）；
-//   3) 色彩管线字段 HDRVideoMode 保持真实值，只做 nil 兜底（改它会导致过曝）。
-// ===== HDR 屏蔽：唯一总开关（41.1）=====
-// AWEHDRPlaybackSettingService.isHDRPlaybackEnabled 是播放侧是否走 HDR 的总闸门。
-// 实测：播放全程为 1；强制返回 NO 后回到 SDR 且不过曝，页面/详情页正常。
-%hook AWEHDRPlaybackSettingService
-
-- (BOOL)isHDRPlaybackEnabled {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-%end
 
 
 
@@ -2570,10 +2541,7 @@ static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
 
 static NSString *const kDYYYHDRModeKey = @"DYYYHDRMode";
 static NSString *const kDYYYHDRModeOff = @"关闭（交给抖音）";
-static NSString *const kDYYYHDRModeDisable = @"全局屏蔽HDR效果";
 static NSString *const kDYYYHDRModeFilter = @"全局过滤HDR作品";
-static char kDYYYHDROnlyAwemeModelKey;
-static char kDYYYHDROnlyVideoModelKey;
 
 static void DYYYMigrateCombinedHDRModeIfNeeded(void) {
     static dispatch_once_t onceToken;
@@ -2585,12 +2553,10 @@ static void DYYYMigrateCombinedHDRModeIfNeeded(void) {
 
         NSString *mode = [defaults stringForKey:kDYYYHDRModeKey];
         BOOL hasValidMode = [mode isEqualToString:kDYYYHDRModeOff] ||
-                            [mode isEqualToString:kDYYYHDRModeDisable] ||
                             [mode isEqualToString:kDYYYHDRModeFilter];
         if (!hasValidMode) {
-            if ([defaults boolForKey:@"DYYYDisableAllHDR"]) {
-                mode = kDYYYHDRModeDisable;
-            } else if ([defaults boolForKey:@"DYYYFilterFeedHDR"]) {
+            // 屏蔽档已移除：旧开关一律落到「关闭（交给抖音）」，HDR 交给抖音自己控制。
+            if ([defaults boolForKey:@"DYYYFilterFeedHDR"]) {
                 mode = kDYYYHDRModeFilter;
             } else {
                 mode = kDYYYHDRModeOff;
@@ -2614,7 +2580,8 @@ static void DYYYMigrateHDRModeLabelIfNeeded(void) {
             return;
         }
         NSString *mode = [defaults stringForKey:kDYYYHDRModeKey];
-        if ([mode isEqualToString:@"关闭"]) {
+        // 「关闭」和已下线的「全局屏蔽HDR效果」都换算成「关闭（交给抖音）」
+        if ([mode isEqualToString:@"关闭"] || [mode isEqualToString:@"全局屏蔽HDR效果"]) {
             [defaults setObject:kDYYYHDRModeOff forKey:kDYYYHDRModeKey];
         }
         [defaults setBool:YES forKey:@"DYYYHDRModeLabelV2"];
@@ -2695,19 +2662,8 @@ static void DYYYMigrateScaleAndSizeSettingsV2IfNeeded(void) {
     });
 }
 
-// HDR 模式判定被 AVPlayerLayer、CALayer、UIImageView 等极高频钩子反复调用，
-// 每次读取字符串偏好并比较的开销在滚动时不可忽略，这里按设置代际号缓存结果。
-static BOOL DYYYShouldDisableAllHDR(void) {
-    static uint32_t cachedGeneration = UINT32_MAX;
-    static BOOL cachedValue = NO;
-
-    uint32_t generation = gDYYYSettingsGeneration;
-    if (cachedGeneration != generation) {
-        cachedValue = [[[NSUserDefaults standardUserDefaults] stringForKey:kDYYYHDRModeKey] isEqualToString:kDYYYHDRModeDisable];
-        cachedGeneration = generation;
-    }
-    return cachedValue;
-}
+// 过滤档判定：只在信息流过滤链路里调用，同样按设置代际号缓存。
+// 注意：DYYY 已不再提供「屏蔽 HDR 效果」，HDR 显示完全交给抖音自己的开关与热更新。
 
 static BOOL DYYYShouldFilterGlobalHDR(void) {
     static uint32_t cachedGeneration = UINT32_MAX;
@@ -2761,540 +2717,46 @@ static id DYYYIvarValueIfPossible(id object, const char *ivarName) {
     return nil;
 }
 
-static id DYYYValuePreferringIvar(id object, const char *ivarName, NSString *key) {
-    id ivarValue = DYYYIvarValueIfPossible(object, ivarName);
-    if (ivarValue) {
-        return ivarValue;
-    }
-    return DYYYKVCValueIfPossible(object, key);
-}
-
-static NSInteger DYYYIntegerValueForKeyIfPossible(id object, NSString *key, NSInteger fallback) {
-    id value = DYYYKVCValueIfPossible(object, key);
-    if ([value respondsToSelector:@selector(integerValue)]) {
-        return [value integerValue];
-    }
-    return fallback;
-}
-
-static BOOL DYYYStringValueLooksHDR(id value) {
-    if (![value isKindOfClass:[NSString class]]) {
-        return NO;
-    }
-
-    NSString *lowercaseValue = [(NSString *)value lowercaseString];
-    return [lowercaseValue containsString:@"hdr"] ||
-           [lowercaseValue containsString:@"hlg"] ||
-           [lowercaseValue containsString:@"dolby"] ||
-           [lowercaseValue containsString:@"vivid"] ||
-           [lowercaseValue isEqualToString:@"pq"] ||
-           [lowercaseValue containsString:@"_pq"] ||
-           [lowercaseValue containsString:@"pq_"];
-}
-
-static BOOL DYYYRawBitrateDictionaryLooksHDR(NSDictionary *dictionary);
-
-static BOOL DYYYBitrateModelLooksHDR(id bitrateModel) {
-    if (!bitrateModel) {
-        return NO;
-    }
-
-    if ([bitrateModel isKindOfClass:[NSDictionary class]]) {
-        return DYYYRawBitrateDictionaryLooksHDR((NSDictionary *)bitrateModel);
-    }
-
-    // v432: read raw ivar to bypass hdrType/hdrBit getter hook
-    id hdrTypeValue = DYYYIvarValueIfPossible(bitrateModel, "_hdrType");
-    id hdrBitValue = DYYYIvarValueIfPossible(bitrateModel, "_hdrBit");
-    NSInteger hdrType = [hdrTypeValue respondsToSelector:@selector(integerValue)] ? [hdrTypeValue integerValue] : 0;
-    NSInteger hdrBit = [hdrBitValue respondsToSelector:@selector(integerValue)] ? [hdrBitValue integerValue] : 0;
-    BOOL hasHdrType = DYYYIntegerValueForKeyIfPossible(bitrateModel, @"hasHdrType", 0) > 0;
-    BOOL hasHdrBit = DYYYIntegerValueForKeyIfPossible(bitrateModel, @"hasHdrBit", 0) > 0;
-
-    return hdrType > 0 ||
-           hdrBit >= 10 ||
-           hasHdrType ||
-           hasHdrBit ||
-           DYYYStringValueLooksHDR(hdrTypeValue) ||
-           DYYYStringValueLooksHDR(hdrBitValue);
-}
-
-static BOOL DYYYStringKeyLooksVideoBitrateList(NSString *key) {
-    NSString *lowercaseKey = key.lowercaseString;
-    if (lowercaseKey.length == 0 || [lowercaseKey containsString:@"audio"]) {
-        return NO;
-    }
-
-    return [lowercaseKey containsString:@"bit_rate"] ||
-           [lowercaseKey containsString:@"bitrate"] ||
-           [lowercaseKey containsString:@"bit_rate_model"] ||
-           [lowercaseKey containsString:@"bitratemodel"];
-}
-
-static BOOL DYYYRawBitrateDictionaryLooksHDR(NSDictionary *dictionary) {
-    if (![dictionary isKindOfClass:[NSDictionary class]]) {
-        return NO;
-    }
-
-    for (id rawKey in dictionary) {
-        id value = dictionary[rawKey];
-        NSString *key = [[rawKey description] lowercaseString];
-        NSInteger numericValue = [value respondsToSelector:@selector(integerValue)] ? [value integerValue] : 0;
-
-        if (([key isEqualToString:@"hdr_type"] ||
-             [key isEqualToString:@"hdrtype"] ||
-             [key isEqualToString:@"videohdrtype"] ||
-             [key isEqualToString:@"video_hdr_type"] ||
-             [key isEqualToString:@"source_hdr_type"]) && numericValue > 0) {
-            return YES;
-        }
-
-        if (([key isEqualToString:@"hdr_bit"] ||
-             [key isEqualToString:@"hdrbit"] ||
-             [key isEqualToString:@"bit_depth"] ||
-             [key isEqualToString:@"bitdepth"]) && numericValue >= 10) {
-            return YES;
-        }
-
-        if (([key isEqualToString:@"is_source_hdr"] ||
-             [key isEqualToString:@"source_hdr"] ||
-             [key isEqualToString:@"is_hdr"] ||
-             [key isEqualToString:@"ishdr"] ||
-             [key isEqualToString:@"has_hdr"] ||
-             [key isEqualToString:@"hashdr"] ||
-             [key isEqualToString:@"has_filter_hdr"] ||
-             [key isEqualToString:@"filter_hdr"] ||
-             [key isEqualToString:@"has_hdr_type"] ||
-             [key isEqualToString:@"hashdrtype"] ||
-             [key isEqualToString:@"has_hdr_bit"] ||
-             [key isEqualToString:@"hashdrbit"]) && numericValue > 0) {
-            return YES;
-        }
-
-        if (DYYYStringValueLooksHDR(value)) {
-            return YES;
-        }
-    }
-
-    return NO;
-}
-
-static void DYYYCollectRawBitrateHDRStatus(id object, NSUInteger depth, BOOL *foundHDRBitrate, BOOL *foundSDRBitrate) {
-    if (!object || depth > 8 || (foundSDRBitrate && *foundSDRBitrate)) {
-        return;
-    }
-
-    if ([object isKindOfClass:[NSDictionary class]]) {
-        NSDictionary *dictionary = (NSDictionary *)object;
-        for (id rawKey in dictionary) {
-            id value = dictionary[rawKey];
-            NSString *key = [rawKey description];
-
-            if (DYYYStringKeyLooksVideoBitrateList(key) && [value isKindOfClass:[NSArray class]]) {
-                for (id entry in (NSArray *)value) {
-                    if (![entry isKindOfClass:[NSDictionary class]]) {
-                        continue;
-                    }
-
-                    if (DYYYRawBitrateDictionaryLooksHDR((NSDictionary *)entry)) {
-                        if (foundHDRBitrate) {
-                            *foundHDRBitrate = YES;
-                        }
-                    } else if (foundSDRBitrate) {
-                        *foundSDRBitrate = YES;
-                        return;
-                    }
-                }
-                continue;
-            }
-
-            if ([value isKindOfClass:[NSDictionary class]] || [value isKindOfClass:[NSArray class]]) {
-                DYYYCollectRawBitrateHDRStatus(value, depth + 1, foundHDRBitrate, foundSDRBitrate);
-            }
-        }
-    } else if ([object isKindOfClass:[NSArray class]]) {
-        for (id value in (NSArray *)object) {
-            DYYYCollectRawBitrateHDRStatus(value, depth + 1, foundHDRBitrate, foundSDRBitrate);
-        }
-    }
-}
-
-static BOOL DYYYRawObjectHasOnlyHDRBitrateModels(id object) {
-    BOOL foundHDRBitrate = NO;
-    BOOL foundSDRBitrate = NO;
-    DYYYCollectRawBitrateHDRStatus(object, 0, &foundHDRBitrate, &foundSDRBitrate);
-    return foundHDRBitrate && !foundSDRBitrate;
-}
-
-static BOOL DYYYVideoModelHasOnlyHDRBitrateModels(id video) {
-    if (!video) {
-        return NO;
-    }
-
-    NSNumber *cachedResult = objc_getAssociatedObject(video, &kDYYYHDROnlyVideoModelKey);
-    if (cachedResult) {
-        return cachedResult.boolValue;
-    }
-
-    NSMutableArray *models = [NSMutableArray array];
-    NSArray *bitrateModels = DYYYValuePreferringIvar(video, "_bitrateModels", @"bitrateModels");
-    if ([bitrateModels isKindOfClass:[NSArray class]]) {
-        [models addObjectsFromArray:bitrateModels];
-    }
-
-    NSArray *manualBitrateModels = DYYYValuePreferringIvar(video, "_manualBitrateModels", @"manualBitrateModels");
-    if ([manualBitrateModels isKindOfClass:[NSArray class]]) {
-        [models addObjectsFromArray:manualBitrateModels];
-    }
-
-    NSArray *bitrateRawData = DYYYValuePreferringIvar(video, "_bitrateRawData", @"bitrateRawData");
-    if ([bitrateRawData isKindOfClass:[NSArray class]]) {
-        [models addObjectsFromArray:bitrateRawData];
-    }
-
-    if (models.count == 0) {
-        return NO;
-    }
-
-    BOOL onlyHDR = YES;
-    for (id model in models) {
-        if (!DYYYBitrateModelLooksHDR(model)) {
-            onlyHDR = NO;
-            break;
-        }
-    }
-
-    objc_setAssociatedObject(video, &kDYYYHDROnlyVideoModelKey, @(onlyHDR), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    return onlyHDR;
-}
-
-static BOOL DYYYAwemeModelHasOnlyHDRBitrateModels(id aweme) {
-    if (!aweme) {
-        return NO;
-    }
-
-    NSNumber *cachedResult = objc_getAssociatedObject(aweme, &kDYYYHDROnlyAwemeModelKey);
-    if (cachedResult) {
-        return cachedResult.boolValue;
-    }
-
-    BOOL onlyHDR = NO;
-    BOOL shouldCacheResult = NO;
-    id video = DYYYValuePreferringIvar(aweme, "_video", @"video");
-    if (video) {
-        shouldCacheResult = YES;
-    }
-    if (DYYYVideoModelHasOnlyHDRBitrateModels(video)) {
-        onlyHDR = YES;
-    } else {
-        NSArray *albumImages = DYYYValuePreferringIvar(aweme, "_albumImages", @"albumImages");
-        if ([albumImages isKindOfClass:[NSArray class]]) {
-            shouldCacheResult = shouldCacheResult || albumImages.count > 0;
-            for (id imageModel in albumImages) {
-                id clipVideo = DYYYValuePreferringIvar(imageModel, "_clipVideo", @"clipVideo");
-                if (DYYYVideoModelHasOnlyHDRBitrateModels(clipVideo)) {
-                    onlyHDR = YES;
-                    break;
-                }
-            }
-        }
-    }
-
-    if (shouldCacheResult || onlyHDR) {
-        objc_setAssociatedObject(aweme, &kDYYYHDROnlyAwemeModelKey, @(onlyHDR), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    return onlyHDR;
-}
-
-
-static id DYYYStandardCADynamicRange(void) {
-    static id standardDynamicRange = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        void *symbol = dlsym(RTLD_DEFAULT, "CADynamicRangeStandard");
-        if (symbol) {
-            id __unsafe_unretained *value = (id __unsafe_unretained *)symbol;
-            standardDynamicRange = *value;
-        }
-    });
-    return standardDynamicRange;
-}
-
-static id DYYYToneMapModeIfSupported(void) {
-    static id toneMapMode = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        void *symbol = dlsym(RTLD_DEFAULT, "CAToneMapModeIfSupported");
-        if (symbol) {
-            id __unsafe_unretained *value = (id __unsafe_unretained *)symbol;
-            toneMapMode = *value;
-        }
-    });
-    return toneMapMode;
-}
-
-static void DYYYApplySDRDynamicRangeToImageView(UIImageView *imageView) {
-    if (!DYYYShouldDisableAllHDR() || !imageView) {
-        return;
-    }
-
-    if (@available(iOS 17.0, *)) {
-        imageView.preferredImageDynamicRange = UIImageDynamicRangeStandard;
-    }
-}
-
-// 头像加号可能由异步动画重建图层，需要在 CALayer 写入点继续压制。
-static BOOL DYYYShouldForceHideAvatarActionLayer(CALayer *layer);
-static BOOL DYYYShouldClearAvatarActionLayer(CALayer *layer);
-static void DYYYPrepareAvatarActionSublayer(CALayer *parentLayer, CALayer *sublayer);
-
-// 收藏按钮在部分视频中会异步重建图片/动画图层，标记后在写入点继续压制。
-static char kDYYYFeedVideoCollectButtonHiddenViewKey;
-static char kDYYYFeedVideoCollectButtonHiddenLayerKey;
-static char kDYYYFeedVideoCollectButtonDeferredApplyKey;
-
-static BOOL DYYYShouldForceHideFeedVideoCollectButtonLayer(CALayer *layer);
-static BOOL DYYYShouldClearFeedVideoCollectButtonLayer(CALayer *layer);
-static void DYYYPrepareFeedVideoCollectButtonSublayer(CALayer *parentLayer, CALayer *sublayer);
-static BOOL DYYYShouldForceHideFeedVideoCollectButtonView(UIView *view);
-static void DYYYMarkFeedVideoCollectButtonViewHidden(UIView *view);
-
-static void DYYYDisableExtendedRangeForLayer(CALayer *layer) {
-    if (!DYYYShouldDisableAllHDR() || !layer) {
-        return;
-    }
-
-    SEL setWantsEDRSelector = @selector(setWantsExtendedDynamicRangeContent:);
-    if ([layer respondsToSelector:setWantsEDRSelector]) {
-        ((void (*)(id, SEL, BOOL))objc_msgSend)(layer, setWantsEDRSelector, NO);
-    }
-
-    id toneMapMode = DYYYToneMapModeIfSupported();
-    SEL setToneMapModeSelector = @selector(setToneMapMode:);
-    if (toneMapMode && [layer respondsToSelector:setToneMapModeSelector]) {
-        ((void (*)(id, SEL, id))objc_msgSend)(layer, setToneMapModeSelector, toneMapMode);
-    }
-
-    id standardDynamicRange = DYYYStandardCADynamicRange();
-    SEL setPreferredDynamicRangeSelector = @selector(setPreferredDynamicRange:);
-    if (standardDynamicRange && [layer respondsToSelector:setPreferredDynamicRangeSelector]) {
-        ((void (*)(id, SEL, id))objc_msgSend)(layer, setPreferredDynamicRangeSelector, standardDynamicRange);
-    }
-
-    if (@available(iOS 16.0, *)) {
-        if ([layer isKindOfClass:[CAMetalLayer class]]) {
-            ((CAMetalLayer *)layer).EDRMetadata = nil;
-        }
-    }
-}
-
-static void DYYYDisableExtendedRangeForMetalLayer(CAMetalLayer *metalLayer) {
-    if (!DYYYShouldDisableAllHDR() || !metalLayer) {
-        return;
-    }
-
-    DYYYDisableExtendedRangeForLayer(metalLayer);
-}
-
-static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
-    if (!DYYYShouldDisableAllHDR() || !item) {
-        return;
-    }
-
-    if (@available(iOS 14.0, *)) {
-        item.appliesPerFrameHDRDisplayMetadata = NO;
-    }
-}
-
-// 保留 HDR 解码及原生 HDR -> SDR 转换，只关闭亮度增强、SDR -> HDR 和最终 EDR 输出。
-
-%hook AVPlayer
-
-+ (instancetype)playerWithURL:(NSURL *)URL {
-    AVPlayer *player = %orig;
-    DYYYDisableAVPlayerItemHDRMetadata(player.currentItem);
-    return player;
-}
-
-+ (instancetype)playerWithPlayerItem:(AVPlayerItem *)item {
-    DYYYDisableAVPlayerItemHDRMetadata(item);
-    return %orig;
-}
-
-- (instancetype)initWithURL:(NSURL *)URL {
-    self = %orig;
-    DYYYDisableAVPlayerItemHDRMetadata(self.currentItem);
-    return self;
-}
-
-- (instancetype)initWithPlayerItem:(AVPlayerItem *)item {
-    DYYYDisableAVPlayerItemHDRMetadata(item);
-    return %orig;
-}
 
-- (void)replaceCurrentItemWithPlayerItem:(AVPlayerItem *)item {
-    DYYYDisableAVPlayerItemHDRMetadata(item);
-    %orig;
-}
-
-%end
-
-%hook AVPlayerItem
-
-+ (instancetype)playerItemWithURL:(NSURL *)URL {
-    AVPlayerItem *item = %orig;
-    DYYYDisableAVPlayerItemHDRMetadata(item);
-    return item;
-}
-
-+ (instancetype)playerItemWithAsset:(AVAsset *)asset {
-    AVPlayerItem *item = %orig;
-    DYYYDisableAVPlayerItemHDRMetadata(item);
-    return item;
-}
-
-+ (instancetype)playerItemWithAsset:(AVAsset *)asset automaticallyLoadedAssetKeys:(NSArray<NSString *> *)automaticallyLoadedAssetKeys {
-    AVPlayerItem *item = %orig;
-    DYYYDisableAVPlayerItemHDRMetadata(item);
-    return item;
-}
-
-- (instancetype)initWithURL:(NSURL *)URL {
-    self = %orig;
-    DYYYDisableAVPlayerItemHDRMetadata(self);
-    return self;
-}
 
-- (instancetype)initWithAsset:(AVAsset *)asset {
-    self = %orig;
-    DYYYDisableAVPlayerItemHDRMetadata(self);
-    return self;
-}
 
-- (instancetype)initWithAsset:(AVAsset *)asset automaticallyLoadedAssetKeys:(NSArray<NSString *> *)automaticallyLoadedAssetKeys {
-    self = %orig;
-    DYYYDisableAVPlayerItemHDRMetadata(self);
-    return self;
-}
 
-%end
 
-%hook AVPlayerLayer
 
-- (void)setPlayer:(AVPlayer *)player {
-    DYYYDisableAVPlayerItemHDRMetadata(player.currentItem);
-    %orig;
-    DYYYDisableExtendedRangeForLayer(self);
-}
-
-- (void)layoutSublayers {
-    %orig;
-    DYYYDisableAVPlayerItemHDRMetadata(self.player.currentItem);
-    DYYYDisableExtendedRangeForLayer(self);
-}
-
-%end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-%hook HDRMTUIImageView
-
-- (void)setImage:(UIImage *)image {
-    if (DYYYShouldDisableAllHDR()) {
-        self.hdrEnabled = NO;
-    }
-    DYYYApplySDRDynamicRangeToImageView(self);
-    %orig;
-    DYYYApplySDRDynamicRangeToImageView(self);
-}
-
-%end
-
-%hook HDRMTImageView
-
-- (void)setMetalLayer:(CAMetalLayer *)metalLayer {
-    %orig;
-    DYYYDisableExtendedRangeForMetalLayer(metalLayer);
-}
-
-- (void)setUpEnv {
-    %orig;
-    DYYYDisableExtendedRangeForMetalLayer(self.metalLayer);
-}
-
-- (void)layoutSubviews {
-    %orig;
-    DYYYDisableExtendedRangeForMetalLayer(self.metalLayer);
-}
-
-%end
-
-%hook HDRMTButton
-
-- (void)configHDRContent {
-    %orig;
-    DYYYApplySDRDynamicRangeToImageView(self.hdrmtImageView);
-}
-
-%end
-
-%hook CAMetalLayer
-
-- (void)setWantsExtendedDynamicRangeContent:(BOOL)wantsExtendedDynamicRangeContent {
-    %orig(DYYYShouldDisableAllHDR() ? NO : wantsExtendedDynamicRangeContent);
-}
-
-- (BOOL)wantsExtendedDynamicRangeContent {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (void)setEDRMetadata:(CAEDRMetadata *)EDRMetadata {
-    %orig(DYYYShouldDisableAllHDR() ? nil : EDRMetadata);
-}
-
-- (CAEDRMetadata *)EDRMetadata {
-    if (DYYYShouldDisableAllHDR()) {
-        return nil;
-    }
-    return %orig;
-}
-
-%end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // v222: CALayer hook 快速短路
 static inline BOOL DYYYLayerHookNeeded(void) {
@@ -3413,33 +2875,6 @@ static inline BOOL DYYYLayerHookNeeded(void) {
         DYYYPrepareFeedVideoCollectButtonSublayer(self, layer);
     }
     %orig(sublayers);
-}
-
-- (void)setWantsExtendedDynamicRangeContent:(BOOL)wantsExtendedDynamicRangeContent {
-    %orig(DYYYShouldDisableAllHDR() ? NO : wantsExtendedDynamicRangeContent);
-}
-
-- (BOOL)wantsExtendedDynamicRangeContent {
-    if (DYYYShouldDisableAllHDR()) {
-        return NO;
-    }
-    return %orig;
-}
-
-- (void)setPreferredDynamicRange:(id)preferredDynamicRange {
-    id standardDynamicRange = DYYYStandardCADynamicRange();
-    %orig(DYYYShouldDisableAllHDR() && standardDynamicRange ? standardDynamicRange : preferredDynamicRange);
-}
-
-- (id)preferredDynamicRange {
-    id preferredDynamicRange = %orig;
-    if (DYYYShouldDisableAllHDR()) {
-        id standardDynamicRange = DYYYStandardCADynamicRange();
-        if (standardDynamicRange) {
-            return standardDynamicRange;
-        }
-    }
-    return preferredDynamicRange;
 }
 
 %end
@@ -12077,7 +11512,6 @@ static BOOL DYYYAwemeModelIsAIInteraction(AWEAwemeModel *aweme) {
 @property(nonatomic) BOOL skipFriendsVideo;
 @property(nonatomic) BOOL skipMusic;
 @property(nonatomic) BOOL skipAIInteraction;
-@property(nonatomic) BOOL shouldDisableHDR;
 @property(nonatomic) BOOL filterHDR;
 @property(nonatomic) NSInteger minLikesThreshold;
 @property(nonatomic) NSInteger daysThreshold;
@@ -12170,7 +11604,6 @@ static DYYYRecommendationFilterConfig *DYYYBuildRecommendationFilterConfig(NSUIn
     config.skipFriendsVideo = [defaults boolForKey:@"DYYYSkipFriendsVideo"];
     config.skipMusic = [defaults boolForKey:@"DYYYSkipMusic"];
     config.skipAIInteraction = [defaults boolForKey:@"DYYYSkipAIInteraction"];
-    config.shouldDisableHDR = DYYYShouldDisableAllHDR();
     config.filterHDR = DYYYShouldFilterGlobalHDR();
     config.minLikesThreshold = MAX(DYYYIntegerSetting(@"DYYYFilterLowLikes"), 0);
     config.daysThreshold = MAX(DYYYIntegerSetting(@"DYYYFilterTimeLimit"), 0);
@@ -12186,7 +11619,6 @@ static DYYYRecommendationFilterConfig *DYYYBuildRecommendationFilterConfig(NSUIn
                           config.skipFriendsVideo ||
                           config.skipMusic ||
                           config.skipAIInteraction ||
-                          config.shouldDisableHDR ||
                           config.minLikesThreshold > 0 ||
                           config.daysThreshold > 0 ||
                           config.userIDs.count > 0;
@@ -12196,8 +11628,7 @@ static DYYYRecommendationFilterConfig *DYYYBuildRecommendationFilterConfig(NSUIn
                                 config.skipFriendsVideo ||
                                 config.skipMusic ||
                                 config.skipAIInteraction ||
-                                config.shouldDisableHDR ||
-                                config.filterHDR ||
+                                      config.filterHDR ||
                                 config.keywords.count > 0 ||
                                 config.propKeywords.count > 0 ||
                                 config.userIDs.count > 0;
@@ -12431,16 +11862,6 @@ static BOOL DYYYStringContainsAnyFilterToken(NSString *value, NSArray<NSString *
             }
         }
 
-        // 4. 全局屏蔽 HDR 时，若作品没有 SDR 码率档，直接过滤，避免强播纯 HDR 源导致黑屏或 HDR 漏出。
-        if (config.shouldDisableHDR &&
-            ![m dyyy_shouldExcludeFromGlobalHDRFilter] &&
-            DYYYAwemeModelHasOnlyHDRBitrateModels(m)) {
-            continue;
-        }
-
-        if (config.shouldDisableHDR) {
-        }
-
         // 5. 低赞过滤：字段缺失时放行；可解析到数值时严格按阈值过滤。
         if (config.minLikesThreshold > 0) {
             NSNumber *diggCountValue = [self dyyy_resolvedDiggCountForAweme:m];
@@ -12499,12 +11920,6 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 
     if (isRecommendFeed && config.propKeywords.count > 0) {
         shouldFilterProp = DYYYStringContainsAnyFilterToken(aweme.propGuideV2.propName, config.propKeywords);
-    }
-
-    if (config.shouldDisableHDR &&
-        ![aweme dyyy_shouldExcludeFromGlobalHDRFilter] &&
-        DYYYAwemeModelHasOnlyHDRBitrateModels(aweme)) {
-        shouldFilterHDR = YES;
     }
 
     if (config.filterHDR && ![aweme dyyy_shouldExcludeFromGlobalHDRFilter] && aweme.video) {
@@ -12670,23 +12085,9 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
     id orig = %orig;
     if (orig) {
         DYYYRecommendationFilterConfig *filterConfig = DYYYCurrentRecommendationFilterConfig();
-        BOOL shouldDisableHDR = filterConfig.shouldDisableHDR;
-        BOOL shouldFilterOnlyHDRSource = NO;
-        if (shouldDisableHDR && ![self dyyy_shouldExcludeFromGlobalHDRFilter]) {
-            shouldFilterOnlyHDRSource = DYYYAwemeModelHasOnlyHDRBitrateModels(self);
-            if (!shouldFilterOnlyHDRSource) {
-                shouldFilterOnlyHDRSource = DYYYRawObjectHasOnlyHDRBitrateModels(arg1);
-                if (shouldFilterOnlyHDRSource) {
-                    objc_setAssociatedObject(self, &kDYYYHDROnlyAwemeModelKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                }
-            }
-        }
         BOOL shouldFilter = filterConfig.noAds && [DYYYUtils isAdvertisementRawData:arg1];
         if (!shouldFilter) {
             shouldFilter = DYYYAwemeModelMatchesConfiguredContentFilters(self, filterConfig);
-        }
-        if (!shouldFilter && shouldFilterOnlyHDRSource) {
-            shouldFilter = YES;
         }
         if (!shouldFilter && filterConfig.filterHDR &&
             ![self dyyy_shouldExcludeFromGlobalHDRFilter] &&
@@ -12696,9 +12097,6 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
         if (shouldFilter) {
             return nil;
         }
-        if (shouldDisableHDR) {
-        }
-
     }
     return orig;
 }
@@ -13436,7 +12834,6 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 
 - (void)layoutSubviews {
     %orig;
-    DYYYDisableExtendedRangeForLayer(self.layer);
     UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
     Class playVCClass = NSClassFromString(@"AWEPlayVideoViewController");
     if (vc && playVCClass && [vc isKindOfClass:playVCClass]) {
@@ -17376,9 +16773,7 @@ static char kDYYYV29DoneKey; // v439
         return;
     }
 
-    DYYYApplySDRDynamicRangeToImageView(self);
     %orig;
-    DYYYApplySDRDynamicRangeToImageView(self);
 }
 
 - (void)setHighlightedImage:(UIImage *)highlightedImage {
@@ -17387,9 +16782,7 @@ static char kDYYYV29DoneKey; // v439
         return;
     }
 
-    DYYYApplySDRDynamicRangeToImageView(self);
     %orig;
-    DYYYApplySDRDynamicRangeToImageView(self);
 }
 
 - (void)setAnimationImages:(NSArray<UIImage *> *)animationImages {
@@ -17398,9 +16791,7 @@ static char kDYYYV29DoneKey; // v439
         return;
     }
 
-    DYYYApplySDRDynamicRangeToImageView(self);
     %orig;
-    DYYYApplySDRDynamicRangeToImageView(self);
 }
 
 - (void)setHighlightedAnimationImages:(NSArray<UIImage *> *)highlightedAnimationImages {
@@ -17409,9 +16800,7 @@ static char kDYYYV29DoneKey; // v439
         return;
     }
 
-    DYYYApplySDRDynamicRangeToImageView(self);
     %orig;
-    DYYYApplySDRDynamicRangeToImageView(self);
 }
 
 - (void)layoutSubviews {
@@ -17422,7 +16811,6 @@ static char kDYYYV29DoneKey; // v439
         return;
     }
 
-    DYYYApplySDRDynamicRangeToImageView(self);
     if (DYYYGetBoolCached(@"DYYYHideCommentDiscover")) {
         if (!self.accessibilityLabel) {
             UIView *parentView = self.superview;

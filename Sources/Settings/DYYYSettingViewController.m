@@ -472,7 +472,7 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
         // 直播清晰度选项
         return @[ @"蓝光帧彩", @"蓝光", @"超清", @"高清", @"标清", @"自动" ];
     } else if ([key isEqualToString:@"DYYYHDRMode"]) {
-        return @[ @"关闭（交给抖音）", @"全局屏蔽HDR效果", @"全局过滤HDR作品" ];
+        return @[ @"关闭（交给抖音）", @"全局过滤HDR作品" ];
     }
     return @[];
 }
