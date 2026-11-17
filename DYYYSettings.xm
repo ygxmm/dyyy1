@@ -3924,6 +3924,14 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
               @"imageName" : @"ic_eyeslash_outlined_16"
           },
           @{
+              @"identifier" : @"DYYYLongPressCenterOpensPanel",
+              @"title" : @"中间长按不出倍速",
+              @"subTitle" : @"长按屏幕中间直接打开长按面板，左右两侧仍然是长按倍速",
+              @"detail" : @"",
+              @"cellType" : @37,
+              @"imageName" : @"ic_eyeslash_outlined_16"
+          },
+          @{
               @"identifier" : @"DYYYHidePanelItems",
               @"title" : @"隐藏面板项目",
               @"subTitle" : @"输入要隐藏的按钮名称，多个用逗号分隔\n支持精确匹配和部分匹配，不区分大小写\n例如：举报,倍速,投屏,弹幕",

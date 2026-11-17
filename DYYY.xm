@@ -6950,6 +6950,27 @@ static void DYYYEndLongPressVerticalAdjustment(id owner) {
 
 %end
 
+// ==== 中间长按不出倍速（DYYYLongPressCenterOpensPanel）====
+static BOOL DYYYIsMiddleLongPressBegan(UIGestureRecognizer *gesture) {
+    id storedValue = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYLongPressCenterOpensPanel"];
+    BOOL enabled = storedValue ? [storedValue boolValue] : YES; // 默认开启
+    if (!enabled) {
+        return NO;
+    }
+    if (![gesture isKindOfClass:[UILongPressGestureRecognizer class]]) {
+        return NO;
+    }
+    if (gesture.state != UIGestureRecognizerStateBegan) {
+        return NO;
+    }
+    CGPoint point = [gesture locationInView:nil];
+    CGFloat width = [UIScreen mainScreen].bounds.size.width;
+    if (width <= 0.0) {
+        return NO;
+    }
+    return (point.x > width * 0.30 && point.x < width * 0.70);
+}
+
 %hook AWEPlayInteractionSpeedController
 
 - (CGFloat)longPressFastSpeedValue {
@@ -6970,6 +6991,9 @@ static void DYYYEndLongPressVerticalAdjustment(id owner) {
 }
 
 - (void)handleLongPressFastSpeed:(UILongPressGestureRecognizer *)gesture {
+    if (DYYYIsMiddleLongPressBegan(gesture)) {
+        return; // 中间长按：不进入倍速，交给长按面板
+    }
     UIGestureRecognizerState state = gesture.state;
     BOOL verticalAdjustmentEnabled = DYYYGetBool(@"DYYYEnableLongPressSpeedGesture");
     if (verticalAdjustmentEnabled && state == UIGestureRecognizerStateBegan) {
@@ -6988,6 +7012,28 @@ static void DYYYEndLongPressVerticalAdjustment(id owner) {
     if (DYYYLongPressGestureIsEnding(state)) {
         DYYYEndLongPressVerticalAdjustment(self);
     }
+}
+
+%end
+
+%hook AWEDPlayerSpeedController
+
+- (void)handleLongPressFastSpeed:(UILongPressGestureRecognizer *)gesture {
+    if (DYYYIsMiddleLongPressBegan(gesture)) {
+        return;
+    }
+    %orig;
+}
+
+%end
+
+%hook AWEPlayInteractionDPlayerSpeedController
+
+- (void)handleLongPressFastSpeed:(UILongPressGestureRecognizer *)gesture {
+    if (DYYYIsMiddleLongPressBegan(gesture)) {
+        return;
+    }
+    %orig;
 }
 
 %end
