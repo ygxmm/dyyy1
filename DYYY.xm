@@ -7860,10 +7860,6 @@ static void DYYYApplyAvatarSurroundingSettingsForOwner(id owner) {
              @"decorationView",
              @"avatarDecorationView",
              @"avatarPendantView",
-             @"avatarLiveMarkView",
-             @"liveMarkView",
-             @"avatarLiveTagView",
-             @"liveTagView",
          ]) {
         DYYYHideAvatarSurroundingVisualForSelector(owner, NSSelectorFromString(selectorName));
     }
