@@ -1164,6 +1164,22 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 
 @interface AWEFeedTopBarContainer : UIView
+@property(nonatomic, readonly) UIView *segmentControlView;
+@property(nonatomic, readonly) UIView *topRightContainer;
+@end
+
+@class AWEHPTopTabItemTextContentView;
+
+@interface AWEHPTopTabItemView : UIView
+@property(nonatomic, readonly) AWEHPTopTabItemTextContentView *textContentView;
+@end
+
+@interface AWEFeedMultiTabSegmentedControl : UIView
+@property(nonatomic, readonly) NSInteger mainTabIndex;
+@property(nonatomic, readonly) NSArray *itemViews;
+@property(nonatomic, readonly) UIView *multiTabSegmentedControlScollWrapperView;
+@property(nonatomic, readonly) UIView *rightNavigationArrowView;
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView;
 @end
 
 @interface AWEHPTopBarCTAContainer : UIView
@@ -1545,6 +1561,7 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 
 // 设置修改顶栏标题
 @interface AWEHPTopTabItemTextContentView : UIView
+@property(nonatomic, readonly) UILabel *titleLabel;
 - (void)setContentText:(NSString *)text;
 @end
 

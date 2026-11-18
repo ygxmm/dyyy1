@@ -101,7 +101,6 @@ static void DYYYSetFrameDepthDec(int *p) { (void)p; gDYYYSetFrameDepth--; }
 #import "DYYYHideCommentAIAnalysisHooks.h"
 #import "DYYYHideTemplateCollectionHooks.h"
 #import "DYYYSearchKeyboardVoiceHooks.h"
-#import "DYYYHighFPSHooks.h"
 
 // ============================================================
 // 项目 UI 模块
@@ -3613,6 +3612,18 @@ static void DYYYShowProfileFollowGlassConfirm(id user, void (^confirmAction)(voi
     %orig;
     applyTopBarTransparency(self);
 }
+- (void)didMoveToWindow {
+    %orig;
+    DYYYFPSOverlayTopBarChanged(self);
+}
+- (void)layoutSubviews {
+    %orig;
+    DYYYFPSOverlayTopBarChanged(self);
+}
+- (void)setHidden:(BOOL)hidden {
+    %orig;
+    DYYYFPSOverlayTopBarChanged(self);
+}
 - (void)setAlpha:(CGFloat)alpha {
     NSString *transparentValue = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYTopBarTransparent"];
     if (transparentValue && transparentValue.length > 0) {
@@ -3626,6 +3637,26 @@ static void DYYYShowProfileFollowGlassConfirm(id user, void (^confirmAction)(voi
     } else {
         %orig(1.0);
     }
+    DYYYFPSOverlayTopBarChanged(self);
+}
+%end
+
+%hook AWEFeedMultiTabSegmentedControl
+- (void)layoutSubviews {
+    %orig;
+    DYYYFPSOverlaySegmentChanged(self);
+}
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView {
+    %orig;
+    DYYYFPSOverlaySegmentChanged(self);
+}
+- (void)setHidden:(BOOL)hidden {
+    %orig;
+    DYYYFPSOverlaySegmentChanged(self);
+}
+- (void)setAlpha:(CGFloat)alpha {
+    %orig;
+    DYYYFPSOverlaySegmentChanged(self);
 }
 %end
 

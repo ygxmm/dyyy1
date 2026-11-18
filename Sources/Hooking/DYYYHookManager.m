@@ -31,7 +31,6 @@ typedef struct {
 } DYYYHookDescriptor;
 
 static const DYYYHookDescriptor kDYYYHookDescriptors[] = {
-    { "performance.high-fps", DYYYHookPhaseLoaderSafe, DYYYStartHighFPSHooks },
     { "feed.tags", DYYYHookPhaseLoaderSafe, DYYYStartFeedTagHooks },
     { "share.prompt", DYYYHookPhaseLoaderSafe, DYYYStartHideShareContentViewHooks },
     { "login.repair", DYYYHookPhaseAfterLoginCore, DYYYLoginRepairInstallHooks },
@@ -41,6 +40,7 @@ static const DYYYHookDescriptor kDYYYHookDescriptors[] = {
     { "comment.extra-tabs", DYYYHookPhaseAfterAgreement, DYYYStartHideCommentAIAnalysisHooks },
     { "feed.template", DYYYHookPhaseAfterAgreement, DYYYStartHideTemplateCollectionHooks },
     { "search.keyboard-voice", DYYYHookPhaseAfterAgreement, DYYYStartSearchKeyboardVoiceHooks },
+    { "performance.high-fps", DYYYHookPhaseAfterAgreement, DYYYStartHighFPSHooks },
     { "performance.fps-overlay", DYYYHookPhaseAfterAgreement, DYYYStartFPSOverlay },
     { "interaction-counts.exact", DYYYHookPhaseAfterAgreement, DYYYStartExactInteractionCountHooks },
 };

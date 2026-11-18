@@ -79,7 +79,6 @@
               ],
               @"DYYYEnableModernPanel" : @[ @"DYYYLongPressPanelBlur", @"DYYYLongPressPanelDark" ],
               @"DYYYEnableDoubleTapMenu" : @[ @"DYYYDoubleTapMenuSettings" ],
-              @"DYYYEnableHighFPS" : @[ @"DYYYShowFPSOverlay" ],
           },
 
           // ===== 条件依赖配置 =====

@@ -23,8 +23,6 @@
 #import "DYYYConstants.h"
 #import "DYYYFloatClearButton.h"
 #import "DYYYFloatSpeedButton.h"
-#import "DYYYFPSOverlay.h"
-#import "DYYYHighFPSHooks.h"
 #import "DYYYNativeAutoPlay.h"
 #import "DYYYSettingsHelper.h"
 #import "DYYYUtils.h"
@@ -55,10 +53,10 @@ static NSString *const kDYYYFeedNowPlayingSVGIconName = @"ic_liveactivityplaysla
 static NSString *const kDYYYExactInteractionCountsSettingIdentifier = DYYY_SHOW_EXACT_INTERACTION_COUNTS_KEY;
 static NSString *const kDYYYExactInteractionCountsSVGIconName = @"ic_numberformat_dyyy_outlined_20";
 static NSString *const kDYYYEnableHighFPSSettingTitle = @"开启最高可用帧率";
-static NSString *const kDYYYEnableHighFPSSettingIdentifier = @"DYYYEnableHighFPS";
+static NSString *const kDYYYEnableHighFPSSettingIdentifier = DYYY_ENABLE_HIGH_FPS_KEY;
 static NSString *const kDYYYEnableHighFPSSVGIconName = @"ic_highfps_dyyy_outlined_20";
 static NSString *const kDYYYShowFPSOverlaySettingTitle = @"实时帧率显示";
-static NSString *const kDYYYShowFPSOverlaySettingIdentifier = @"DYYYShowFPSOverlay";
+static NSString *const kDYYYShowFPSOverlaySettingIdentifier = DYYY_SHOW_FPS_OVERLAY_KEY;
 static NSString *const kDYYYShowFPSOverlaySVGIconName = @"ic_fpsoverlay_dyyy_outlined_20";
 static NSString *const kDYYYCommentPausePlaybackSettingIdentifier = @"DYYYCommentPausePlayback";
 static NSString *const kDYYYCommentPausePlaybackSVGIconName = @"ic_commentpause_dyyy_outlined_20";
@@ -2536,14 +2534,15 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
       NSArray *qualitySettings = @[
           @{@"identifier" : kDYYYEnableHighFPSSettingIdentifier,
             @"title" : kDYYYEnableHighFPSSettingTitle,
-            @"subTitle" : @"开启后使用设备最高可用帧率，负载过重时会自动降档；可能增加耗电，按需开启。",
+            @"subTitle" : @"向系统请求较高界面刷新率，实际帧率由系统决定；低电量模式或温度升高时撤销请求。",
             @"detail" : @"",
             @"cellType" : @37,
             @"imageName" : kDYYYEnableHighFPSSVGIconName},
           @{@"identifier" : kDYYYShowFPSOverlaySettingIdentifier,
             @"title" : kDYYYShowFPSOverlaySettingTitle,
+            @"subTitle" : @"在首页「推荐」右侧显示界面帧率，不是视频帧率，可独立开启。",
             @"detail" : @"",
-            @"cellType" : @6,
+            @"cellType" : @37,
             @"imageName" : kDYYYShowFPSOverlaySVGIconName},
           @{@"identifier" : @"DYYYEnableVideoHighestQuality",
             @"title" : @"提高视频画质",
@@ -2561,25 +2560,7 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
       for (NSDictionary *dict in qualitySettings) {
           AWESettingItemModel *item = [DYYYSettingsHelper createSettingItem:dict cellTapHandlers:cellTapHandlers];
 
-          if ([item.identifier isEqualToString:kDYYYEnableHighFPSSettingIdentifier]) {
-              void (^originalSwitchChangedBlock)(void) = item.switchChangedBlock;
-              item.switchChangedBlock = ^{
-                if (originalSwitchChangedBlock) {
-                    originalSwitchChangedBlock();
-                }
-                BOOL enabled = [DYYYSettingsHelper getUserDefaults:kDYYYEnableHighFPSSettingIdentifier];
-                DYYYApplyHighFPSSettingChange(enabled);
-                DYYYApplyFPSOverlaySettingChange();
-              };
-          } else if ([item.identifier isEqualToString:kDYYYShowFPSOverlaySettingIdentifier]) {
-              void (^originalSwitchChangedBlock)(void) = item.switchChangedBlock;
-              item.switchChangedBlock = ^{
-                if (originalSwitchChangedBlock) {
-                    originalSwitchChangedBlock();
-                }
-                DYYYApplyFPSOverlaySettingChange();
-              };
-          } else if ([item.identifier isEqualToString:@"DYYYHDRMode"]) {
+          if ([item.identifier isEqualToString:@"DYYYHDRMode"]) {
               NSString *savedMode = [[NSUserDefaults standardUserDefaults] stringForKey:@"DYYYHDRMode"] ?: @"关闭（交给抖音）";
               item.detail = savedMode;
               item.cellTappedBlock = ^{
