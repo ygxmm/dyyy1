@@ -79,6 +79,7 @@ DYYY_FILES = DYYY.xm \
 	Sources/Features/DYYYHideTemplateCollectionHooks.m \
 	Sources/Features/DYYYSearchKeyboardVoiceHooks.m \
 	Sources/Features/DYYYHighFPSHooks.m \
+	Sources/Features/DYYYNativeAutoPlay.m \
 	Sources/Features/DYYYFPSOverlay.m \
 	Sources/Features/DYYYFeedTagHooks.m \
 	Sources/Features/DYYYExactInteractionCountHooks.m \

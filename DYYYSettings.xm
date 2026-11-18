@@ -25,6 +25,7 @@
 #import "DYYYFloatSpeedButton.h"
 #import "DYYYFPSOverlay.h"
 #import "DYYYHighFPSHooks.h"
+#import "DYYYNativeAutoPlay.h"
 #import "DYYYSettingsHelper.h"
 #import "DYYYUtils.h"
 
@@ -1940,10 +1941,10 @@ static void DYYYBuildSettingsSearchIndexIfNeeded(NSArray<AWESettingItemModel *> 
     AWESettingsViewModel *settingsViewModel = (AWESettingsViewModel *)[self viewModel];
     for (AWESettingSectionModel *section in settingsViewModel.sectionDataArray) {
         for (AWESettingItemModel *item in section.itemArray) {
-            if ([item.identifier isEqualToString:@"DYYYEnableLoginBypass"]) {
-                item.isSwitchOn = [[NSUserDefaults standardUserDefaults] boolForKey:item.identifier];
+            if ([item.identifier isEqualToString:@"DYYYEnableLoginBypass"] ||
+                [item.identifier isEqualToString:DYYY_ENABLE_AUTO_PLAY_KEY]) {
+                item.isSwitchOn = [DYYYSettingsHelper getUserDefaults:item.identifier];
                 [item refreshCell];
-                break;
             }
         }
     }
@@ -2302,9 +2303,9 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
       NSMutableArray<AWESettingItemModel *> *playbackItems = [NSMutableArray array];
       NSArray *playbackSettings = @[
           @{
-              @"identifier" : @"DYYYEnableAutoPlay",
+              @"identifier" : DYYY_ENABLE_AUTO_PLAY_KEY,
               @"title" : @"启用自动播放",
-              @"subTitle" : @"暂时仅支持推荐、搜索和个人主页的自动连播",
+              @"subTitle" : @"与抖音长按菜单的自动连播同步，适用页面由抖音决定",
               @"detail" : @"",
               @"cellType" : @37,
               @"imageName" : @"ic_play_outlined_12"
@@ -5648,6 +5649,7 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
               dyyySettings[key] = [defaults objectForKey:key];
           }
       }
+      dyyySettings[DYYY_ENABLE_AUTO_PLAY_KEY] = @([DYYYSettingsHelper getUserDefaults:DYYY_ENABLE_AUTO_PLAY_KEY]);
 
       // 查找并添加图标文件
       NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
@@ -5778,12 +5780,14 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
           }
 
           NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+          id autoPlayValue = dyyySettings[DYYY_ENABLE_AUTO_PLAY_KEY];
           for (NSString *key in dyyySettings) {
-              [defaults setObject:dyyySettings[key] forKey:key];
+              if (![key isEqualToString:DYYY_ENABLE_AUTO_PLAY_KEY]) [defaults setObject:dyyySettings[key] forKey:key];
           }
 
           dispatch_async(dispatch_get_main_queue(), ^{
-            [DYYYUtils showToast:@"设置已恢复，请重启应用以应用所有更改"];
+            BOOL restoredAutoPlay = ![autoPlayValue respondsToSelector:@selector(boolValue)] || DYYYNativeAutoPlaySetEnabled([autoPlayValue boolValue]);
+            [DYYYUtils showToast:restoredAutoPlay ? @"设置已恢复，请重启应用以应用所有更改" : @"其他设置已恢复，原生自动连播未能恢复"];
             [restoreItem refreshCell];
           });
         });

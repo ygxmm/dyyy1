@@ -22,6 +22,7 @@
 #define DYYYGeonamesStatusUserInfoKey @"com.dyyy.geonames.api.status"
 
 #define DYYY_DISABLE_FEED_NOW_PLAYING_INFO_KEY @"DYYYDisableFeedNowPlayingInfo"
+#define DYYY_ENABLE_AUTO_PLAY_KEY @"DYYYEnableAutoPlay"
 
 // 互动数超过一万时显示完整整数，关闭后恢复宿主的万字缩写
 #define DYYY_SHOW_EXACT_INTERACTION_COUNTS_KEY @"DYYYShowExactInteractionCounts"

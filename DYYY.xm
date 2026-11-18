@@ -39,6 +39,7 @@
 // ============================================================
 #import "AwemeHeaders.h"
 #import "DYYYFullscreenCoordinator.h"
+#import "DYYYNativeAutoPlay.h"
 
 
 #import "DYYYConstants.h"
@@ -6509,8 +6510,6 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
 
 %end
 
-%group AutoPlay
-
 static void DYYYScanTabBarHeightViews(UIView *v, int d) {
     if (!v || d > 4) return;
     for (UIView *s in v.subviews) {
@@ -6537,36 +6536,9 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
 @end
 
 
-%hook AWEAwemeDetailContainerPlayControlConfig
-
-- (BOOL)enableUserProfilePostAutoPlay {
-    return YES;
-}
-
-%end
-
-%hook AWEFeedIPhoneAutoPlayManager
-
-- (BOOL)isAutoPlayOpen {
-    return YES;
-}
-
-
-- (BOOL)getFeedIphoneAutoPlayState {
-    BOOL r = %orig;
-    return YES;
-}
-
-%end
-
 %hook AWEFeedModuleService
 
-- (BOOL)getFeedIphoneAutoPlayState {
-    return YES;
-}
-
-// v736: 底部预留的公共源头。全屏时统一答 0，让各页 applyTableViewLayoutForAllPlatform
-// 第一次就把表摆成屏高，792 这一网格不再产生（详情页已在 VC 层验证过同一做法）。
+// 分页底部预留只跟随全屏设置，不再取决于自动播放是否开启。
 - (double)tableViewBottomInsetForFeedViewController:(id)vc {
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
     return %orig;
@@ -6581,9 +6553,6 @@ static void DYYYScanTabBarHeightViews(UIView *v, int d) {
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
     return %orig;
 }
-%end
-
-
 %end
 
 static char kDYYYLongPressVerticalActiveKey;
@@ -15993,6 +15962,7 @@ static void DYYYRemoveAppLifecycleObservers(void) {
                                                                                   queue:[NSOperationQueue mainQueue]
                                                                              usingBlock:^(NSNotification *_Nonnull notification) {
                                                                                isAppActive = YES;
+                                                                               DYYYNativeAutoPlayMigrateLegacySetting();
                                                                                reloadClearButtonConfiguration();
                                                                              }];
 
@@ -17151,10 +17121,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
               %init(DYYYCommentInputContainerGroup, CommentInputContainerView = wSwiftImpl);
           }
         });
-        BOOL isAutoPlayEnabled = DYYYGetBool(@"DYYYEnableAutoPlay");
-        if (isAutoPlayEnabled) {
-            %init(AutoPlay);
-        }
         if (DYYYGetBool(@"DYYYForceDownloadEmotion") ||
             DYYYGetBool(@"DYYYForceDownloadCommentAudio") ||
             DYYYGetBool(@"DYYYForceDownloadCommentImage")) {

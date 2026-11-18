@@ -2,6 +2,7 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import "DYYYConstants.h"
+#import "DYYYNativeAutoPlay.h"
 #import "DYYYPickerDelegates.h"
 #import "DYYYUtils.h"
 
@@ -13,11 +14,18 @@
 
 // 获取用户默认设置
 + (BOOL)getUserDefaults:(NSString *)key {
+    if ([key isEqualToString:DYYY_ENABLE_AUTO_PLAY_KEY]) return DYYYNativeAutoPlayIsEnabled();
     return [[NSUserDefaults standardUserDefaults] boolForKey:key];
 }
 
 // 设置用户默认设置
 + (void)setUserDefaults:(id)object forKey:(NSString *)key {
+    if ([key isEqualToString:DYYY_ENABLE_AUTO_PLAY_KEY]) {
+        if ([object respondsToSelector:@selector(boolValue)] && !DYYYNativeAutoPlaySetEnabled([object boolValue])) {
+            [DYYYUtils showToast:@"当前版本无法切换原生自动连播"];
+        }
+        return;
+    }
     [[NSUserDefaults standardUserDefaults] setObject:object forKey:key];
 }
 
@@ -517,7 +525,11 @@ static NSArray *allSettingsViewControllers(void) {
               BOOL isSwitchOn = !strongItem.isSwitchOn;
               strongItem.isSwitchOn = isSwitchOn;
               [self setUserDefaults:@(isSwitchOn) forKey:strongItem.identifier];
-              [self handleConflictsAndDependenciesForSetting:strongItem.identifier isEnabled:isSwitchOn];
+              if ([strongItem.identifier isEqualToString:DYYY_ENABLE_AUTO_PLAY_KEY]) {
+                  strongItem.isSwitchOn = [self getUserDefaults:strongItem.identifier];
+                  [strongItem refreshCell];
+              }
+              [self handleConflictsAndDependenciesForSetting:strongItem.identifier isEnabled:strongItem.isSwitchOn];
           }
         };
     }
