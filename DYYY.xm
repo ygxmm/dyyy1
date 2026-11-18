@@ -15993,7 +15993,7 @@ static void DYYYRemoveAppLifecycleObservers(void) {
                                                                                   queue:[NSOperationQueue mainQueue]
                                                                              usingBlock:^(NSNotification *_Nonnull notification) {
                                                                                isAppActive = YES;
-                                                                               DYYYNativeAutoPlayMigrateLegacySetting();
+                                                                               dispatch_async(dispatch_get_main_queue(), ^{ DYYYRestoreAutoPlayPreference(); });
                                                                                reloadClearButtonConfiguration();
                                                                              }];
 

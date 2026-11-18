@@ -14,15 +14,15 @@
 
 // 获取用户默认设置
 + (BOOL)getUserDefaults:(NSString *)key {
-    if ([key isEqualToString:DYYY_ENABLE_AUTO_PLAY_KEY]) return DYYYNativeAutoPlayIsEnabled();
+    if ([key isEqualToString:DYYY_ENABLE_AUTO_PLAY_KEY]) return DYYYAutoPlayIsEnabled();
     return [[NSUserDefaults standardUserDefaults] boolForKey:key];
 }
 
 // 设置用户默认设置
 + (void)setUserDefaults:(id)object forKey:(NSString *)key {
     if ([key isEqualToString:DYYY_ENABLE_AUTO_PLAY_KEY]) {
-        if ([object respondsToSelector:@selector(boolValue)] && !DYYYNativeAutoPlaySetEnabled([object boolValue])) {
-            [DYYYUtils showToast:@"当前版本无法切换原生自动连播"];
+        if ([object respondsToSelector:@selector(boolValue)] && !DYYYAutoPlaySetEnabled([object boolValue])) {
+            [DYYYUtils showToast:@"已保存，抖音原生连播暂未应用"];
         }
         return;
     }

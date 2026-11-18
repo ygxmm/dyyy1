@@ -2303,7 +2303,7 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
           @{
               @"identifier" : DYYY_ENABLE_AUTO_PLAY_KEY,
               @"title" : @"启用自动播放",
-              @"subTitle" : @"与抖音长按菜单的自动连播同步，适用页面由抖音决定",
+              @"subTitle" : @"由 DYYY 保存，重新打开抖音时自动应用；连播流程仍由抖音执行。",
               @"detail" : @"",
               @"cellType" : @37,
               @"imageName" : @"ic_play_outlined_12"
@@ -5630,7 +5630,6 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
               dyyySettings[key] = [defaults objectForKey:key];
           }
       }
-      dyyySettings[DYYY_ENABLE_AUTO_PLAY_KEY] = @([DYYYSettingsHelper getUserDefaults:DYYY_ENABLE_AUTO_PLAY_KEY]);
 
       // 查找并添加图标文件
       NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
@@ -5760,6 +5759,7 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
               dyyySettings = cleanSettings;
           }
 
+          dyyySettings = DYYYAutoPlayNormalizeBackup(dyyySettings);
           NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
           id autoPlayValue = dyyySettings[DYYY_ENABLE_AUTO_PLAY_KEY];
           for (NSString *key in dyyySettings) {
@@ -5767,8 +5767,8 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
           }
 
           dispatch_async(dispatch_get_main_queue(), ^{
-            BOOL restoredAutoPlay = ![autoPlayValue respondsToSelector:@selector(boolValue)] || DYYYNativeAutoPlaySetEnabled([autoPlayValue boolValue]);
-            [DYYYUtils showToast:restoredAutoPlay ? @"设置已恢复，请重启应用以应用所有更改" : @"其他设置已恢复，原生自动连播未能恢复"];
+            BOOL applied = !autoPlayValue || DYYYAutoPlaySetEnabled([autoPlayValue boolValue]);
+            [DYYYUtils showToast:applied ? @"设置已恢复，请重启应用以应用所有更改" : @"设置已保存，抖音原生连播暂未应用"];
             [restoreItem refreshCell];
           });
         });
