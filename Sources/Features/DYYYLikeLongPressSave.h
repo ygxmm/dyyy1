@@ -4,9 +4,15 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// Use the shared photo/Live Photo pipeline from the existing action sheet.
-/// Independent of the "长按点赞保存" switch.
-FOUNDATION_EXPORT void DYYYSaveMediaFromLegacyMenu(AWEAwemeModel * _Nullable model, BOOL allPages);
+typedef NS_ENUM(NSUInteger, DYYYMenuMediaSaveAction) {
+    DYYYMenuMediaSaveCurrent,
+    DYYYMenuMediaSaveAll,
+    DYYYMenuMediaSaveCover,
+    DYYYMenuMediaSaveVideo,
+};
+
+/// Shared by the existing DYYY panels; independent of the like-button switch.
+FOUNDATION_EXPORT void DYYYSaveMenuMedia(AWEAwemeModel * _Nullable model, DYYYMenuMediaSaveAction action);
 
 /// Registers preference observers after the user agreement; never writes defaults.
 FOUNDATION_EXPORT void DYYYStartLikeLongPressSave(void);

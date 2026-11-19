@@ -222,7 +222,6 @@ static NSString *DYYYLogPath(void) {
             stringByAppendingPathComponent:@"dyyy_fs.log"];
 }
 
-static id DYYYBestDownloadAddr(id videoModel);
 
 %hook NSBundle
 - (NSString *)bundleIdentifier {
@@ -15245,12 +15244,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         awemeModel = [self performSelector:@selector(awemeModel)];
         [DYYYManager setAlbumDescriptionContextWithAwemeModel:awemeModel];
 
-        AWEVideoModel *videoModel = awemeModel.video;
         AWEMusicModel *musicModel = awemeModel.music;
-        NSURL *audioURL = nil;
-        if (musicModel && musicModel.playURL && musicModel.playURL.originURLList.count > 0) {
-            audioURL = [NSURL URLWithString:musicModel.playURL.originURLList.firstObject];
-        }
 
         // 确定内容类型（视频或图片）
         BOOL isImageContent = (awemeModel.awemeType == 68);
@@ -15286,26 +15280,8 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
                 actionWithTitle:downloadTitle
                         imgName:nil
                         handler:^{
-                          if (isImageContent || isNewLivePhoto) {
-                              DYYYSaveMediaFromLegacyMenu(awemeModel, NO);
-                          } else {
-                              id best = nil;
-                              if (DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality")) {
-                                  best = DYYYBestDownloadAddr(videoModel);
-                              }
-                              if (!best) best = [videoModel valueForKey:@"h264URL"];
-                              if (best) {
-                                  NSArray *urls = [best valueForKey:@"originURLList"];
-                                  if ([urls isKindOfClass:[NSArray class]] && urls.count > 0) {
-                                      NSURL *url = [NSURL URLWithString:urls.firstObject];
-                                      [DYYYManager downloadMedia:url
-                                                       mediaType:MediaTypeVideo
-                                                           audio:audioURL
-                                                      completion:^(BOOL success){
-                                                      }];
-                                  }
-                              }
-                          }
+                          DYYYSaveMenuMedia(awemeModel, (isImageContent || isNewLivePhoto) ?
+                              DYYYMenuMediaSaveCurrent : DYYYMenuMediaSaveVideo);
                         }];
             [actions addObject:downloadAction];
 
@@ -15326,7 +15302,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
                     actionWithTitle:actionTitle
                             imgName:nil
                             handler:^{
-                              DYYYSaveMediaFromLegacyMenu(awemeModel, YES);
+                              DYYYSaveMenuMedia(awemeModel, DYYYMenuMediaSaveAll);
                             }];
                 [actions addObject:downloadAllAction];
             }
@@ -17294,30 +17270,6 @@ static void v212_setBg(id self, SEL _cmd, id color) {
         }
     }
 
-}
-
-// v220: 取 videoModel 里最高码率档的 playAddr（给"保存视频"用）
-static id DYYYBestDownloadAddr(id videoModel) {
-    if (!videoModel) return nil;
-    NSArray *ms = nil;
-    @try {
-        ms = [videoModel valueForKey:@"bitrateModels"];
-    } @catch (NSException *e) { return nil; }
-    if (![ms isKindOfClass:[NSArray class]] || ms.count == 0) return nil;
-    NSInteger bestBr = 0;
-    id best = nil;
-    for (id m in ms) {
-        NSInteger b = DYYYBitrateForBitrateModel(m);
-        if (b > bestBr) {
-            bestBr = b;
-            id pa = nil;
-            @try {
-                pa = [m valueForKey:@"playAddr"];
-            } @catch (NSException *e) {}
-            if (pa) best = pa;
-        }
-    }
-    return best;
 }
 
 // ==================== 评论区图片清理底栏（DYKiller 提取） ====================

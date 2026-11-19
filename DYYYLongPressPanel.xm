@@ -5,6 +5,7 @@
 #import "DYYYFilterSettingsView.h"
 #import "DYYYKeywordListView.h"
 #import "DYYYManager.h"
+#import "DYYYLikeLongPressSave.h"
 #import "DYYYToast.h"
 #import "DYYYUtils.h"
 
@@ -71,6 +72,13 @@ static NSString *DYYYLongPressFilterUserDisplayID(AWEUserModel *author) {
         return author.userID;
     }
     return author.shortID ?: @"";
+}
+
+static AWEImageAlbumImageModel *DYYYLongPressCurrentAlbumImage(AWEAwemeModel *model) {
+    NSInteger index = model.currentImageIndex;
+    NSArray<AWEImageAlbumImageModel *> *images = model.albumImages;
+    if (index > 0 && (NSUInteger)index <= images.count) return images[(NSUInteger)index - 1];
+    return images.firstObject;
 }
 
 static void DYYYLongPressDismissPanelThen(void (^action)(void)) {
@@ -308,23 +316,7 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
         downloadViewModel.duxIconName = @"ic_boxarrowdownhigh_outlined";
         downloadViewModel.describeString = @"保存视频";
         downloadViewModel.action = ^{
-          AWEAwemeModel *awemeModel = self.awemeModel;
-          AWEVideoModel *videoModel = awemeModel.video;
-          AWEMusicModel *musicModel = awemeModel.music;
-          NSURL *audioURL = nil;
-          if (musicModel && musicModel.playURL && musicModel.playURL.originURLList.count > 0) {
-              audioURL = [NSURL URLWithString:musicModel.playURL.originURLList.firstObject];
-          }
-
-                  if (videoModel.h264URL && videoModel.h264URL.originURLList.count > 0) {
-                      NSURL *url = [NSURL URLWithString:videoModel.h264URL.originURLList.firstObject];
-                      [DYYYManager downloadMedia:url
-                                       mediaType:MediaTypeVideo
-                                           audio:audioURL
-                                      completion:^(BOOL success){
-                                      }];
-                  }
-
+          DYYYSaveMenuMedia(self.awemeModel, DYYYMenuMediaSaveVideo);
           AWELongPressPanelManager *panelManager = [%c(AWELongPressPanelManager) shareInstance];
           [panelManager dismissWithAnimation:YES completion:nil];
         };
@@ -339,31 +331,7 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
         livePhotoViewModel.duxIconName = @"ic_boxarrowdownhigh_outlined";
         livePhotoViewModel.describeString = @"保存实况";
         livePhotoViewModel.action = ^{
-          AWEAwemeModel *awemeModel = self.awemeModel;
-          AWEVideoModel *videoModel = awemeModel.video;
-
-          // 使用封面URL作为图片URL
-          NSURL *imageURL = nil;
-          if (videoModel.coverURL && videoModel.coverURL.originURLList.count > 0) {
-              imageURL = [NSURL URLWithString:videoModel.coverURL.originURLList.firstObject];
-          }
-
-          // 视频URL从视频模型获取
-          NSURL *videoURL = nil;
-          if (videoModel && videoModel.playURL && videoModel.playURL.originURLList.count > 0) {
-              videoURL = [NSURL URLWithString:videoModel.playURL.originURLList.firstObject];
-          } else if (videoModel && videoModel.h264URL && videoModel.h264URL.originURLList.count > 0) {
-              videoURL = [NSURL URLWithString:videoModel.h264URL.originURLList.firstObject];
-          }
-
-          // 下载实况照片
-          if (imageURL && videoURL) {
-              [DYYYManager downloadLivePhoto:imageURL
-                                    videoURL:videoURL
-                                  completion:^{
-                                  }];
-          }
-
+          DYYYSaveMenuMedia(self.awemeModel, DYYYMenuMediaSaveCurrent);
           AWELongPressPanelManager *panelManager = [%c(AWELongPressPanelManager) shareInstance];
           [panelManager dismissWithAnimation:YES completion:nil];
         };
@@ -383,7 +351,7 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
             imageViewModel.describeString = @"保存当前图片";
         }
 
-        AWEImageAlbumImageModel *currimge = self.awemeModel.albumImages[self.awemeModel.currentImageIndex - 1];
+        AWEImageAlbumImageModel *currimge = DYYYLongPressCurrentAlbumImage(self.awemeModel);
         if (currimge.clipVideo != nil || self.awemeModel.isLivePhoto) {
             if (self.awemeModel.albumImages.count == 1) {
                 imageViewModel.describeString = @"保存实况";
@@ -392,46 +360,7 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
             }
         }
         imageViewModel.action = ^{
-          AWEAwemeModel *awemeModel = self.awemeModel;
-          AWEImageAlbumImageModel *currentImageModel = nil;
-          if (awemeModel.currentImageIndex > 0 && awemeModel.currentImageIndex <= awemeModel.albumImages.count) {
-              currentImageModel = awemeModel.albumImages[awemeModel.currentImageIndex - 1];
-          } else {
-              currentImageModel = awemeModel.albumImages.firstObject;
-          }
-          // 如果是实况的话
-          // 查找非.image后缀的URL
-          NSURL *downloadURL = nil;
-          for (NSString *urlString in currentImageModel.urlList) {
-              NSURL *url = [NSURL URLWithString:urlString];
-              NSString *pathExtension = [url.path.lowercaseString pathExtension];
-              if (![pathExtension isEqualToString:@"image"]) {
-                  downloadURL = url;
-                  break;
-              }
-          }
-
-          if (currentImageModel.clipVideo != nil) {
-              NSURL *videoURL = [currentImageModel.clipVideo.playURL getDYYYSrcURLDownload];
-              [DYYYManager downloadLivePhoto:downloadURL
-                                    videoURL:videoURL
-                                  completion:^{
-                                  }];
-          } else if (currentImageModel && currentImageModel.urlList.count > 0) {
-              if (downloadURL) {
-                  [DYYYManager downloadMedia:downloadURL
-                                   mediaType:MediaTypeImage
-                                       audio:nil
-                                  completion:^(BOOL success) {
-                                    if (success) {
-                                    } else {
-                                        [DYYYUtils showToast:@"图片保存已取消"];
-                                    }
-                                  }];
-              } else {
-                  [DYYYUtils showToast:@"没有找到合适格式的图片"];
-              }
-          }
+          DYYYSaveMenuMedia(self.awemeModel, DYYYMenuMediaSaveCurrent);
           AWELongPressPanelManager *panelManager = [%c(AWELongPressPanelManager) shareInstance];
           [panelManager dismissWithAnimation:YES completion:nil];
         };
@@ -457,50 +386,7 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
             allImagesViewModel.describeString = @"保存所有实况";
         }
         allImagesViewModel.action = ^{
-          AWEAwemeModel *awemeModel = self.awemeModel;
-          NSMutableArray *imageURLs = [NSMutableArray array];
-          NSMutableArray *livePhotos = [NSMutableArray array];
-
-          for (AWEImageAlbumImageModel *imageModel in awemeModel.albumImages) {
-              if (imageModel.urlList.count > 0) {
-                  // 查找非.image后缀的URL
-                  NSURL *downloadURL = nil;
-                  for (NSString *urlString in imageModel.urlList) {
-                      NSURL *url = [NSURL URLWithString:urlString];
-                      NSString *pathExtension = [url.path.lowercaseString pathExtension];
-                      if (![pathExtension isEqualToString:@"image"]) {
-                          downloadURL = url;
-                          break;
-                      }
-                  }
-
-                  if (!downloadURL && imageModel.urlList.count > 0) {
-                      downloadURL = [NSURL URLWithString:imageModel.urlList.firstObject];
-                  }
-
-                  // 检查是否是实况照片
-                  if (imageModel.clipVideo != nil) {
-                      NSURL *videoURL = [imageModel.clipVideo.playURL getDYYYSrcURLDownload];
-                      [livePhotos addObject:@{@"imageURL" : downloadURL.absoluteString, @"videoURL" : videoURL.absoluteString}];
-                  } else {
-                      [imageURLs addObject:downloadURL.absoluteString];
-                  }
-              }
-          }
-
-          // 分别处理普通图片和实况照片
-          if (livePhotos.count > 0) {
-              [DYYYManager downloadAllLivePhotos:livePhotos];
-          }
-
-          if (imageURLs.count > 0) {
-              [DYYYManager downloadAllImages:imageURLs];
-          }
-
-          if (livePhotos.count == 0 && imageURLs.count == 0) {
-              [DYYYUtils showToast:@"没有找到合适格式的图片"];
-          }
-
+          DYYYSaveMenuMedia(self.awemeModel, DYYYMenuMediaSaveAll);
           AWELongPressPanelManager *panelManager = [%c(AWELongPressPanelManager) shareInstance];
           [panelManager dismissWithAnimation:YES completion:nil];
         };
@@ -537,20 +423,7 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
         coverViewModel.duxIconName = @"ic_boxarrowdownhigh_outlined";
         coverViewModel.describeString = @"保存封面";
         coverViewModel.action = ^{
-          AWEAwemeModel *awemeModel = self.awemeModel;
-          AWEVideoModel *videoModel = awemeModel.video;
-          if (videoModel && videoModel.coverURL && videoModel.coverURL.originURLList.count > 0) {
-              NSURL *url = [NSURL URLWithString:videoModel.coverURL.originURLList.firstObject];
-              [DYYYManager downloadMedia:url
-                               mediaType:MediaTypeImage
-                                   audio:nil
-                              completion:^(BOOL success) {
-                                if (success) {
-                                } else {
-                                    [DYYYUtils showToast:@"封面保存已取消"];
-                                }
-                              }];
-          }
+          DYYYSaveMenuMedia(self.awemeModel, DYYYMenuMediaSaveCover);
           AWELongPressPanelManager *panelManager = [%c(AWELongPressPanelManager) shareInstance];
           [panelManager dismissWithAnimation:YES completion:nil];
         };
@@ -988,24 +861,7 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
         downloadViewModel.duxIconName = @"ic_boxarrowdownhigh_outlined";
         downloadViewModel.describeString = @"保存视频";
         downloadViewModel.action = ^{
-          AWEAwemeModel *awemeModel = self.awemeModel;
-          AWEVideoModel *videoModel = awemeModel.video;
-          AWEMusicModel *musicModel = awemeModel.music;
-          NSURL *audioURL = nil;
-          if (musicModel && musicModel.playURL && musicModel.playURL.originURLList.count > 0) {
-              audioURL = [NSURL URLWithString:musicModel.playURL.originURLList.firstObject];
-          }
-
-                  // 备用方法：直接使用h264URL
-                  if (videoModel.h264URL && videoModel.h264URL.originURLList.count > 0) {
-                      NSURL *url = [NSURL URLWithString:videoModel.h264URL.originURLList.firstObject];
-                      [DYYYManager downloadMedia:url
-                                       mediaType:MediaTypeVideo
-                                           audio:audioURL
-                                      completion:^(BOOL success){
-                                      }];
-                  }
-
+          DYYYSaveMenuMedia(self.awemeModel, DYYYMenuMediaSaveVideo);
           AWELongPressPanelManager *panelManager = [%c(AWELongPressPanelManager) shareInstance];
           [panelManager dismissWithAnimation:YES completion:nil];
         };
@@ -1020,31 +876,7 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
         livePhotoViewModel.duxIconName = @"ic_boxarrowdownhigh_outlined";
         livePhotoViewModel.describeString = @"保存实况";
         livePhotoViewModel.action = ^{
-          AWEAwemeModel *awemeModel = self.awemeModel;
-          AWEVideoModel *videoModel = awemeModel.video;
-
-          // 使用封面URL作为图片URL
-          NSURL *imageURL = nil;
-          if (videoModel.coverURL && videoModel.coverURL.originURLList.count > 0) {
-              imageURL = [NSURL URLWithString:videoModel.coverURL.originURLList.firstObject];
-          }
-
-          // 视频URL从视频模型获取
-          NSURL *videoURL = nil;
-          if (videoModel && videoModel.playURL && videoModel.playURL.originURLList.count > 0) {
-              videoURL = [NSURL URLWithString:videoModel.playURL.originURLList.firstObject];
-          } else if (videoModel && videoModel.h264URL && videoModel.h264URL.originURLList.count > 0) {
-              videoURL = [NSURL URLWithString:videoModel.h264URL.originURLList.firstObject];
-          }
-
-          // 下载实况照片
-          if (imageURL && videoURL) {
-              [DYYYManager downloadLivePhoto:imageURL
-                                    videoURL:videoURL
-                                  completion:^{
-                                  }];
-          }
-
+          DYYYSaveMenuMedia(self.awemeModel, DYYYMenuMediaSaveCurrent);
           AWELongPressPanelManager *panelManager = [%c(AWELongPressPanelManager) shareInstance];
           [panelManager dismissWithAnimation:YES completion:nil];
         };
@@ -1064,7 +896,7 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
             imageViewModel.describeString = @"保存当前图片";
         }
 
-        AWEImageAlbumImageModel *currimge = self.awemeModel.albumImages[self.awemeModel.currentImageIndex - 1];
+        AWEImageAlbumImageModel *currimge = DYYYLongPressCurrentAlbumImage(self.awemeModel);
         if (currimge.clipVideo != nil || self.awemeModel.isLivePhoto) {
             if (self.awemeModel.albumImages.count == 1) {
                 imageViewModel.describeString = @"保存实况";
@@ -1074,46 +906,7 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
         }
 
         imageViewModel.action = ^{
-          AWEAwemeModel *awemeModel = self.awemeModel;
-          AWEImageAlbumImageModel *currentImageModel = nil;
-          if (awemeModel.currentImageIndex > 0 && awemeModel.currentImageIndex <= awemeModel.albumImages.count) {
-              currentImageModel = awemeModel.albumImages[awemeModel.currentImageIndex - 1];
-          } else {
-              currentImageModel = awemeModel.albumImages.firstObject;
-          }
-          // 如果是实况的话
-          // 查找非.image后缀的URL
-          NSURL *downloadURL = nil;
-          for (NSString *urlString in currentImageModel.urlList) {
-              NSURL *url = [NSURL URLWithString:urlString];
-              NSString *pathExtension = [url.path.lowercaseString pathExtension];
-              if (![pathExtension isEqualToString:@"image"]) {
-                  downloadURL = url;
-                  break;
-              }
-          }
-
-          if (currentImageModel.clipVideo != nil) {
-              NSURL *videoURL = [currentImageModel.clipVideo.playURL getDYYYSrcURLDownload];
-              [DYYYManager downloadLivePhoto:downloadURL
-                                    videoURL:videoURL
-                                  completion:^{
-                                  }];
-          } else if (currentImageModel && currentImageModel.urlList.count > 0) {
-              if (downloadURL) {
-                  [DYYYManager downloadMedia:downloadURL
-                                   mediaType:MediaTypeImage
-                                       audio:nil
-                                  completion:^(BOOL success) {
-                                    if (success) {
-                                    } else {
-                                        [DYYYUtils showToast:@"图片保存已取消"];
-                                    }
-                                  }];
-              } else {
-                  [DYYYUtils showToast:@"没有找到合适格式的图片"];
-              }
-          }
+          DYYYSaveMenuMedia(self.awemeModel, DYYYMenuMediaSaveCurrent);
           AWELongPressPanelManager *panelManager = [%c(AWELongPressPanelManager) shareInstance];
           [panelManager dismissWithAnimation:YES completion:nil];
         };
@@ -1139,50 +932,7 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
             allImagesViewModel.describeString = @"保存所有实况";
         }
         allImagesViewModel.action = ^{
-          AWEAwemeModel *awemeModel = self.awemeModel;
-          NSMutableArray *imageURLs = [NSMutableArray array];
-          NSMutableArray *livePhotos = [NSMutableArray array];
-
-          for (AWEImageAlbumImageModel *imageModel in awemeModel.albumImages) {
-              if (imageModel.urlList.count > 0) {
-                  // 查找非.image后缀的URL
-                  NSURL *downloadURL = nil;
-                  for (NSString *urlString in imageModel.urlList) {
-                      NSURL *url = [NSURL URLWithString:urlString];
-                      NSString *pathExtension = [url.path.lowercaseString pathExtension];
-                      if (![pathExtension isEqualToString:@"image"]) {
-                          downloadURL = url;
-                          break;
-                      }
-                  }
-
-                  if (!downloadURL && imageModel.urlList.count > 0) {
-                      downloadURL = [NSURL URLWithString:imageModel.urlList.firstObject];
-                  }
-
-                  // 检查是否是实况照片
-                  if (imageModel.clipVideo != nil) {
-                      NSURL *videoURL = [imageModel.clipVideo.playURL getDYYYSrcURLDownload];
-                      [livePhotos addObject:@{@"imageURL" : downloadURL.absoluteString, @"videoURL" : videoURL.absoluteString}];
-                  } else {
-                      [imageURLs addObject:downloadURL.absoluteString];
-                  }
-              }
-          }
-
-          // 分别处理普通图片和实况照片
-          if (livePhotos.count > 0) {
-              [DYYYManager downloadAllLivePhotos:livePhotos];
-          }
-
-          if (imageURLs.count > 0) {
-              [DYYYManager downloadAllImages:imageURLs];
-          }
-
-          if (livePhotos.count == 0 && imageURLs.count == 0) {
-              [DYYYUtils showToast:@"没有找到合适格式的图片"];
-          }
-
+          DYYYSaveMenuMedia(self.awemeModel, DYYYMenuMediaSaveAll);
           AWELongPressPanelManager *panelManager = [%c(AWELongPressPanelManager) shareInstance];
           [panelManager dismissWithAnimation:YES completion:nil];
         };
@@ -1219,20 +969,7 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
         coverViewModel.duxIconName = @"ic_boxarrowdownhigh_outlined";
         coverViewModel.describeString = @"保存封面";
         coverViewModel.action = ^{
-          AWEAwemeModel *awemeModel = self.awemeModel;
-          AWEVideoModel *videoModel = awemeModel.video;
-          if (videoModel && videoModel.coverURL && videoModel.coverURL.originURLList.count > 0) {
-              NSURL *url = [NSURL URLWithString:videoModel.coverURL.originURLList.firstObject];
-              [DYYYManager downloadMedia:url
-                               mediaType:MediaTypeImage
-                                   audio:nil
-                              completion:^(BOOL success) {
-                                if (success) {
-                                } else {
-                                    [DYYYUtils showToast:@"封面保存已取消"];
-                                }
-                              }];
-          }
+          DYYYSaveMenuMedia(self.awemeModel, DYYYMenuMediaSaveCover);
           AWELongPressPanelManager *panelManager = [%c(AWELongPressPanelManager) shareInstance];
           [panelManager dismissWithAnimation:YES completion:nil];
         };

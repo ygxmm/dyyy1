@@ -2,6 +2,7 @@
 #import "DYYYLikeLivePhotoBuilder.h"
 #import "DYYYLikeAnimatedImage.h"
 #import "DYYYAlbumImageDescription.h"
+#import "DYYYMediaSourceSelection.h"
 #import "DYYYConstants.h"
 #import "DYYYManager.h"
 #import "DYYYUtils.h"
@@ -37,24 +38,6 @@ static NSArray *DYYYLikeSaveArray(id value) {
     return [value isKindOfClass:NSArray.class] ? value : @[];
 }
 
-static NSURL *DYYYLikeSaveURL(id value) {
-    if (!value || value == NSNull.null) return nil;
-    if ([value isKindOfClass:NSURL.class]) {
-        NSURL *url = value;
-        NSString *scheme = url.scheme.lowercaseString;
-        return ([scheme isEqualToString:@"https"] || [scheme isEqualToString:@"http"]) && url.host.length ? url : nil;
-    }
-    if ([value isKindOfClass:NSString.class]) return DYYYLikeSaveURL([NSURL URLWithString:value]);
-    if ([value isKindOfClass:NSArray.class]) {
-        for (id item in value) {
-            NSURL *url = DYYYLikeSaveURL(item);
-            if (url) return url;
-        }
-        return nil;
-    }
-    return DYYYLikeSaveURL(DYYYLikeSaveObject(value, @"originURLList")) ?: DYYYLikeSaveURL(DYYYLikeSaveObject(value, @"URLList"));
-}
-
 static id DYYYLikeSaveModelForButton(UIButton *button) {
     Class modelClass = NSClassFromString(@"AWEAwemeModel");
     UIResponder *responder = button;
@@ -67,45 +50,9 @@ static id DYYYLikeSaveModelForButton(UIButton *button) {
     return nil;
 }
 
-static NSArray<NSURL *> *DYYYLikeSaveImageURLs(id image, id originalImage) {
-    // Preserve server-issued alternatives, never rewrite signatures or use the
-    // watermarked downloadURLList. Alternatives let Live Photos use a compatible
-    // original container without a local lossy JPEG conversion.
-    NSMutableArray<NSURL *> *result = [NSMutableArray array];
-    NSMutableSet<NSURL *> *seen = [NSMutableSet set];
-    NSArray *models = originalImage ? @[originalImage, image] : @[image];
-    for (NSString *key in @[@"watermarkFreeUrlList", @"urlList"]) {
-        for (id model in models) {
-            for (id value in DYYYLikeSaveArray(DYYYLikeSaveObject(model, key))) {
-                NSURL *url = DYYYLikeSaveURL(value);
-                if (!url || [seen containsObject:url] || [url.path containsString:@"tplv-dy-water"]) continue;
-                [seen addObject:url];
-                [result addObject:url];
-                if (result.count >= 12) return [result copy];
-            }
-        }
-    }
-    return [result copy];
-}
-
 static NSError *DYYYLikeSaveError(NSString *reason) {
     return [NSError errorWithDomain:@"DYYYLikeSaveMedia" code:1
         userInfo:@{NSLocalizedDescriptionKey: reason ?: @"保存失败"}];
-}
-
-static NSURL *DYYYLikeSaveBestVideoURL(id video) {
-    NSURL *best;
-    long long highest = -1;
-    for (NSString *key in @[@"bitrateModels_origin", @"bitrateModels"]) {
-        for (id row in DYYYLikeSaveArray(DYYYLikeSaveObject(video, key))) {
-            id value = DYYYLikeSaveObject(row, @"bitrate");
-            long long rate = [value respondsToSelector:@selector(longLongValue)] ? [value longLongValue] : 0;
-            NSURL *url = DYYYLikeSaveURL(DYYYLikeSaveObject(row, @"playAddr"));
-            if (url && rate > highest) { highest = rate; best = url; }
-        }
-    }
-    return best ?: DYYYLikeSaveURL(DYYYLikeSaveObject(video, @"h264URL")) ?:
-                   DYYYLikeSaveURL(DYYYLikeSaveObject(video, @"playURL"));
 }
 
 static void DYYYLikeSaveRemoveTemporaryURL(NSURL *url) {
@@ -483,46 +430,6 @@ static id DYYYLikeSaveMatchingOriginal(id image, NSArray *originals) {
     return match;
 }
 
-static void DYYYLikeSaveAddVideoURLs(NSMutableOrderedSet<NSURL *> *URLs, id value) {
-    if ([value isKindOfClass:NSArray.class]) {
-        for (id entry in value) {
-            NSURL *url = DYYYLikeSaveURL(entry);
-            if (url && URLs.count < 8) [URLs addObject:url];
-        }
-    } else {
-        NSURL *url = DYYYLikeSaveURL(value);
-        if (url && URLs.count < 8) [URLs addObject:url];
-    }
-}
-
-static NSArray<NSURL *> *DYYYLikeSaveClipURLs(id clip) {
-    NSMutableOrderedSet<NSURL *> *URLs = [NSMutableOrderedSet orderedSet];
-    long long bestRate = -1;
-    for (NSString *key in @[@"bitrateModels_origin", @"bitrateModels"]) {
-        for (id entry in DYYYLikeSaveArray(DYYYLikeSaveObject(clip, key))) {
-            id address = DYYYLikeSaveObject(entry, @"playAddr");
-            if (!DYYYLikeSaveURL(address)) continue;
-            id value = DYYYLikeSaveObject(entry, @"bitrate");
-            long long rate = [value respondsToSelector:@selector(longLongValue)] ? [value longLongValue] : 0;
-            if (rate < bestRate) continue;
-            if (rate > bestRate) { [URLs removeAllObjects]; bestRate = rate; }
-            DYYYLikeSaveAddVideoURLs(URLs, DYYYLikeSaveObject(address, @"originURLList"));
-            DYYYLikeSaveAddVideoURLs(URLs, DYYYLikeSaveObject(address, @"URLList"));
-            if (!URLs.count) DYYYLikeSaveAddVideoURLs(URLs, address);
-        }
-    }
-    if (!URLs.count) {
-        for (NSString *key in @[@"h264URL", @"playURL"]) {
-            id address = DYYYLikeSaveObject(clip, key);
-            DYYYLikeSaveAddVideoURLs(URLs, DYYYLikeSaveObject(address, @"originURLList"));
-            DYYYLikeSaveAddVideoURLs(URLs, DYYYLikeSaveObject(address, @"URLList"));
-            if (!URLs.count) DYYYLikeSaveAddVideoURLs(URLs, address);
-            if (URLs.count) break;
-        }
-    }
-    return [URLs.array copy];
-}
-
 static NSDictionary *DYYYLikeSaveItem(NSArray<NSURL *> *images, NSArray<NSURL *> *videos, BOOL live, NSUInteger page) {
     return @{@"imageURLs": [images copy] ?: @[], @"videoURLs": [videos copy] ?: @[], @"live": @(live), @"page": @(page)};
 }
@@ -532,9 +439,9 @@ static NSDictionary *DYYYLikeSaveImageItem(id image, id original, id fallbackVid
     id originalClip = DYYYLikeSaveObject(original, @"clipVideo");
     BOOL live = visibleClip || originalClip || fallbackVideo || DYYYLikeSaveInteger(image, @"livePhotoType") > 0 ||
         DYYYLikeSaveInteger(original, @"livePhotoType") > 0;
-    NSArray<NSURL *> *videos = DYYYLikeSaveClipURLs(visibleClip);
-    if (!videos.count) videos = DYYYLikeSaveClipURLs(originalClip ?: fallbackVideo);
-    return DYYYLikeSaveItem(DYYYLikeSaveImageURLs(image, original), videos, live, page);
+    NSArray<NSURL *> *videos = DYYYMediaSourceHighestVideoURLs(visibleClip);
+    if (!videos.count) videos = DYYYMediaSourceHighestVideoURLs(originalClip ?: fallbackVideo);
+    return DYYYLikeSaveItem(DYYYMediaSourceImageURLs(image, original), videos, live, page);
 }
 
 static BOOL DYYYLikeSaveItemAvailable(NSDictionary *item) {
@@ -573,20 +480,43 @@ static void DYYYLikeStartGallerySave(NSArray<NSDictionary *> *items, NSString *d
     [job start];
 }
 
-void DYYYSaveMediaFromLegacyMenu(AWEAwemeModel *model, BOOL allPages) {
+static NSURL *DYYYLikeSaveMusicURL(AWEAwemeModel *model) {
+    id music = DYYYLikeSaveObject(model, @"music");
+    return DYYYMediaSourceURLs(DYYYLikeSaveObject(music, @"playURL")).firstObject;
+}
+
+static void DYYYLikeSaveVideoResource(AWEAwemeModel *model, NSURL *videoURL, NSURL *audioURL) {
+    if (!videoURL) {
+        [DYYYUtils showToast:@"没有可用的无水印视频源"];
+        return;
+    }
+    // The existing video writer imports the file as-is; optional audio and
+    // album description use AVAssetExportPresetPassthrough.
+    [DYYYManager setAlbumDescriptionContextWithAwemeModel:model];
+    [DYYYManager downloadMedia:videoURL mediaType:MediaTypeVideo audio:audioURL completion:nil];
+}
+
+static NSArray<NSDictionary *> *DYYYLikeSaveCoverItems(id video) {
+    NSArray<NSURL *> *covers = DYYYMediaSourceCoverURLs(video);
+    return covers.count ? @[DYYYLikeSaveItem(covers, @[], NO, 1)] : @[];
+}
+
+void DYYYSaveMenuMedia(AWEAwemeModel *model, DYYYMenuMediaSaveAction action) {
+    id video = DYYYLikeSaveObject(model, @"video");
+    if (action == DYYYMenuMediaSaveVideo) {
+        DYYYLikeSaveVideoResource(model, DYYYMediaSourceHighestVideoURLs(video).firstObject, DYYYLikeSaveMusicURL(model));
+        return;
+    }
     NSArray<NSDictionary *> *items = @[];
-    if (DYYYLikeSaveInteger(model, @"awemeType") == 68) {
+    if (action == DYYYMenuMediaSaveCover) {
+        items = DYYYLikeSaveCoverItems(video);
+    } else if (DYYYLikeSaveInteger(model, @"awemeType") == 68) {
         items = DYYYLikeSaveGalleryItems(model, DYYYLikeSaveArray(DYYYLikeSaveObject(model, @"albumImages")));
-        if (!allPages && items.count) items = @[items[DYYYLikeSaveCurrentIndex(model, items.count)]];
-    } else if (!allPages && DYYYLikeSaveObject(model, @"animatedImageVideoInfo")) {
-        id video = DYYYLikeSaveObject(model, @"video");
-        NSMutableOrderedSet<NSURL *> *covers = [NSMutableOrderedSet orderedSet];
-        for (NSString *key in @[@"coverURL", @"originCover"]) {
-            id address = DYYYLikeSaveObject(video, key);
-            DYYYLikeSaveAddVideoURLs(covers, DYYYLikeSaveObject(address, @"originURLList"));
-            DYYYLikeSaveAddVideoURLs(covers, DYYYLikeSaveObject(address, @"URLList"));
+        if (action == DYYYMenuMediaSaveCurrent && items.count) {
+            items = @[items[DYYYLikeSaveCurrentIndex(model, items.count)]];
         }
-        items = @[DYYYLikeSaveItem(covers.array, DYYYLikeSaveClipURLs(video), YES, 1)];
+    } else if (action == DYYYMenuMediaSaveCurrent && DYYYLikeSaveObject(model, @"animatedImageVideoInfo")) {
+        items = @[DYYYLikeSaveItem(DYYYMediaSourceCoverURLs(video), DYYYMediaSourceHighestVideoURLs(video), YES, 1)];
     }
     NSString *description = [NSUserDefaults.standardUserDefaults boolForKey:DYYY_ALBUM_MEDIA_DESCRIPTION_KEY] ?
         [DYYYManager albumDescriptionForAwemeModel:model] : nil;
@@ -635,19 +565,17 @@ static NSArray<UIMenuElement *> *DYYYLikeSaveMenuItems(UIButton *button) {
         return items;
     }
     id video = DYYYLikeSaveObject(model, @"video");
-    NSURL *videoURL = DYYYLikeSaveBestVideoURL(video);
+    NSURL *videoURL = DYYYMediaSourceHighestVideoURLs(video).firstObject;
     if (videoURL) {
-        NSURL *audioURL = DYYYLikeSaveURL(DYYYLikeSaveObject(DYYYLikeSaveObject(model, @"music"), @"playURL"));
+        NSURL *audioURL = DYYYLikeSaveMusicURL(model);
         UIAction *saveVideo = [UIAction actionWithTitle:@"保存原画质视频" image:DYYYLikeSaveSymbol(@"square.and.arrow.down")
             identifier:@"DYYYLikeSave.Video" handler:^(__kindof UIAction *selectedAction) {
-                [DYYYManager setAlbumDescriptionContextWithAwemeModel:model];
-                [DYYYManager downloadMedia:videoURL mediaType:MediaTypeVideo audio:audioURL completion:nil];
+                DYYYLikeSaveVideoResource(model, videoURL, audioURL);
             }];
         [items addObject:saveVideo];
     }
-    NSURL *cover = DYYYLikeSaveURL(DYYYLikeSaveObject(video, @"originCover")) ?:
-                   DYYYLikeSaveURL(DYYYLikeSaveObject(video, @"coverURL"));
-    if (cover) [items addObject:DYYYLikeSaveImagesAction(@"保存封面原图", @"DYYYLikeSave.Cover", @[DYYYLikeSaveItem(@[cover], @[], NO, 1)])];
+    NSArray<NSDictionary *> *covers = DYYYLikeSaveCoverItems(video);
+    if (covers.count) [items addObject:DYYYLikeSaveImagesAction(@"保存封面原图", @"DYYYLikeSave.Cover", covers)];
     return items;
 }
 

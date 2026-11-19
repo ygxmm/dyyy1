@@ -611,8 +611,11 @@ static void TestIndependentLivePhotos(NSURL *directory) {
     }
 }
 
+extern int DYYYRunMediaSourceSelectionTests(void);
+
 int main(void) {
     @autoreleasepool {
+        int sourceSelectionFailures = DYYYRunMediaSourceSelectionTests();
         NSURL *directory = MakeTempDirectory();
         if (!directory) return 2;
         TestAnimatedFixture(directory, @"GIF", @"R0lGODlhAgACAIEAAP8AAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEDAAAh+QQADAAAACwAAAAAAgACAAAIBgABCAQQEAAh+QQAHAAAACwAAAAAAgACAIEAAP8AAAAAAAAAAAAIBgABCAQQEAA7", @"gif");
@@ -630,6 +633,6 @@ int main(void) {
         TestIndependentLivePhotos(directory);
         fprintf(stdout, "\nMedia tests: %d PASS, %d FAIL\n", gPasses, gFailures);
         [[NSFileManager defaultManager] removeItemAtURL:directory error:NULL];
-        return gFailures ? 1 : 0;
+        return (gFailures || sourceSelectionFailures) ? 1 : 0;
     }
 }
