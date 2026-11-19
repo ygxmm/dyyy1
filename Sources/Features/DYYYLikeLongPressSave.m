@@ -305,10 +305,13 @@ void DYYYLikeLongPressSaveUpdateButton(UIButton *button) {
     UIDeferredMenuElement *deferred;
     if (@available(iOS 15.0, *)) deferred = [UIDeferredMenuElement elementWithUncachedProvider:provider];
     else deferred = [UIDeferredMenuElement elementWithProvider:provider];
-    NSArray<UIMenuElement *> *children = state.originalMenu ? @[state.originalMenu, deferred] : @[deferred];
-    state.installedMenu = [UIMenu menuWithTitle:@"" children:children];
+    // Keep the original menu only for restoring the disabled state, never as a submenu.
+    UIMenu *menu = [UIMenu menuWithTitle:@"" children:@[deferred]];
     // Do not change showsMenuAsPrimaryAction, touch callbacks, or existing gesture recognizers.
-    button.menu = state.installedMenu;
+    button.menu = menu;
+    // UIButton.menu copies its input. Track the installed copy so layout and restore
+    // recognize our own menu instead of recursively nesting it as an original menu.
+    state.installedMenu = button.menu;
 }
 
 static void DYYYLikeSaveRefreshLiveButtons(void) {
