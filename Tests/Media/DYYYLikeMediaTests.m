@@ -27,6 +27,8 @@ static void Check(BOOL condition, NSString *format, ...) {
         gFailures++;
         fprintf(stderr, "FAIL %s\n", message.UTF8String);
     }
+    fflush(stdout);
+    fflush(stderr);
 }
 
 static BOOL PumpUntil(BOOL (^condition)(void), NSTimeInterval timeout) {
@@ -138,6 +140,22 @@ static BOOL ValidateGIF(NSURL *url, size_t expectedFrames, size_t width, size_t 
     return YES;
 }
 
+static NSInteger NativeLoopCount(NSURL *url) {
+    CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)url, NULL);
+    if (!source) return -1;
+    NSDictionary *root = CFBridgingRelease(CGImageSourceCopyProperties(source, NULL));
+    NSDictionary *frame = PropertiesAt(source, 0); CFRelease(source);
+    for (NSDictionary *properties in @[root ?: @{}, frame ?: @{}]) {
+        for (id value in properties.allValues) {
+            if ([value isKindOfClass:NSDictionary.class]) {
+                NSNumber *loop = value[@"LoopCount"];
+                if ([loop isKindOfClass:NSNumber.class]) return loop.integerValue;
+            }
+        }
+    }
+    return -1;
+}
+
 static void TestAnimatedFixture(NSURL *directory, NSString *name, NSString *base64,
                                 NSString *extension) {
     NSData *bytes = Base64(base64);
@@ -149,7 +167,9 @@ static void TestAnimatedFixture(NSURL *directory, NSString *name, NSString *base
           error ? [NSString stringWithFormat:@" (%@)", error] : @"");
     Check(SameFileBytes(source, bytes), @"%@ source bytes remain unchanged", name);
     if (output) {
-        ValidateGIF(output, 2, 2, 2, @[@0.12, @0.28], 3, name);
+        NSInteger expectedLoop = NativeLoopCount(source);
+        Check(expectedLoop >= 0, @"%@ exposes native loop metadata", name);
+        ValidateGIF(output, 2, 2, 2, @[@0.12, @0.28], expectedLoop, name);
         [[NSFileManager defaultManager] removeItemAtURL:output error:NULL];
     }
 }
@@ -239,12 +259,14 @@ static NSURL *MakeMovie(NSURL *directory) {
     return complete ? url : nil;
 }
 
-static NSArray<NSString *> *SampleHashes(AVAssetTrack *track, NSError **error) {
-    AVURLAsset *asset = (AVURLAsset *)track.asset;
+static NSArray<NSString *> *SampleHashes(AVURLAsset *asset, AVAssetTrack *track, NSError **error) {
     AVAssetReader *reader = [[AVAssetReader alloc] initWithAsset:asset error:error];
     AVAssetReaderTrackOutput *output = [[AVAssetReaderTrackOutput alloc] initWithTrack:track outputSettings:nil];
     output.alwaysCopiesSampleData = NO;
-    if (!reader || ![reader canAddOutput:output]) return nil;
+    if (!reader || ![reader canAddOutput:output]) {
+        if (error && !*error) *error = [NSError errorWithDomain:@"MediaTest" code:10 userInfo:@{NSLocalizedDescriptionKey:@"reader rejected the supplied asset/track"}];
+        return nil;
+    }
     [reader addOutput:output];
     if (![reader startReading]) { if (error) *error = reader.error; return nil; }
     NSMutableArray *hashes = [NSMutableArray array];
@@ -253,17 +275,18 @@ static NSArray<NSString *> *SampleHashes(AVAssetTrack *track, NSError **error) {
         CMBlockBufferRef block = CMSampleBufferGetDataBuffer(sample);
         size_t length = block ? CMBlockBufferGetDataLength(block) : 0;
         NSMutableData *bytes = [NSMutableData dataWithLength:length];
-        if (!length || CMBlockBufferCopyDataBytes(block, 0, length, bytes.mutableBytes) != kCMBlockBufferNoErr) {
+        OSStatus copied = length ? CMBlockBufferCopyDataBytes(block, 0, length, bytes.mutableBytes) : -1;
+        if (!length || copied != kCMBlockBufferNoErr) {
+            if (error) *error = [NSError errorWithDomain:@"MediaTest" code:11 userInfo:@{NSLocalizedDescriptionKey:[NSString stringWithFormat:@"compressed sample block length %zu, copy status %d", length, (int)copied]}];
             CFRelease(sample); [reader cancelReading]; return nil;
         }
         unsigned char digest[CC_SHA256_DIGEST_LENGTH];
         CC_SHA256(bytes.bytes, (CC_LONG)bytes.length, digest);
         NSMutableString *hex = [NSMutableString stringWithCapacity:64];
         for (NSUInteger i = 0; i < sizeof(digest); i++) [hex appendFormat:@"%02x", digest[i]];
-        [hashes addObject:hex];
-        CFRelease(sample);
+        [hashes addObject:hex]; CFRelease(sample);
     }
-    if (reader.status != AVAssetReaderStatusCompleted && error) *error = reader.error;
+    if (reader.status != AVAssetReaderStatusCompleted && error) *error = reader.error ?: [NSError errorWithDomain:@"MediaTest" code:12 userInfo:@{NSLocalizedDescriptionKey:[NSString stringWithFormat:@"reader ended with status %ld",(long)reader.status]}];
     return reader.status == AVAssetReaderStatusCompleted ? hashes : nil;
 }
 
@@ -303,13 +326,15 @@ static NSString *ContentIdentifier(AVAsset *asset) {
 }
 
 static void TestTimedStillTrack(AVURLAsset *asset) {
-    NSArray<AVAssetTrack *> *tracks = [asset tracksWithMediaType:AVMediaTypeMetadata];
     AVAssetTrack *track = nil;
-    for (AVAssetTrack *candidate in tracks) {
+    for (AVAssetTrack *candidate in [asset tracksWithMediaType:AVMediaTypeMetadata]) {
         for (id object in candidate.formatDescriptions) {
             CMFormatDescriptionRef desc = (__bridge CMFormatDescriptionRef)object;
-            NSArray *ids = CFBridgingRelease(CMMetadataFormatDescriptionGetIdentifiers(desc));
-            if ([ids containsObject:@"com.apple.quicktime.still-image-time"]) track = candidate;
+            // GetIdentifiers returns a borrowed array. Releasing it corrupts AVFoundation state.
+            NSArray *ids = (__bridge NSArray *)CMMetadataFormatDescriptionGetIdentifiers(desc);
+            for (NSString *identifier in ids) {
+                if ([identifier hasSuffix:@"com.apple.quicktime.still-image-time"]) track = candidate;
+            }
         }
     }
     Check(track != nil, @"paired MOV has still-image-time metadata track");
@@ -317,24 +342,24 @@ static void TestTimedStillTrack(AVURLAsset *asset) {
     NSError *error = nil;
     AVAssetReader *reader = [[AVAssetReader alloc] initWithAsset:asset error:&error];
     AVAssetReaderTrackOutput *output = [[AVAssetReaderTrackOutput alloc] initWithTrack:track outputSettings:nil];
-    BOOL added = reader && [reader canAddOutput:output];
-    if (added) [reader addOutput:output];
-    BOOL started = added && [reader startReading];
-    Check(started, @"read still-image-time samples%@", error ? [NSString stringWithFormat:@" (%@)", error] : @"");
+    if (!reader || ![reader canAddOutput:output]) { Check(NO, @"metadata reader accepts track"); return; }
+    [reader addOutput:output];
+    AVAssetReaderOutputMetadataAdaptor *adaptor = [[AVAssetReaderOutputMetadataAdaptor alloc] initWithAssetReaderTrackOutput:output];
+    BOOL started = [reader startReading];
+    Check(started, @"read still-image-time samples%@", reader.error ?: @"");
     if (!started) return;
-    CMSampleBufferRef sample = [output copyNextSampleBuffer];
-    BOOL exists = sample != NULL;
-    Check(exists, @"still-image-time track has a timed sample");
-    if (sample) {
-        CMTime pts = CMSampleBufferGetPresentationTimeStamp(sample);
-        Check(CMTIME_IS_NUMERIC(pts) && CMTimeCompare(pts, kCMTimeZero) == 0,
-              @"still-image-time sample is at time zero");
-        CMBlockBufferRef block = CMSampleBufferGetDataBuffer(sample);
-        size_t length = block ? CMBlockBufferGetDataLength(block) : 0;
-        uint8_t value = 0;
-        BOOL read = length && CMBlockBufferCopyDataBytes(block, 0, 1, &value) == kCMBlockBufferNoErr;
-        Check(read && value == 0xff, @"still-image-time metadata value is -1 (0xff)");
-        CFRelease(sample);
+    AVTimedMetadataGroup *group = [adaptor nextTimedMetadataGroup];
+    Check(group != nil, @"still-image-time track has a timed metadata group");
+    if (group) {
+        CMTime pts = group.timeRange.start;
+        Check(CMTIME_IS_NUMERIC(pts) && CMTimeCompare(pts, kCMTimeZero) == 0, @"still-image-time sample is at time zero");
+        BOOL valueMatches = NO;
+        for (AVMetadataItem *item in group.items) {
+            NSString *key = item.identifier ?: [item.key description];
+            id value = item.value;
+            if ([key hasSuffix:@"com.apple.quicktime.still-image-time"] && [value respondsToSelector:@selector(integerValue)] && [value integerValue] == -1) valueMatches = YES;
+        }
+        Check(valueMatches, @"still-image-time metadata value is -1");
     }
     [reader cancelReading];
 }
@@ -352,7 +377,7 @@ static void TestLivePhoto(NSURL *directory) {
     Check(sourceVideo != nil, @"source movie has H.264 video track");
     if (!sourceVideo) return;
     NSError *hashError = nil;
-    NSArray *sourceHashes = SampleHashes(sourceVideo, &hashError);
+    NSArray *sourceHashes = SampleHashes(sourceAsset, sourceVideo, &hashError);
     Check(sourceHashes.count > 0, @"read source compressed video samples%@",
           hashError ? [NSString stringWithFormat:@" (%@)", hashError] : @"");
 
@@ -401,13 +426,13 @@ static void TestLivePhoto(NSURL *directory) {
         if (pairedVideo) {
             CMFormatDescriptionRef a = (__bridge CMFormatDescriptionRef)sourceVideo.formatDescriptions.firstObject;
             CMFormatDescriptionRef b = (__bridge CMFormatDescriptionRef)pairedVideo.formatDescriptions.firstObject;
-            CMVideoDimensions da = CMVideoFormatDescriptionGetDimensions(a);
-            CMVideoDimensions db = CMVideoFormatDescriptionGetDimensions(b);
-            Check(da.width == db.width && da.height == db.height, @"video coded dimensions unchanged");
+            CMVideoDimensions da = a ? CMVideoFormatDescriptionGetDimensions(a) : (CMVideoDimensions){0, 0};
+            CMVideoDimensions db = b ? CMVideoFormatDescriptionGetDimensions(b) : (CMVideoDimensions){0, 0};
+            Check(a && b && da.width == db.width && da.height == db.height, @"video coded dimensions unchanged");
             Check(CGAffineTransformEqualToTransform(sourceVideo.preferredTransform, pairedVideo.preferredTransform),
                   @"video orientation transform unchanged");
             NSError *pairedHashError = nil;
-            NSArray *pairedHashes = SampleHashes(pairedVideo, &pairedHashError);
+            NSArray *pairedHashes = SampleHashes(pairedAsset, pairedVideo, &pairedHashError);
             Check(sourceHashes && [sourceHashes isEqualToArray:pairedHashes],
                   @"compressed video sample SHA-256 sequence unchanged%@",
                   pairedHashError ? [NSString stringWithFormat:@" (%@)", pairedHashError] : @"");
