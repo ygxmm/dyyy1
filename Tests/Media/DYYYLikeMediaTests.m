@@ -88,12 +88,15 @@ static NSDictionary *PropertiesAt(CGImageSourceRef source, size_t index) {
 static NSString *IPTCCaptionAtURL(NSURL *url) {
     CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)url, NULL);
     CGImageMetadataRef metadata = source ? CGImageSourceCopyMetadataAtIndex(source, 0, NULL) : NULL;
-    CGImageMetadataTagRef tag = metadata ? CGImageMetadataCopyTagMatchingImageProperty(metadata,
-        kCGImagePropertyIPTCDictionary, kCGImagePropertyIPTCCaptionAbstract) : NULL;
-    CFTypeRef value = tag ? CGImageMetadataTagCopyValue(tag) : NULL;
-    NSString *caption = value && CFGetTypeID(value) == CFStringGetTypeID() ? CFBridgingRelease(value) : nil;
-    if (value && CFGetTypeID(value) != CFStringGetTypeID()) CFRelease(value);
-    if (tag) CFRelease(tag);
+    // IPTC CaptionAbstract maps to dc:description, an alternate-text XMP tag.
+    // The raw tag value can be an array rather than an NSString.
+    NSString *caption = metadata ? CFBridgingRelease(CGImageMetadataCopyStringValueWithPath(
+        metadata, NULL, CFSTR("dc:description"))) : nil;
+    if (!caption && source) {
+        NSDictionary *fields = PropertiesAt(source, 0)[(__bridge NSString *)kCGImagePropertyIPTCDictionary];
+        id legacy = fields[(__bridge NSString *)kCGImagePropertyIPTCCaptionAbstract];
+        if ([legacy isKindOfClass:NSString.class]) caption = legacy;
+    }
     if (metadata) CFRelease(metadata);
     if (source) CFRelease(source);
     return caption;
@@ -237,12 +240,7 @@ static NSURL *MakeMovieVariant(NSURL *directory, NSString *name, uint8_t variant
     oldQuickTimeDescription.key = AVMetadataQuickTimeMetadataKeyDescription;
     oldQuickTimeDescription.dataType = (__bridge NSString *)kCMMetadataBaseDataType_UTF8;
     oldQuickTimeDescription.value = @"source QuickTime description";
-    AVMutableMetadataItem *oldCommonDescription = [AVMutableMetadataItem metadataItem];
-    oldCommonDescription.keySpace = AVMetadataKeySpaceCommon;
-    oldCommonDescription.key = AVMetadataCommonKeyDescription;
-    oldCommonDescription.dataType = (__bridge NSString *)kCMMetadataBaseDataType_UTF8;
-    oldCommonDescription.value = @"source common description";
-    writer.metadata = @[oldQuickTimeDescription, oldCommonDescription];
+    writer.metadata = @[oldQuickTimeDescription];
     input.expectsMediaDataInRealTime = NO;
     NSDictionary *attrs = @{(NSString *)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA),
         (NSString *)kCVPixelBufferWidthKey: @32, (NSString *)kCVPixelBufferHeightKey: @32,
