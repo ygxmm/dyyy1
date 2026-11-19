@@ -15286,70 +15286,8 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
                 actionWithTitle:downloadTitle
                         imgName:nil
                         handler:^{
-                          if (isImageContent) {
-                              // 图片内容
-                              AWEImageAlbumImageModel *currentImageModel = nil;
-                              if (awemeModel.currentImageIndex > 0 && awemeModel.currentImageIndex <= awemeModel.albumImages.count) {
-                                  currentImageModel = awemeModel.albumImages[awemeModel.currentImageIndex - 1];
-                              } else {
-                                  currentImageModel = awemeModel.albumImages.firstObject;
-                              }
-
-                              // 查找非.image后缀的URL
-                              NSURL *downloadURL = nil;
-                              for (NSString *urlString in currentImageModel.urlList) {
-                                  NSURL *url = [NSURL URLWithString:urlString];
-                                  NSString *pathExtension = [url.path.lowercaseString pathExtension];
-                                  if (![pathExtension isEqualToString:@"image"]) {
-                                      downloadURL = url;
-                                      break;
-                                  }
-                              }
-
-                              if (currentImageModel.clipVideo != nil) {
-                                  NSURL *videoURL = [currentImageModel.clipVideo.playURL getDYYYSrcURLDownload];
-                                  [DYYYManager downloadLivePhoto:downloadURL
-                                                        videoURL:videoURL
-                                                      completion:^{
-                                                      }];
-                              } else if (currentImageModel && currentImageModel.urlList.count > 0) {
-                                  if (downloadURL) {
-                                      [DYYYManager downloadMedia:downloadURL
-                                                       mediaType:MediaTypeImage
-                                                           audio:nil
-                                                      completion:^(BOOL success) {
-                                                        if (success) {
-                                                        } else {
-                                                            [DYYYUtils showToast:@"图片保存已取消"];
-                                                        }
-                                                      }];
-                                  } else {
-                                      [DYYYUtils showToast:@"没有找到合适格式的图片"];
-                                  }
-                              }
-                          } else if (isNewLivePhoto) {
-                              // 新版实况照片
-                              // 使用封面URL作为图片URL
-                              NSURL *imageURL = nil;
-                              if (videoModel.coverURL && videoModel.coverURL.originURLList.count > 0) {
-                                  imageURL = [NSURL URLWithString:videoModel.coverURL.originURLList.firstObject];
-                              }
-
-                              // 视频URL从视频模型获取
-                              NSURL *videoURL = nil;
-                              if (videoModel && videoModel.playURL && videoModel.playURL.originURLList.count > 0) {
-                                  videoURL = [NSURL URLWithString:videoModel.playURL.originURLList.firstObject];
-                              } else if (videoModel && videoModel.h264URL && videoModel.h264URL.originURLList.count > 0) {
-                                  videoURL = [NSURL URLWithString:videoModel.h264URL.originURLList.firstObject];
-                              }
-
-                              // 下载实况照片
-                              if (imageURL && videoURL) {
-                                  [DYYYManager downloadLivePhoto:imageURL
-                                                        videoURL:videoURL
-                                                      completion:^{
-                                                      }];
-                              }
+                          if (isImageContent || isNewLivePhoto) {
+                              DYYYSaveMediaFromLegacyMenu(awemeModel, NO);
                           } else {
                               id best = nil;
                               if (DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality")) {
@@ -15388,48 +15326,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
                     actionWithTitle:actionTitle
                             imgName:nil
                             handler:^{
-                              NSMutableArray *imageURLs = [NSMutableArray array];
-                              NSMutableArray *livePhotos = [NSMutableArray array];
-
-                              for (AWEImageAlbumImageModel *imageModel in awemeModel.albumImages) {
-                                  if (imageModel.urlList.count > 0) {
-                                      // 查找非.image后缀的URL
-                                      NSURL *downloadURL = nil;
-                                      for (NSString *urlString in imageModel.urlList) {
-                                          NSURL *url = [NSURL URLWithString:urlString];
-                                          NSString *pathExtension = [url.path.lowercaseString pathExtension];
-                                          if (![pathExtension isEqualToString:@"image"]) {
-                                              downloadURL = url;
-                                              break;
-                                          }
-                                      }
-
-                                      if (!downloadURL && imageModel.urlList.count > 0) {
-                                          downloadURL = [NSURL URLWithString:imageModel.urlList.firstObject];
-                                      }
-
-                                      // 检查是否是实况照片
-                                      if (imageModel.clipVideo != nil) {
-                                          NSURL *videoURL = [imageModel.clipVideo.playURL getDYYYSrcURLDownload];
-                                          [livePhotos addObject:@{@"imageURL" : downloadURL.absoluteString, @"videoURL" : videoURL.absoluteString}];
-                                      } else {
-                                          [imageURLs addObject:downloadURL.absoluteString];
-                                      }
-                                  }
-                              }
-
-                              // 分别处理普通图片和实况照片
-                              if (livePhotos.count > 0) {
-                                  [DYYYManager downloadAllLivePhotos:livePhotos];
-                              }
-
-                              if (imageURLs.count > 0) {
-                                  [DYYYManager downloadAllImages:imageURLs];
-                              }
-
-                              if (livePhotos.count == 0 && imageURLs.count == 0) {
-                                  [DYYYUtils showToast:@"没有找到合适格式的图片"];
-                              }
+                              DYYYSaveMediaFromLegacyMenu(awemeModel, YES);
                             }];
                 [actions addObject:downloadAllAction];
             }

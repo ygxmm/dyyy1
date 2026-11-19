@@ -12,7 +12,9 @@ for file in \
   "$FEATURES/DYYYLikeLivePhotoBuilder.h" \
   "$FEATURES/DYYYLikeLivePhotoBuilder.m" \
   "$FEATURES/DYYYLikeAnimatedImage.h" \
-  "$FEATURES/DYYYLikeAnimatedImage.m"; do
+  "$FEATURES/DYYYLikeAnimatedImage.m" \
+  "$ROOT/Sources/Media/DYYYAlbumImageDescription.h" \
+  "$ROOT/Sources/Media/DYYYAlbumImageDescription.m"; do
   if [[ ! -f "$file" ]]; then
     echo "FAIL missing required media test/helper file: $file" >&2
     exit 2
@@ -31,6 +33,7 @@ xcrun --sdk macosx clang \
   "$TESTS/DYYYLikeMediaTests.m" \
   "$FEATURES/DYYYLikeLivePhotoBuilder.m" \
   "$FEATURES/DYYYLikeAnimatedImage.m" \
+  "$ROOT/Sources/Media/DYYYAlbumImageDescription.m" \
   -framework Foundation \
   -framework AVFoundation \
   -framework CoreMedia \

@@ -6,6 +6,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// Completion runs once, asynchronously on the main queue. On success the caller owns
 /// both temporary files; on failure both URLs are nil and an error is returned.
 FOUNDATION_EXPORT void DYYYLikeBuildLivePhoto(NSURL *photoURL, NSURL *videoURL,
+    NSString * _Nullable albumDescription,
     void (^completion)(NSURL * _Nullable pairedPhotoURL, NSURL * _Nullable pairedVideoURL,
                        NSError * _Nullable error));
 

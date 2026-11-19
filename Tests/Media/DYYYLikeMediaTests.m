@@ -6,6 +6,7 @@
 #import <ImageIO/ImageIO.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import "../../Sources/Features/DYYYLikeLivePhotoBuilder.h"
+#import "../../Sources/Media/DYYYAlbumImageDescription.h"
 #import "../../Sources/Features/DYYYLikeAnimatedImage.h"
 #include <stdarg.h>
 #include <stdint.h>
@@ -82,6 +83,20 @@ static NSURL *RunConversion(NSURL *source, NSError **error) {
 
 static NSDictionary *PropertiesAt(CGImageSourceRef source, size_t index) {
     return source ? CFBridgingRelease(CGImageSourceCopyPropertiesAtIndex(source, index, NULL)) : nil;
+}
+
+static NSString *IPTCCaptionAtURL(NSURL *url) {
+    CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)url, NULL);
+    CGImageMetadataRef metadata = source ? CGImageSourceCopyMetadataAtIndex(source, 0, NULL) : NULL;
+    CGImageMetadataTagRef tag = metadata ? CGImageMetadataCopyTagMatchingImageProperty(metadata,
+        kCGImagePropertyIPTCDictionary, kCGImagePropertyIPTCCaptionAbstract) : NULL;
+    CFTypeRef value = tag ? CGImageMetadataTagCopyValue(tag) : NULL;
+    NSString *caption = value && CFGetTypeID(value) == CFStringGetTypeID() ? CFBridgingRelease(value) : nil;
+    if (value && CFGetTypeID(value) != CFStringGetTypeID()) CFRelease(value);
+    if (tag) CFRelease(tag);
+    if (metadata) CFRelease(metadata);
+    if (source) CFRelease(source);
+    return caption;
 }
 
 static double NumberInDictionary(NSDictionary *dictionary, NSArray<NSString *> *keys, BOOL *found) {
@@ -174,6 +189,8 @@ static void TestAnimatedFixture(NSURL *directory, NSString *name, NSString *base
     }
 }
 
+static NSString *const kTestLivePhotoDescription = @"旧菜单实况说明：春の花火 🎆";
+
 static NSData *MakeJPEGVariant(uint8_t variant) {
     const size_t w = 32, h = 24;
     uint8_t pixels[w * h * 4];
@@ -215,6 +232,17 @@ static NSURL *MakeMovieVariant(NSURL *directory, NSString *name, uint8_t variant
             AVVideoExpectedSourceFrameRateKey: @2, AVVideoMaxKeyFrameIntervalKey: @2}};
     AVAssetWriterInput *input = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo
         outputSettings:settings];
+    AVMutableMetadataItem *oldQuickTimeDescription = [AVMutableMetadataItem metadataItem];
+    oldQuickTimeDescription.keySpace = AVMetadataKeySpaceQuickTimeMetadata;
+    oldQuickTimeDescription.key = AVMetadataQuickTimeMetadataKeyDescription;
+    oldQuickTimeDescription.dataType = (__bridge NSString *)kCMMetadataBaseDataType_UTF8;
+    oldQuickTimeDescription.value = @"source QuickTime description";
+    AVMutableMetadataItem *oldCommonDescription = [AVMutableMetadataItem metadataItem];
+    oldCommonDescription.keySpace = AVMetadataKeySpaceCommon;
+    oldCommonDescription.key = AVMetadataCommonKeyDescription;
+    oldCommonDescription.dataType = (__bridge NSString *)kCMMetadataBaseDataType_UTF8;
+    oldCommonDescription.value = @"source common description";
+    writer.metadata = @[oldQuickTimeDescription, oldCommonDescription];
     input.expectsMediaDataInRealTime = NO;
     NSDictionary *attrs = @{(NSString *)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA),
         (NSString *)kCVPixelBufferWidthKey: @32, (NSString *)kCVPixelBufferHeightKey: @32,
@@ -342,6 +370,15 @@ static NSString *ContentIdentifier(AVAsset *asset) {
     return nil;
 }
 
+static NSArray<AVMetadataItem *> *QuickTimeDescriptionItems(AVAsset *asset) {
+    NSMutableArray<AVMetadataItem *> *matches = [NSMutableArray array];
+    for (AVMetadataItem *item in asset.metadata) {
+        if ([item.keySpace isEqualToString:AVMetadataKeySpaceQuickTimeMetadata] &&
+            [item.key isEqual:AVMetadataQuickTimeMetadataKeyDescription]) [matches addObject:item];
+    }
+    return matches;
+}
+
 static void TestTimedStillTrack(AVURLAsset *asset) {
     AVAssetTrack *track = nil;
     for (AVAssetTrack *candidate in [asset tracksWithMediaType:AVMediaTypeMetadata]) {
@@ -384,12 +421,23 @@ static void TestTimedStillTrack(AVURLAsset *asset) {
 static void TestLivePhoto(NSURL *directory) {
     NSData *jpeg = MakeJPEG();
     NSURL *photo = WriteData(jpeg, directory, @"synthetic-source.jpg");
+    NSURL *describedPhoto = photo ? DYYYCopyImageWithAlbumDescription(photo, kTestLivePhotoDescription) : nil;
+    Check(describedPhoto != nil, @"ImageIO writes test IPTC description without recompression");
     NSURL *movie = MakeMovie(directory);
-    if (!photo || !movie) return;
+    if (!photo || !describedPhoto || !movie) return;
     NSData *photoBefore = [NSData dataWithContentsOfURL:photo];
+    NSData *sourceScan = JPEGScan(photo), *injectedScan = JPEGScan(describedPhoto);
+    Check(sourceScan && [sourceScan isEqualToData:injectedScan],
+          @"ImageIO description copy preserves original JPEG compressed scan");
+    Check([IPTCCaptionAtURL(describedPhoto) isEqualToString:kTestLivePhotoDescription],
+          @"ImageIO-described builder input reads back non-ASCII IPTC caption");
     NSError *assetError = nil;
     AVURLAsset *sourceAsset = LoadedAsset(movie, @[@"tracks", @"metadata"], @"source movie");
     if (!sourceAsset) return;
+    NSArray *sourceDescriptions = QuickTimeDescriptionItems(sourceAsset);
+    Check(sourceDescriptions.count == 1 &&
+          [sourceDescriptions.firstObject.value isEqualToString:@"source QuickTime description"],
+          @"source fixture has one pre-existing QuickTime Description");
     AVAssetTrack *sourceVideo = [sourceAsset tracksWithMediaType:AVMediaTypeVideo].firstObject;
     Check(sourceVideo != nil, @"source movie has H.264 video track");
     if (!sourceVideo) return;
@@ -402,7 +450,7 @@ static void TestLivePhoto(NSURL *directory) {
     __block BOOL onMain = NO;
     __block NSURL *pairedPhoto = nil, *pairedMovie = nil;
     __block NSError *buildError = nil;
-    DYYYLikeBuildLivePhoto(photo, movie, ^(NSURL *p, NSURL *v, NSError *e) {
+    DYYYLikeBuildLivePhoto(describedPhoto, movie, kTestLivePhotoDescription, ^(NSURL *p, NSURL *v, NSError *e) {
         onMain = NSThread.isMainThread; pairedPhoto = p; pairedMovie = v; buildError = e; completed = YES;
     });
     BOOL timely = PumpUntil(^BOOL{ return completed; }, 90);
@@ -430,12 +478,23 @@ static void TestLivePhoto(NSURL *directory) {
            isEqual:pairedProps[(NSString *)kCGImagePropertyPixelHeight]], @"JPEG pixel dimensions are preserved");
     NSData *beforeScan = JPEGScan(photo), *afterScan = JPEGScan(pairedPhoto);
     Check(beforeScan && [beforeScan isEqualToData:afterScan], @"JPEG compressed scan bytes are unchanged (metadata-only edit)");
+    Check([IPTCCaptionAtURL(pairedPhoto) isEqualToString:kTestLivePhotoDescription],
+          @"paired JPEG preserves non-ASCII IPTC description");
     if (originalSource) CFRelease(originalSource); if (pairedSource) CFRelease(pairedSource);
 
     AVURLAsset *pairedAsset = LoadedAsset(pairedMovie, @[@"tracks", @"metadata"], @"paired movie");
     if (pairedAsset) {
         NSString *movID = ContentIdentifier(pairedAsset);
         Check(movID.length > 0, @"paired MOV has QuickTime content.identifier");
+        NSArray<AVMetadataItem *> *descriptions = QuickTimeDescriptionItems(pairedAsset);
+        Check(descriptions.count == 1 && [descriptions.firstObject.value isEqualToString:kTestLivePhotoDescription],
+              @"paired MOV replaces old tag with one UTF-8 QuickTime Description");
+        NSUInteger commonDescriptions = 0;
+        for (AVMetadataItem *item in pairedAsset.metadata) {
+            if ([item.keySpace isEqualToString:AVMetadataKeySpaceCommon] &&
+                [item.key isEqual:AVMetadataCommonKeyDescription]) commonDescriptions++;
+        }
+        Check(commonDescriptions == 0, @"paired MOV does not retain a duplicate common Description");
         Check(makerID.length > 0 && [makerID isEqualToString:movID], @"MakerApple 17 equals MOV content.identifier");
         TestTimedStillTrack(pairedAsset);
         AVAssetTrack *pairedVideo = [pairedAsset tracksWithMediaType:AVMediaTypeVideo].firstObject;
@@ -489,7 +548,7 @@ static void TestIndependentLivePhotos(NSURL *directory) {
     __block NSUInteger completed = 0;
     __block BOOL accepting = YES;
     for (NSUInteger page = 0; page < 3; page++) {
-        DYYYLikeBuildLivePhoto(photos[page], movies[page], ^(NSURL *p, NSURL *v, NSError *e) {
+        DYYYLikeBuildLivePhoto(photos[page], movies[page], nil, ^(NSURL *p, NSURL *v, NSError *e) {
             if (!accepting) {
                 if (p) [[NSFileManager defaultManager] removeItemAtURL:p error:NULL];
                 if (v) [[NSFileManager defaultManager] removeItemAtURL:v error:NULL];

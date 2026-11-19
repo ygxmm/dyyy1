@@ -65,6 +65,7 @@ DYYY_FILES = DYYY.xm \
 	Sources/UI/DYYYConfirmCloseView.m \
 	Sources/UI/DYYYToast.m \
 	Sources/Media/DYYYManager.m \
+	Sources/Media/DYYYAlbumImageDescription.m \
 	Sources/Core/DYYYUtils.m \
 	Sources/Features/DYYYLoginBypassManager.m \
 	Sources/Features/DYYYLoginRepairHooks.m \

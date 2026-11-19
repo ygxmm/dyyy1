@@ -1,6 +1,7 @@
 #import "DYYYLikeLongPressSave.h"
 #import "DYYYLikeLivePhotoBuilder.h"
 #import "DYYYLikeAnimatedImage.h"
+#import "DYYYAlbumImageDescription.h"
 #import "DYYYConstants.h"
 #import "DYYYManager.h"
 #import "DYYYUtils.h"
@@ -197,6 +198,7 @@ static void DYYYLikeSaveMediaFiles(NSURL *fileURL, NSURL *pairedVideoURL, void (
 
 @interface DYYYLikeGallerySaveJob : NSObject
 @property(nonatomic, copy) NSArray<NSDictionary *> *items;
+@property(nonatomic, copy) NSString *albumDescription;
 @property(nonatomic, strong) NSMutableSet<NSURL *> *temporaryURLs;
 @property(nonatomic, strong) NSURLSession *session;
 @property(nonatomic, strong) NSURLSessionDownloadTask *task;
@@ -384,8 +386,10 @@ static DYYYLikeGallerySaveJob *gDYYYLikeSaveActiveGallery;
                 unsigned long long height = [properties[(NSString *)kCGImagePropertyPixelHeight] unsignedLongLongValue];
                 unsigned long long pixels = height && width <= ULLONG_MAX / height ? width * height : 0;
                 if (output) CFRelease(output);
+                NSURL *described = pixels ? DYYYCopyImageWithAlbumDescription(prepared, self.albumDescription) : nil;
                 dispatch_async(dispatch_get_main_queue(), ^{
                     if (prepared) [self.temporaryURLs addObject:prepared];
+                    if (described) [self.temporaryURLs addObject:described];
                     if (self.cancelled) { [self finish]; return; }
                     self.minimumFrames = MAX(self.minimumFrames, MAX(inputFrames, converted ? 2 : 1));
                     BOOL live = [item[@"live"] boolValue];
@@ -395,8 +399,9 @@ static DYYYLikeGallerySaveJob *gDYYYLikeSaveActiveGallery;
                         return;
                     }
                     self.minimumPixels = MAX(self.minimumPixels, pixels);
-                    if (live && !self.videoFile) [self tryNextVideoForImage:prepared];
-                    else [self savePreparedImage:prepared];
+                    NSURL *ready = described ?: prepared;
+                    if (live && !self.videoFile) [self tryNextVideoForImage:ready];
+                    else [self savePreparedImage:ready];
                 });
             }
         });
@@ -426,7 +431,7 @@ static DYYYLikeGallerySaveJob *gDYYYLikeSaveActiveGallery;
         });
         return;
     }
-    DYYYLikeBuildLivePhoto(imageURL, self.videoFile, ^(NSURL *photo, NSURL *video, NSError *error) {
+    DYYYLikeBuildLivePhoto(imageURL, self.videoFile, self.albumDescription, ^(NSURL *photo, NSURL *video, NSError *error) {
         if (photo) [self.temporaryURLs addObject:photo];
         if (video) [self.temporaryURLs addObject:video];
         if (self.cancelled) { [self finish]; return; }
@@ -536,6 +541,58 @@ static BOOL DYYYLikeSaveItemAvailable(NSDictionary *item) {
     return [item[@"imageURLs"] count] > 0 && (![item[@"live"] boolValue] || [item[@"videoURLs"] count] > 0);
 }
 
+static NSArray<NSDictionary *> *DYYYLikeSaveGalleryItems(id model, NSArray *images) {
+    NSArray *originals = DYYYLikeSaveArray(DYYYLikeSaveObject(model, @"originalAlbumImages"));
+    BOOL singleLive = images.count == 1 && originals.count <= 1 && DYYYLikeSaveInteger(model, @"isLivePhoto");
+    id clip = singleLive && DYYYLikeSaveObject(model, @"animatedImageVideoInfo") ?
+        DYYYLikeSaveObject(model, @"video") : nil;
+    NSMutableArray<NSDictionary *> *items = [NSMutableArray arrayWithCapacity:images.count];
+    for (NSUInteger i = 0; i < images.count; i++) {
+        id image = images[i];
+        id original = DYYYLikeSaveMatchingOriginal(image, originals);
+        NSDictionary *item = DYYYLikeSaveImageItem(image, original, clip, i + 1);
+        if (singleLive && ![item[@"live"] boolValue]) item = DYYYLikeSaveItem(item[@"imageURLs"], @[], YES, i + 1);
+        [items addObject:item];
+    }
+    return [items copy];
+}
+
+static NSUInteger DYYYLikeSaveCurrentIndex(id model, NSUInteger count) {
+    NSInteger nativeIndex = DYYYLikeSaveInteger(model, @"currentImageIndex");
+    return nativeIndex > 0 && (NSUInteger)nativeIndex <= count ? (NSUInteger)nativeIndex - 1 : 0;
+}
+
+static void DYYYLikeStartGallerySave(NSArray<NSDictionary *> *items, NSString *description) {
+    if (!items.count) {
+        [DYYYUtils showToast:@"没有找到合适格式的图片"];
+        return;
+    }
+    DYYYLikeGallerySaveJob *job = [DYYYLikeGallerySaveJob new];
+    job.items = items;
+    job.albumDescription = description;
+    [job start];
+}
+
+void DYYYSaveMediaFromLegacyMenu(AWEAwemeModel *model, BOOL allPages) {
+    NSArray<NSDictionary *> *items = @[];
+    if (DYYYLikeSaveInteger(model, @"awemeType") == 68) {
+        items = DYYYLikeSaveGalleryItems(model, DYYYLikeSaveArray(DYYYLikeSaveObject(model, @"albumImages")));
+        if (!allPages && items.count) items = @[items[DYYYLikeSaveCurrentIndex(model, items.count)]];
+    } else if (!allPages && DYYYLikeSaveObject(model, @"animatedImageVideoInfo")) {
+        id video = DYYYLikeSaveObject(model, @"video");
+        NSMutableOrderedSet<NSURL *> *covers = [NSMutableOrderedSet orderedSet];
+        for (NSString *key in @[@"coverURL", @"originCover"]) {
+            id address = DYYYLikeSaveObject(video, key);
+            DYYYLikeSaveAddVideoURLs(covers, DYYYLikeSaveObject(address, @"originURLList"));
+            DYYYLikeSaveAddVideoURLs(covers, DYYYLikeSaveObject(address, @"URLList"));
+        }
+        items = @[DYYYLikeSaveItem(covers.array, DYYYLikeSaveClipURLs(video), YES, 1)];
+    }
+    NSString *description = [NSUserDefaults.standardUserDefaults boolForKey:DYYY_ALBUM_MEDIA_DESCRIPTION_KEY] ?
+        [DYYYManager albumDescriptionForAwemeModel:model] : nil;
+    DYYYLikeStartGallerySave(items, description);
+}
+
 static UIAction *DYYYLikeSaveImagesAction(NSString *title, NSString *identifier, NSArray<NSDictionary *> *items) {
     // UIAction may be copied. Resources live in this immutable block snapshot.
     NSArray<NSDictionary *> *snapshot = [items copy];
@@ -544,9 +601,7 @@ static UIAction *DYYYLikeSaveImagesAction(NSString *title, NSString *identifier,
     NSString *symbol = snapshot.count > 1 ? @"photo.stack" : ([snapshot.firstObject[@"live"] boolValue] ? @"livephoto" : @"photo");
     UIAction *action = [UIAction actionWithTitle:title image:DYYYLikeSaveSymbol(symbol)
         identifier:identifier handler:^(__kindof UIAction *selectedAction) {
-            DYYYLikeGallerySaveJob *job = [DYYYLikeGallerySaveJob new];
-            job.items = snapshot;
-            [job start];
+            DYYYLikeStartGallerySave(snapshot, nil);
         }];
     if (!available) action.attributes = UIMenuElementAttributesDisabled;
     return action;
@@ -558,21 +613,10 @@ static NSArray<UIMenuElement *> *DYYYLikeSaveMenuItems(UIButton *button) {
     NSArray *images = DYYYLikeSaveArray(DYYYLikeSaveObject(model, @"albumImages"));
     NSMutableArray<UIMenuElement *> *items = [NSMutableArray array];
     if (DYYYLikeSaveInteger(model, @"awemeType") == 68 && images.count) {
-        NSInteger nativeIndex = DYYYLikeSaveInteger(model, @"currentImageIndex");
-        NSUInteger index = nativeIndex > 0 && (NSUInteger)nativeIndex <= images.count ? (NSUInteger)nativeIndex - 1 : 0;
-        NSArray *originals = DYYYLikeSaveArray(DYYYLikeSaveObject(model, @"originalAlbumImages"));
-        NSMutableArray<NSDictionary *> *snapshots = [NSMutableArray arrayWithCapacity:images.count];
+        NSArray<NSDictionary *> *snapshots = DYYYLikeSaveGalleryItems(model, images);
+        NSUInteger index = DYYYLikeSaveCurrentIndex(model, snapshots.count);
         BOOL hasLive = NO, complete = YES;
-        for (NSUInteger i = 0; i < images.count; i++) {
-            id image = images[i];
-            id original = DYYYLikeSaveMatchingOriginal(image, originals);
-            // A post-level clip can only be used by a single-page native live post.
-            BOOL singleLive = images.count == 1 && originals.count <= 1 && DYYYLikeSaveInteger(model, @"isLivePhoto");
-            id clip = singleLive && DYYYLikeSaveObject(model, @"animatedImageVideoInfo") ?
-                DYYYLikeSaveObject(model, @"video") : nil;
-            NSDictionary *item = DYYYLikeSaveImageItem(image, original, clip, i + 1);
-            if (singleLive && ![item[@"live"] boolValue]) item = DYYYLikeSaveItem(item[@"imageURLs"], @[], YES, i + 1);
-            [snapshots addObject:item];
+        for (NSDictionary *item in snapshots) {
             hasLive |= [item[@"live"] boolValue];
             complete &= DYYYLikeSaveItemAvailable(item);
         }

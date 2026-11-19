@@ -34,6 +34,13 @@ static AVMutableMetadataItem *DYYYLPItem(NSString *key, NSString *type, id value
     return item;
 }
 
+static BOOL DYYYLPIsDescriptionItem(AVMetadataItem *item) {
+    if ([item.keySpace isEqualToString:AVMetadataKeySpaceQuickTimeMetadata] &&
+        [item.key isEqual:AVMetadataQuickTimeMetadataKeyDescription]) return YES;
+    return [item.keySpace isEqualToString:AVMetadataKeySpaceCommon] &&
+        [item.key isEqual:AVMetadataCommonKeyDescription];
+}
+
 static NSURL *DYYYLPTempURL(NSString *uuid, NSString *extension) {
     return [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES]
         URLByAppendingPathComponent:[NSString stringWithFormat:@"DYYYLikeLivePhoto-%@.%@", uuid, extension]
@@ -53,11 +60,12 @@ static BOOL DYYYLPWritePhoto(NSURL *sourceURL, NSString *identifier, NSURL * __s
     AVAssetWriter *_writer;
     NSURL *_photoOutput, *_movieOutput;
     NSString *_identifier;
+    NSString *_albumDescription;
     CMTime _duration;
     NSUInteger _pendingInputs;
     BOOL _done;
 }
-- (void)dyyy_startWithPhoto:(NSURL *)photo video:(NSURL *)video completion:(DYYYLPCompletion)completion;
+- (void)dyyy_startWithPhoto:(NSURL *)photo video:(NSURL *)video albumDescription:(NSString *)albumDescription completion:(DYYYLPCompletion)completion;
 @end
 
 @implementation DYYYLikeLivePhotoJob
@@ -172,11 +180,17 @@ static BOOL DYYYLPWritePhoto(NSURL *sourceURL, NSString *identifier, NSURL * __s
     if (!_writer) { [self dyyy_failMovie:@"无法创建临时 MOV。" cause:error]; return; }
     NSMutableArray<AVMetadataItem *> *metadata = [NSMutableArray array];
     for (AVMetadataItem *item in _asset.metadata) {
-        if (![item.identifier isEqualToString:AVMetadataIdentifierQuickTimeMetadataContentIdentifier]) {
+        BOOL replaceDescription = _albumDescription.length > 0 && DYYYLPIsDescriptionItem(item);
+        if (!replaceDescription &&
+            ![item.identifier isEqualToString:AVMetadataIdentifierQuickTimeMetadataContentIdentifier]) {
             [metadata addObject:item];
         }
     }
     [metadata addObject:DYYYLPItem(DYYYLPContentKey, (__bridge NSString *)kCMMetadataBaseDataType_UTF8, _identifier)];
+    if (_albumDescription.length > 0) {
+        [metadata addObject:DYYYLPItem(AVMetadataQuickTimeMetadataKeyDescription,
+            (__bridge NSString *)kCMMetadataBaseDataType_UTF8, _albumDescription)];
+    }
     _writer.metadata = metadata;
 
     NSMutableArray<AVAssetReaderTrackOutput *> *outputs = [NSMutableArray array];
@@ -259,9 +273,10 @@ static BOOL DYYYLPWritePhoto(NSURL *sourceURL, NSString *identifier, NSURL * __s
     for (NSUInteger i = 0; i < inputs.count; i++) [self dyyy_pumpOutput:outputs[i] into:inputs[i]];
 }
 
-- (void)dyyy_startWithPhoto:(NSURL *)photo video:(NSURL *)video completion:(DYYYLPCompletion)completion {
+- (void)dyyy_startWithPhoto:(NSURL *)photo video:(NSURL *)video albumDescription:(NSString *)albumDescription completion:(DYYYLPCompletion)completion {
     _queue = dispatch_queue_create("DYYYLikeLivePhotoBuilder", DISPATCH_QUEUE_SERIAL);
     _completion = [completion copy];
+    _albumDescription = [albumDescription copy];
     _deadline = dispatch_time(DISPATCH_TIME_NOW, 60 * NSEC_PER_SEC);
     dispatch_async(_queue, ^{
         self->_watchdog = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, self->_queue);
@@ -524,7 +539,7 @@ static BOOL DYYYLPWritePhoto(NSURL *sourceURL, NSString *identifier, NSURL * __s
     return NO;
 }
 
-void DYYYLikeBuildLivePhoto(NSURL *photoURL, NSURL *videoURL, DYYYLPCompletion completion) {
+void DYYYLikeBuildLivePhoto(NSURL *photoURL, NSURL *videoURL, NSString *albumDescription, DYYYLPCompletion completion) {
     if (!completion) return;
-    [[DYYYLikeLivePhotoJob new] dyyy_startWithPhoto:photoURL video:videoURL completion:completion];
+    [[DYYYLikeLivePhotoJob new] dyyy_startWithPhoto:photoURL video:videoURL albumDescription:albumDescription completion:completion];
 }
