@@ -3,6 +3,8 @@
 NS_ASSUME_NONNULL_BEGIN
 
 /// Pairs two local files without writing to Photos or changing either input.
+/// Copies a nonempty description at submission and replaces the MOV's Description tag;
+/// nil/empty preserves existing descriptions. The image must already carry its caption.
 /// Completion runs once, asynchronously on the main queue. On success the caller owns
 /// both temporary files; on failure both URLs are nil and an error is returned.
 FOUNDATION_EXPORT void DYYYLikeBuildLivePhoto(NSURL *photoURL, NSURL *videoURL,

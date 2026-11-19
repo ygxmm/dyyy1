@@ -65,7 +65,7 @@ static BOOL DYYYLPWritePhoto(NSURL *sourceURL, NSString *identifier, NSURL * __s
     NSUInteger _pendingInputs;
     BOOL _done;
 }
-- (void)dyyy_startWithPhoto:(NSURL *)photo video:(NSURL *)video albumDescription:(NSString *)albumDescription completion:(DYYYLPCompletion)completion;
+- (void)dyyy_startWithPhoto:(NSURL *)photo video:(NSURL *)video albumDescription:(NSString * _Nullable)albumDescription completion:(DYYYLPCompletion)completion;
 @end
 
 @implementation DYYYLikeLivePhotoJob

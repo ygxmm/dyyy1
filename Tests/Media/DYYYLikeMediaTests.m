@@ -434,9 +434,9 @@ static void TestLivePhoto(NSURL *directory) {
     NSError *assetError = nil;
     AVURLAsset *sourceAsset = LoadedAsset(movie, @[@"tracks", @"metadata"], @"source movie");
     if (!sourceAsset) return;
-    NSArray *sourceDescriptions = QuickTimeDescriptionItems(sourceAsset);
+    NSArray<AVMetadataItem *> *sourceDescriptions = QuickTimeDescriptionItems(sourceAsset);
     Check(sourceDescriptions.count == 1 &&
-          [sourceDescriptions.firstObject.value isEqualToString:@"source QuickTime description"],
+          [@"source QuickTime description" isEqual:sourceDescriptions.firstObject.value],
           @"source fixture has one pre-existing QuickTime Description");
     AVAssetTrack *sourceVideo = [sourceAsset tracksWithMediaType:AVMediaTypeVideo].firstObject;
     Check(sourceVideo != nil, @"source movie has H.264 video track");
@@ -487,7 +487,7 @@ static void TestLivePhoto(NSURL *directory) {
         NSString *movID = ContentIdentifier(pairedAsset);
         Check(movID.length > 0, @"paired MOV has QuickTime content.identifier");
         NSArray<AVMetadataItem *> *descriptions = QuickTimeDescriptionItems(pairedAsset);
-        Check(descriptions.count == 1 && [descriptions.firstObject.value isEqualToString:kTestLivePhotoDescription],
+        Check(descriptions.count == 1 && [kTestLivePhotoDescription isEqual:descriptions.firstObject.value],
               @"paired MOV replaces old tag with one UTF-8 QuickTime Description");
         NSUInteger commonDescriptions = 0;
         for (AVMetadataItem *item in pairedAsset.metadata) {
