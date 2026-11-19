@@ -4,6 +4,7 @@
 #import "DYYYConstants.h"
 #import "DYYYManager.h"
 #import "DYYYUtils.h"
+#import "DYYYToast.h"
 #import <ImageIO/ImageIO.h>
 #import <Photos/Photos.h>
 #import <objc/message.h>
@@ -16,10 +17,6 @@ static NSHashTable<UIButton *> *gDYYYLikeSaveButtons;
 static char kDYYYLikeSaveButtonStateKey;
 static char kDYYYLikeSaveMaterialStateKey;
 static const CGFloat kDYYYLikeSaveBackgroundOpacity = 0.2;
-
-@interface DYYYManager (DYYYLikeLongPressSaveProgress)
-- (void)finalizeDownloadWithFileURL:(NSURL *)fileURL success:(BOOL)success;
-@end
 
 static id DYYYLikeSaveObject(id object, NSString *name) {
     SEL selector = NSSelectorFromString(name);
@@ -178,142 +175,183 @@ static NSURL *DYYYLikeSavePrepareImage(NSURL *rawURL, BOOL *convertedAnimation, 
     return output;
 }
 
-static void DYYYLikeValidateLivePhoto(NSURL *photo, NSURL *video, void (^completion)(NSError *)) {
-    __block BOOL completed = NO;
-    __block PHLivePhotoRequestID requestID = PHLivePhotoRequestIDInvalid;
-    void (^finish)(NSError *) = ^(NSError *error) {
-        if (completed) return;
-        completed = YES;
-        completion(error);
-    };
-    requestID = [PHLivePhoto requestLivePhotoWithResourceFileURLs:@[photo, video]
-        placeholderImage:nil targetSize:CGSizeMake(256, 256)
-        contentMode:PHImageContentModeAspectFit resultHandler:^(PHLivePhoto *livePhoto, NSDictionary *info) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if ([info[PHLivePhotoInfoIsDegradedKey] boolValue]) return;
-                finish(livePhoto ? nil : (info[PHLivePhotoInfoErrorKey] ?:
-                    DYYYLikeSaveError(@"实况配对校验失败，未保存为静图")));
-            });
-        }];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 20 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-        if (completed) return;
-        [PHLivePhoto cancelLivePhotoRequestWithRequestID:requestID];
-        finish(DYYYLikeSaveError(@"实况配对校验超时"));
-    });
-}
-
-static void DYYYLikeSaveMediaFiles(NSURL *fileURL, NSURL *pairedVideoURL, void (^completion)(BOOL)) {
-    // The pair is one asset or a failure, never a misleading static-photo success.
+static void DYYYLikeSaveMediaFiles(NSURL *fileURL, NSURL *pairedVideoURL, void (^completion)(NSError *)) {
     if (pairedVideoURL && ![PHAssetCreationRequest supportsAssetResourceTypes:
             @[@(PHAssetResourceTypePhoto), @(PHAssetResourceTypePairedVideo)]]) {
-        [DYYYUtils showToast:@"当前系统不支持实况照片入库"];
-        completion(NO);
+        completion(DYYYLikeSaveError(@"当前系统不支持实况入库"));
         return;
     }
-    // Deliberately avoid DYYYManager's caption re-encode and UIImage retry.
-    [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelAddOnly handler:^(PHAuthorizationStatus status) {
-        if (status != PHAuthorizationStatusAuthorized && status != PHAuthorizationStatusLimited) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [DYYYUtils showToast:@"请允许添加照片到相册后重试"];
-                completion(NO);
-            });
-            return;
+    // One transaction per page. Never retry a rejected Live Photo as a still.
+    [PHPhotoLibrary.sharedPhotoLibrary performChanges:^{
+        PHAssetCreationRequest *request = [PHAssetCreationRequest creationRequestForAsset];
+        [request addResourceWithType:PHAssetResourceTypePhoto fileURL:fileURL options:nil];
+        if (pairedVideoURL) {
+            [request addResourceWithType:PHAssetResourceTypePairedVideo fileURL:pairedVideoURL options:nil];
         }
-        [PHPhotoLibrary.sharedPhotoLibrary performChanges:^{
-            PHAssetCreationRequest *request = [PHAssetCreationRequest creationRequestForAsset];
-            [request addResourceWithType:PHAssetResourceTypePhoto fileURL:fileURL options:nil];
-            if (pairedVideoURL) {
-                [request addResourceWithType:PHAssetResourceTypePairedVideo fileURL:pairedVideoURL options:nil];
-            }
-        } completionHandler:^(BOOL success, __unused NSError *error) {
-            dispatch_async(dispatch_get_main_queue(), ^{ completion(success); });
-        }];
+    } completionHandler:^(BOOL success, NSError *error) {
+        NSError *failure = success ? nil : DYYYLikeSaveError(error ?
+            [NSString stringWithFormat:@"相册入库失败（%@ %ld）", error.domain, (long)error.code] : @"相册入库失败");
+        dispatch_async(dispatch_get_main_queue(), ^{ completion(failure); });
     }];
 }
 
-@interface DYYYLikeImageSaveJob : NSObject
+@interface DYYYLikeGallerySaveJob : NSObject
 @property(nonatomic, copy) NSArray<NSDictionary *> *items;
 @property(nonatomic, strong) NSMutableSet<NSURL *> *temporaryURLs;
-@property(nonatomic, strong) NSMutableArray<NSURL *> *downloadURLs;
+@property(nonatomic, strong) NSURLSession *session;
+@property(nonatomic, strong) NSURLSessionDownloadTask *task;
+@property(nonatomic, strong) DYYYToast *progressView;
 @property(nonatomic, strong) NSURL *videoFile;
+@property(nonatomic, strong) NSMutableArray<NSNumber *> *failedPages;
 @property(nonatomic, copy) NSString *lastFailure;
+@property(nonatomic, copy) NSString *pageFailure;
 @property(nonatomic) NSUInteger candidate;
+@property(nonatomic) NSUInteger videoCandidate;
 @property(nonatomic) unsigned long long minimumPixels;
 @property(nonatomic) NSUInteger minimumFrames;
-@property(nonatomic) BOOL convertedAnimation;
+@property(nonatomic) BOOL cancelled;
 @property(nonatomic) NSUInteger index;
 @property(nonatomic) NSUInteger succeeded;
 @property(nonatomic) BOOL finished;
 - (void)start;
 - (void)saveNext;
 - (void)finish;
-- (void)cleanup:(BOOL)success;
-- (void)completeItem:(BOOL)success;
+- (void)completeItem:(NSString *)failure;
 - (void)tryNextImage;
+- (void)tryNextVideoForImage:(NSURL *)imageURL;
 - (void)savePreparedImage:(NSURL *)imageURL;
 @end
 
-static DYYYLikeImageSaveJob *gDYYYLikeSaveActiveImageJob;
+static DYYYLikeGallerySaveJob *gDYYYLikeSaveActiveGallery;
 
-@implementation DYYYLikeImageSaveJob
+@implementation DYYYLikeGallerySaveJob
 - (void)start {
-    if (gDYYYLikeSaveActiveImageJob && !gDYYYLikeSaveActiveImageJob.finished) {
-        [DYYYUtils showToast:@"正在保存图片，请完成或取消后再试"];
+    if (gDYYYLikeSaveActiveGallery) {
+        [DYYYUtils showToast:@"已有图集正在保存，可点进度条取消"];
         return;
     }
-    gDYYYLikeSaveActiveImageJob = self;
+    if (!self.items.count) return;
+    gDYYYLikeSaveActiveGallery = self;
     self.temporaryURLs = [NSMutableSet set];
-    self.downloadURLs = [NSMutableArray array];
-    if (!self.items.count) { [self finish]; return; }
-    [self saveNext];
+    self.failedPages = [NSMutableArray array];
+    [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelAddOnly handler:^(PHAuthorizationStatus status) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (status != PHAuthorizationStatusAuthorized && status != PHAuthorizationStatusLimited) {
+                self.lastFailure = @"请允许添加照片到相册后重试";
+                [self finish];
+                return;
+            }
+            NSURLSessionConfiguration *config = NSURLSessionConfiguration.ephemeralSessionConfiguration;
+            config.HTTPShouldSetCookies = NO;
+            config.URLCredentialStorage = nil;
+            config.timeoutIntervalForRequest = 20;
+            config.timeoutIntervalForResource = 60;
+            self.session = [NSURLSession sessionWithConfiguration:config];
+            self.progressView = [[DYYYToast alloc] initWithFrame:UIScreen.mainScreen.bounds];
+            __weak typeof(self) weakSelf = self;
+            self.progressView.cancelBlock = ^{
+                typeof(self) job = weakSelf;
+                job.cancelled = YES;
+                [job.task cancel];
+                // Outstanding processing owns its files until its next callback.
+            };
+            [self.progressView show];
+            [self saveNext];
+        });
+    }];
 }
-- (void)cleanup:(BOOL)success {
-    for (NSURL *url in self.downloadURLs) [[DYYYManager shared] finalizeDownloadWithFileURL:url success:success];
+- (void)cleanupPage {
     for (NSURL *url in self.temporaryURLs) DYYYLikeSaveRemoveTemporaryURL(url);
-    [self.downloadURLs removeAllObjects];
     [self.temporaryURLs removeAllObjects];
     self.videoFile = nil;
 }
-- (void)completeItem:(BOOL)success {
+- (void)completeItem:(NSString *)failure {
     if (self.finished) return;
-    if (success) self.succeeded++;
-    [self cleanup:success];
+    if (!failure) {
+        self.succeeded++;
+    } else if (!self.cancelled) {
+        NSUInteger page = [self.items[self.index][@"page"] unsignedIntegerValue];
+        [self.failedPages addObject:@(page ?: self.index + 1)];
+        self.lastFailure = [NSString stringWithFormat:@"第 %@ 页：%@", self.failedPages.lastObject, failure];
+    }
+    [self cleanupPage];
     self.index++;
-    [self saveNext];
+    [self.progressView setProgress:(float)self.index / self.items.count];
+    dispatch_async(dispatch_get_main_queue(), ^{ [self saveNext]; });
 }
 - (void)finish {
     if (self.finished) return;
     self.finished = YES;
-    [self cleanup:NO];
-    if (gDYYYLikeSaveActiveImageJob == self) gDYYYLikeSaveActiveImageJob = nil;
-    NSString *message = [NSString stringWithFormat:@"图片/实况保存完成：%lu/%lu 项", (unsigned long)self.succeeded, (unsigned long)self.items.count];
-    if (self.convertedAnimation) message = [message stringByAppendingString:@"（动态图按原尺寸GIF保存）"];
-    if (self.succeeded < self.items.count && self.lastFailure.length) message = [message stringByAppendingFormat:@"\n%@", self.lastFailure];
+    [self cleanupPage];
+    [self.session finishTasksAndInvalidate];
+    self.session = nil;
+    self.progressView.cancelBlock = nil;
+    if (!self.cancelled) {
+        self.progressView.allowSuccessAnimation = self.succeeded == self.items.count;
+        [self.progressView dismiss];
+    }
+    self.progressView = nil;
+    if (gDYYYLikeSaveActiveGallery == self) gDYYYLikeSaveActiveGallery = nil;
+    NSMutableString *message = [NSMutableString stringWithFormat:@"%@：已保存 %lu/%lu 页",
+        self.cancelled ? @"已取消" : @"保存完成", (unsigned long)self.succeeded, (unsigned long)self.items.count];
+    if (self.failedPages.count) {
+        NSMutableArray<NSString *> *pages = [NSMutableArray array];
+        for (NSNumber *page in self.failedPages) {
+            if (pages.count == 8) { [pages addObject:@"…"]; break; }
+            [pages addObject:page.stringValue];
+        }
+        [message appendFormat:@"\n失败页：%@", [pages componentsJoinedByString:@"、"]];
+    }
+    if (self.lastFailure.length) [message appendFormat:@"\n%@", self.lastFailure];
     [DYYYUtils showToast:message];
+}
+- (void)download:(NSURL *)source extension:(NSString *)extension completion:(void (^)(NSURL *, NSString *))completion {
+    if (self.cancelled) { [self finish]; return; }
+    // Never share a basename between pages, image and clip, or other download features.
+    NSURL *destination = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES] URLByAppendingPathComponent:
+        [NSString stringWithFormat:@"DYYYLikePage-%@.%@", NSUUID.UUID.UUIDString, extension]];
+    self.task = [self.session downloadTaskWithURL:source completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
+        NSString *failure = nil;
+        NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 0;
+        NSString *mime = response.MIMEType.lowercaseString;
+        if (error) failure = [NSString stringWithFormat:@"网络下载失败（%ld）", (long)error.code];
+        else if (status != 200) failure = [NSString stringWithFormat:@"资源下载失败（HTTP %ld）", (long)status];
+        else if (!location || [mime hasPrefix:@"text/"] || [mime containsString:@"json"] || [mime containsString:@"xml"]) failure = @"服务器未返回媒体文件";
+        else {
+            NSNumber *size = nil;
+            if (![location getResourceValue:&size forKey:NSURLFileSizeKey error:nil] || !size.unsignedLongLongValue)
+                failure = @"媒体文件为空";
+            else if (![NSFileManager.defaultManager moveItemAtURL:location toURL:destination error:nil])
+                failure = @"媒体临时文件写入失败";
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.task = nil;
+            if (!failure) [self.temporaryURLs addObject:destination];
+            if (self.cancelled) { [self finish]; return; }
+            completion(failure ? nil : destination, failure);
+        });
+    }];
+    [self.task resume];
 }
 - (void)saveNext {
     if (self.finished) return;
-    if (self.index >= self.items.count) { [self finish]; return; }
-    self.candidate = 0;
+    if (self.cancelled || self.index >= self.items.count) { [self finish]; return; }
+    [self.progressView setProgress:(float)self.index / self.items.count];
+    self.candidate = self.videoCandidate = 0;
     self.minimumPixels = 0;
     self.minimumFrames = 1;
+    self.pageFailure = nil;
     NSDictionary *item = self.items[self.index];
-    if ([item[@"live"] boolValue] && ![item[@"videoURL"] isKindOfClass:NSURL.class]) {
-        self.lastFailure = @"实况缺少配套视频，未降级为静图";
-        [self completeItem:NO];
+    if ([item[@"live"] boolValue] && ![item[@"videoURLs"] count]) {
+        [self completeItem:@"该页实况缺少配套视频，未保存为静图"];
         return;
     }
     [self tryNextImage];
 }
 - (void)tryNextImage {
-    if (self.finished) return;
-    // Drop failed image alternatives, but retain an already downloaded clip.
-    for (NSURL *url in [self.downloadURLs copy]) {
-        if ([url isEqual:self.videoFile]) continue;
-        [[DYYYManager shared] finalizeDownloadWithFileURL:url success:NO];
-        [self.downloadURLs removeObject:url];
-    }
-    for (NSURL *url in [self.temporaryURLs copy]) {
+    if (self.cancelled) { [self finish]; return; }
+    // Retry a cover without touching this page's already downloaded video.
+    for (NSURL *url in self.temporaryURLs.allObjects) {
         if ([url isEqual:self.videoFile]) continue;
         DYYYLikeSaveRemoveTemporaryURL(url);
         [self.temporaryURLs removeObject:url];
@@ -321,96 +359,93 @@ static DYYYLikeImageSaveJob *gDYYYLikeSaveActiveImageJob;
     NSDictionary *item = self.items[self.index];
     NSArray<NSURL *> *sources = item[@"imageURLs"];
     if (self.candidate >= sources.count) {
-        if (!self.lastFailure.length) self.lastFailure = @"没有可完整保存的无水印图片资源";
-        [self completeItem:NO];
+        [self completeItem:self.pageFailure ?: @"该页没有可完整保存的无水印图片"];
         return;
     }
-    NSURL *source = sources[self.candidate++];
-    [DYYYManager downloadMediaWithProgress:source mediaType:MediaTypeImage audio:nil progress:nil
-        completion:^(BOOL downloaded, NSURL *rawURL) {
-            if (!downloaded || !rawURL) {
-                self.lastFailure = @"下载已取消或失败";
-                [self finish]; // Never start further requests after cancellation.
-                return;
+    [self download:sources[self.candidate++] extension:@"image" completion:^(NSURL *rawURL, NSString *failure) {
+        if (!rawURL) {
+            self.pageFailure = failure;
+            [self tryNextImage];
+            return;
+        }
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+            @autoreleasepool {
+                NSError *error = nil;
+                BOOL converted = NO;
+                CGImageSourceRef input = CGImageSourceCreateWithURL((__bridge CFURLRef)rawURL, NULL);
+                CFStringRef inputType = input ? CGImageSourceGetType(input) : NULL;
+                size_t inputFrames = input && (!inputType || !CFEqual(inputType, CFSTR("public.tiff"))) ? CGImageSourceGetCount(input) : 0;
+                if (input) CFRelease(input);
+                NSURL *prepared = DYYYLikeSavePrepareImage(rawURL, &converted, &error);
+                CGImageSourceRef output = prepared ? CGImageSourceCreateWithURL((__bridge CFURLRef)prepared, NULL) : NULL;
+                NSUInteger frames = output ? CGImageSourceGetCount(output) : 0;
+                NSDictionary *properties = frames ? CFBridgingRelease(CGImageSourceCopyPropertiesAtIndex(output, CGImageSourceGetPrimaryImageIndex(output), NULL)) : nil;
+                unsigned long long width = [properties[(NSString *)kCGImagePropertyPixelWidth] unsignedLongLongValue];
+                unsigned long long height = [properties[(NSString *)kCGImagePropertyPixelHeight] unsignedLongLongValue];
+                unsigned long long pixels = height && width <= ULLONG_MAX / height ? width * height : 0;
+                if (output) CFRelease(output);
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (prepared) [self.temporaryURLs addObject:prepared];
+                    if (self.cancelled) { [self finish]; return; }
+                    self.minimumFrames = MAX(self.minimumFrames, MAX(inputFrames, converted ? 2 : 1));
+                    BOOL live = [item[@"live"] boolValue];
+                    if (!prepared || !pixels || pixels < self.minimumPixels || (!live && frames < self.minimumFrames)) {
+                        self.pageFailure = error.localizedDescription ?: @"该页图片不可解码、丢帧或画质降低";
+                        [self tryNextImage];
+                        return;
+                    }
+                    self.minimumPixels = MAX(self.minimumPixels, pixels);
+                    if (live && !self.videoFile) [self tryNextVideoForImage:prepared];
+                    else [self savePreparedImage:prepared];
+                });
             }
-            [self.downloadURLs addObject:rawURL];
-            [self.temporaryURLs addObject:rawURL];
-            dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-                @autoreleasepool {
-                    NSError *error = nil;
-                    BOOL converted = NO;
-                    CGImageSourceRef input = CGImageSourceCreateWithURL((__bridge CFURLRef)rawURL, NULL);
-                    CFStringRef inputType = input ? CGImageSourceGetType(input) : NULL;
-                    BOOL animated = input && CGImageSourceGetCount(input) > 1 &&
-                        (!inputType || !CFEqual(inputType, CFSTR("public.tiff")));
-                    if (input) CFRelease(input);
-                    NSURL *prepared = DYYYLikeSavePrepareImage(rawURL, &converted, &error);
-                    CGImageSourceRef output = prepared ? CGImageSourceCreateWithURL((__bridge CFURLRef)prepared, NULL) : NULL;
-                    NSDictionary *properties = output && CGImageSourceGetCount(output) ?
-                        CFBridgingRelease(CGImageSourceCopyPropertiesAtIndex(output, 0, NULL)) : nil;
-                    unsigned long long width = [properties[(NSString *)kCGImagePropertyPixelWidth] unsignedLongLongValue];
-                    unsigned long long height = [properties[(NSString *)kCGImagePropertyPixelHeight] unsignedLongLongValue];
-                    unsigned long long pixels = height && width <= ULLONG_MAX / height ? width * height : 0;
-                    NSUInteger frames = output ? CGImageSourceGetCount(output) : 0;
-                    if (output) CFRelease(output);
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        if (prepared) [self.temporaryURLs addObject:prepared];
-                        if (animated || converted) self.minimumFrames = MAX(self.minimumFrames, 2);
-                        BOOL live = [item[@"live"] boolValue];
-                        if (!prepared || !pixels || pixels < self.minimumPixels || (!live && frames < self.minimumFrames)) {
-                            self.lastFailure = error.localizedDescription ?: @"备用图片丢帧或降低了原始分辨率，未保存";
-                            [self tryNextImage];
-                            return;
-                        }
-                        self.minimumPixels = MAX(self.minimumPixels, pixels);
-                        self.convertedAnimation |= converted;
-                        if (!live || self.videoFile) { [self savePreparedImage:prepared]; return; }
-                        [DYYYManager downloadMediaWithProgress:item[@"videoURL"] mediaType:MediaTypeVideo audio:nil progress:nil
-                            completion:^(BOOL videoDownloaded, NSURL *videoFile) {
-                                if (!videoDownloaded || !videoFile) {
-                                    self.lastFailure = @"实况视频下载已取消或失败";
-                                    [self finish];
-                                    return;
-                                }
-                                self.videoFile = videoFile;
-                                [self.downloadURLs addObject:videoFile];
-                                [self.temporaryURLs addObject:videoFile];
-                                [self savePreparedImage:prepared];
-                            }];
-                    });
-                }
-            });
-        }];
+        });
+    }];
+}
+- (void)tryNextVideoForImage:(NSURL *)imageURL {
+    NSArray<NSURL *> *sources = self.items[self.index][@"videoURLs"];
+    if (self.videoCandidate >= sources.count) {
+        [self completeItem:self.pageFailure ?: @"该页实况视频不可用"];
+        return;
+    }
+    [self download:sources[self.videoCandidate++] extension:@"mp4" completion:^(NSURL *video, NSString *failure) {
+        if (!video) {
+            self.pageFailure = [@"实况配套视频：" stringByAppendingString:failure ?: @"下载失败"];
+            [self tryNextVideoForImage:imageURL];
+            return;
+        }
+        self.videoFile = video;
+        [self savePreparedImage:imageURL];
+    }];
 }
 - (void)savePreparedImage:(NSURL *)imageURL {
-    if (self.finished) return;
-    NSDictionary *item = self.items[self.index];
-    if (![item[@"live"] boolValue]) {
-        DYYYLikeSaveMediaFiles(imageURL, nil, ^(BOOL success) {
-            if (!success) self.lastFailure = @"图片入库失败，未重新压缩或丢帧重试";
-            [self completeItem:success];
+    if (self.cancelled) { [self finish]; return; }
+    if (![self.items[self.index][@"live"] boolValue]) {
+        DYYYLikeSaveMediaFiles(imageURL, nil, ^(NSError *error) {
+            [self completeItem:error.localizedDescription];
         });
         return;
     }
     DYYYLikeBuildLivePhoto(imageURL, self.videoFile, ^(NSURL *photo, NSURL *video, NSError *error) {
-        if (self.finished) { DYYYLikeSaveRemoveTemporaryURL(photo); DYYYLikeSaveRemoveTemporaryURL(video); return; }
+        if (photo) [self.temporaryURLs addObject:photo];
+        if (video) [self.temporaryURLs addObject:video];
+        if (self.cancelled) { [self finish]; return; }
         if (!photo || !video || error) {
-            self.lastFailure = error.localizedDescription ?: @"实况配对失败";
-            [self tryNextImage];
+            self.pageFailure = error.localizedDescription ?: @"该页实况配对失败，未退回静图";
+            if (DYYYLikeLivePhotoHasVideoError(error)) {
+                DYYYLikeSaveRemoveTemporaryURL(self.videoFile);
+                [self.temporaryURLs removeObject:self.videoFile];
+                self.videoFile = nil;
+                [self tryNextVideoForImage:imageURL];
+            } else {
+                [self tryNextImage];
+            }
             return;
         }
-        [self.temporaryURLs addObject:photo];
-        [self.temporaryURLs addObject:video];
-        DYYYLikeValidateLivePhoto(photo, video, ^(NSError *validationError) {
-            if (validationError) {
-                self.lastFailure = validationError.localizedDescription;
-                [self tryNextImage];
-                return;
-            }
-            DYYYLikeSaveMediaFiles(photo, video, ^(BOOL success) {
-                if (!success) self.lastFailure = @"实况照片入库失败，未降级为静图";
-                [self completeItem:success];
-            });
+        // The builder validates the pair; PhotoKit, not the preview renderer,
+        // is the final authority on whether both resources were committed.
+        DYYYLikeSaveMediaFiles(photo, video, ^(NSError *saveError) {
+            [self completeItem:saveError.localizedDescription];
         });
     });
 }
@@ -420,32 +455,96 @@ static UIImage *DYYYLikeSaveSymbol(NSString *name) {
     return [UIImage systemImageNamed:name] ?: [UIImage systemImageNamed:@"photo"];
 }
 
-static NSDictionary *DYYYLikeSaveItem(NSArray<NSURL *> *URLs, NSURL *videoURL, BOOL live) {
-    return @{@"imageURLs": [URLs copy] ?: @[], @"videoURL": videoURL ?: NSNull.null, @"live": @(live)};
+static NSString *DYYYLikeSaveImageKey(id image, NSString *selector) {
+    id key = DYYYLikeSaveObject(image, selector);
+    return [key isKindOfClass:NSString.class] && [key length] ? key : nil;
 }
 
-static NSDictionary *DYYYLikeSaveImageItem(id image, id original, id fallbackVideo) {
-    id clip = DYYYLikeSaveObject(original, @"clipVideo") ?: DYYYLikeSaveObject(image, @"clipVideo") ?: fallbackVideo;
-    BOOL live = clip != nil || DYYYLikeSaveInteger(image, @"livePhotoType") > 0 ||
+static id DYYYLikeSaveMatchingOriginal(id image, NSArray *originals) {
+    // The album list may be filtered or reordered. Equal counts/indexes do not
+    // prove that a cover and a clip belong to the same page.
+    NSString *imageID = DYYYLikeSaveImageKey(image, @"imgId");
+    NSString *uri = DYYYLikeSaveImageKey(image, @"uri");
+    id match = nil;
+    for (id candidate in originals) {
+        if (image == candidate) return image;
+        NSString *otherID = DYYYLikeSaveImageKey(candidate, @"imgId");
+        BOOL same = imageID && otherID ? [imageID isEqualToString:otherID] :
+            [uri isEqualToString:DYYYLikeSaveImageKey(candidate, @"uri")];
+        if (!same) continue;
+        if (match) return nil; // No cross-page fallback if the identifier is ambiguous.
+        match = candidate;
+    }
+    return match;
+}
+
+static void DYYYLikeSaveAddVideoURLs(NSMutableOrderedSet<NSURL *> *URLs, id value) {
+    if ([value isKindOfClass:NSArray.class]) {
+        for (id entry in value) {
+            NSURL *url = DYYYLikeSaveURL(entry);
+            if (url && URLs.count < 8) [URLs addObject:url];
+        }
+    } else {
+        NSURL *url = DYYYLikeSaveURL(value);
+        if (url && URLs.count < 8) [URLs addObject:url];
+    }
+}
+
+static NSArray<NSURL *> *DYYYLikeSaveClipURLs(id clip) {
+    NSMutableOrderedSet<NSURL *> *URLs = [NSMutableOrderedSet orderedSet];
+    long long bestRate = -1;
+    for (NSString *key in @[@"bitrateModels_origin", @"bitrateModels"]) {
+        for (id entry in DYYYLikeSaveArray(DYYYLikeSaveObject(clip, key))) {
+            id address = DYYYLikeSaveObject(entry, @"playAddr");
+            if (!DYYYLikeSaveURL(address)) continue;
+            id value = DYYYLikeSaveObject(entry, @"bitrate");
+            long long rate = [value respondsToSelector:@selector(longLongValue)] ? [value longLongValue] : 0;
+            if (rate < bestRate) continue;
+            if (rate > bestRate) { [URLs removeAllObjects]; bestRate = rate; }
+            DYYYLikeSaveAddVideoURLs(URLs, DYYYLikeSaveObject(address, @"originURLList"));
+            DYYYLikeSaveAddVideoURLs(URLs, DYYYLikeSaveObject(address, @"URLList"));
+            if (!URLs.count) DYYYLikeSaveAddVideoURLs(URLs, address);
+        }
+    }
+    if (!URLs.count) {
+        for (NSString *key in @[@"h264URL", @"playURL"]) {
+            id address = DYYYLikeSaveObject(clip, key);
+            DYYYLikeSaveAddVideoURLs(URLs, DYYYLikeSaveObject(address, @"originURLList"));
+            DYYYLikeSaveAddVideoURLs(URLs, DYYYLikeSaveObject(address, @"URLList"));
+            if (!URLs.count) DYYYLikeSaveAddVideoURLs(URLs, address);
+            if (URLs.count) break;
+        }
+    }
+    return [URLs.array copy];
+}
+
+static NSDictionary *DYYYLikeSaveItem(NSArray<NSURL *> *images, NSArray<NSURL *> *videos, BOOL live, NSUInteger page) {
+    return @{@"imageURLs": [images copy] ?: @[], @"videoURLs": [videos copy] ?: @[], @"live": @(live), @"page": @(page)};
+}
+
+static NSDictionary *DYYYLikeSaveImageItem(id image, id original, id fallbackVideo, NSUInteger page) {
+    id visibleClip = DYYYLikeSaveObject(image, @"clipVideo");
+    id originalClip = DYYYLikeSaveObject(original, @"clipVideo");
+    BOOL live = visibleClip || originalClip || fallbackVideo || DYYYLikeSaveInteger(image, @"livePhotoType") > 0 ||
         DYYYLikeSaveInteger(original, @"livePhotoType") > 0;
-    return DYYYLikeSaveItem(DYYYLikeSaveImageURLs(image, original), DYYYLikeSaveBestVideoURL(clip), live);
+    NSArray<NSURL *> *videos = DYYYLikeSaveClipURLs(visibleClip);
+    if (!videos.count) videos = DYYYLikeSaveClipURLs(originalClip ?: fallbackVideo);
+    return DYYYLikeSaveItem(DYYYLikeSaveImageURLs(image, original), videos, live, page);
 }
 
 static BOOL DYYYLikeSaveItemAvailable(NSDictionary *item) {
-    return [item[@"imageURLs"] count] > 0 &&
-        (![item[@"live"] boolValue] || [item[@"videoURL"] isKindOfClass:NSURL.class]);
+    return [item[@"imageURLs"] count] > 0 && (![item[@"live"] boolValue] || [item[@"videoURLs"] count] > 0);
 }
 
 static UIAction *DYYYLikeSaveImagesAction(NSString *title, NSString *identifier, NSArray<NSDictionary *> *items) {
     // UIAction may be copied. Resources live in this immutable block snapshot.
     NSArray<NSDictionary *> *snapshot = [items copy];
-    BOOL available = snapshot.count > 0;
-    for (NSDictionary *item in snapshot) available &= DYYYLikeSaveItemAvailable(item);
+    BOOL available = NO;
+    for (NSDictionary *item in snapshot) if (DYYYLikeSaveItemAvailable(item)) { available = YES; break; }
     NSString *symbol = snapshot.count > 1 ? @"photo.stack" : ([snapshot.firstObject[@"live"] boolValue] ? @"livephoto" : @"photo");
     UIAction *action = [UIAction actionWithTitle:title image:DYYYLikeSaveSymbol(symbol)
         identifier:identifier handler:^(__kindof UIAction *selectedAction) {
-            if (!available) { [DYYYUtils showToast:@"图片或实况配套视频资源缺失"]; return; }
-            DYYYLikeImageSaveJob *job = [DYYYLikeImageSaveJob new];
+            DYYYLikeGallerySaveJob *job = [DYYYLikeGallerySaveJob new];
             job.items = snapshot;
             [job start];
         }];
@@ -462,25 +561,30 @@ static NSArray<UIMenuElement *> *DYYYLikeSaveMenuItems(UIButton *button) {
         NSInteger nativeIndex = DYYYLikeSaveInteger(model, @"currentImageIndex");
         NSUInteger index = nativeIndex > 0 && (NSUInteger)nativeIndex <= images.count ? (NSUInteger)nativeIndex - 1 : 0;
         NSArray *originals = DYYYLikeSaveArray(DYYYLikeSaveObject(model, @"originalAlbumImages"));
-        BOOL aligned = originals.count == images.count;
-        id fallbackVideo = images.count == 1 && DYYYLikeSaveInteger(model, @"isLivePhoto") ?
-            DYYYLikeSaveObject(model, @"video") : nil;
-        NSDictionary *current = DYYYLikeSaveImageItem(images[index], aligned ? originals[index] : nil, fallbackVideo);
+        NSMutableArray<NSDictionary *> *snapshots = [NSMutableArray arrayWithCapacity:images.count];
+        BOOL hasLive = NO, complete = YES;
+        for (NSUInteger i = 0; i < images.count; i++) {
+            id image = images[i];
+            id original = DYYYLikeSaveMatchingOriginal(image, originals);
+            // A post-level clip can only be used by a single-page native live post.
+            BOOL singleLive = images.count == 1 && originals.count <= 1 && DYYYLikeSaveInteger(model, @"isLivePhoto");
+            id clip = singleLive && DYYYLikeSaveObject(model, @"animatedImageVideoInfo") ?
+                DYYYLikeSaveObject(model, @"video") : nil;
+            NSDictionary *item = DYYYLikeSaveImageItem(image, original, clip, i + 1);
+            if (singleLive && ![item[@"live"] boolValue]) item = DYYYLikeSaveItem(item[@"imageURLs"], @[], YES, i + 1);
+            [snapshots addObject:item];
+            hasLive |= [item[@"live"] boolValue];
+            complete &= DYYYLikeSaveItemAvailable(item);
+        }
+        NSDictionary *current = snapshots[index];
         NSString *currentTitle = [current[@"live"] boolValue] ? @"保存当前无水印实况" : @"保存当前无水印图";
+        if (images.count > 1) currentTitle = [currentTitle stringByAppendingFormat:@"（第 %lu 页）", (unsigned long)(index + 1)];
         [items addObject:DYYYLikeSaveImagesAction(currentTitle, @"DYYYLikeSave.CurrentImage", @[current])];
         if (images.count > 1) {
-            NSMutableArray<NSDictionary *> *snapshots = [NSMutableArray arrayWithCapacity:images.count];
-            BOOL hasLive = NO, complete = YES;
-            for (NSUInteger imageIndex = 0; imageIndex < images.count; imageIndex++) {
-                NSDictionary *item = DYYYLikeSaveImageItem(images[imageIndex], aligned ? originals[imageIndex] : nil, nil);
-                [snapshots addObject:item];
-                hasLive |= [item[@"live"] boolValue];
-                complete &= DYYYLikeSaveItemAvailable(item);
-            }
-            NSString *title = [NSString stringWithFormat:hasLive ? @"保存全部图片/实况（%lu项）" : @"保存全部无水印图（%lu张）", (unsigned long)images.count];
+            NSString *title = [NSString stringWithFormat:hasLive ? @"逐页保存全部图片/实况（%lu项）" : @"保存全部无水印图（%lu张）", (unsigned long)images.count];
             UIAction *all = DYYYLikeSaveImagesAction(title, @"DYYYLikeSave.AllImages", snapshots);
             if (!complete) {
-                if (@available(iOS 15.0, *)) all.subtitle = @"部分图片或实况配套视频资源缺失";
+                if (@available(iOS 15.0, *)) all.subtitle = @"缺少资源的页会跳过，不影响其他页";
             }
             [items addObject:all];
         }
@@ -499,7 +603,7 @@ static NSArray<UIMenuElement *> *DYYYLikeSaveMenuItems(UIButton *button) {
     }
     NSURL *cover = DYYYLikeSaveURL(DYYYLikeSaveObject(video, @"originCover")) ?:
                    DYYYLikeSaveURL(DYYYLikeSaveObject(video, @"coverURL"));
-    if (cover) [items addObject:DYYYLikeSaveImagesAction(@"保存封面原图", @"DYYYLikeSave.Cover", @[DYYYLikeSaveItem(@[cover], nil, NO)])];
+    if (cover) [items addObject:DYYYLikeSaveImagesAction(@"保存封面原图", @"DYYYLikeSave.Cover", @[DYYYLikeSaveItem(@[cover], @[], NO, 1)])];
     return items;
 }
 

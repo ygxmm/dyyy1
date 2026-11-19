@@ -21,6 +21,10 @@ static NSError *DYYYLPError(DYYYLPErrorCode code, NSString *message, NSError *un
     return [NSError errorWithDomain:DYYYLPErrorDomain code:code userInfo:info];
 }
 
+BOOL DYYYLikeLivePhotoHasVideoError(NSError *error) {
+    return [error.domain isEqualToString:DYYYLPErrorDomain] && error.code == DYYYLPMovie;
+}
+
 static AVMutableMetadataItem *DYYYLPItem(NSString *key, NSString *type, id value) {
     AVMutableMetadataItem *item = [AVMutableMetadataItem metadataItem];
     item.keySpace = AVMetadataKeySpaceQuickTimeMetadata;

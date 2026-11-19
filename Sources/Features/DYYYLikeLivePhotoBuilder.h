@@ -9,4 +9,7 @@ FOUNDATION_EXPORT void DYYYLikeBuildLivePhoto(NSURL *photoURL, NSURL *videoURL,
     void (^completion)(NSURL * _Nullable pairedPhotoURL, NSURL * _Nullable pairedVideoURL,
                        NSError * _Nullable error));
 
+/// Whether this failure came from the motion clip rather than the still image.
+FOUNDATION_EXPORT BOOL DYYYLikeLivePhotoHasVideoError(NSError * _Nullable error);
+
 NS_ASSUME_NONNULL_END

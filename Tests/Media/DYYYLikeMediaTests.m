@@ -174,13 +174,13 @@ static void TestAnimatedFixture(NSURL *directory, NSString *name, NSString *base
     }
 }
 
-static NSData *MakeJPEG(void) {
+static NSData *MakeJPEGVariant(uint8_t variant) {
     const size_t w = 32, h = 24;
     uint8_t pixels[w * h * 4];
     for (size_t y = 0; y < h; y++) for (size_t x = 0; x < w; x++) {
         size_t p = (y * w + x) * 4;
-        pixels[p] = (uint8_t)(x * 7); pixels[p + 1] = (uint8_t)(y * 9);
-        pixels[p + 2] = (uint8_t)((x + y) * 3); pixels[p + 3] = 255;
+        pixels[p] = (uint8_t)(x * 7 + variant * 71); pixels[p + 1] = (uint8_t)(y * 9);
+        pixels[p + 2] = (uint8_t)((x + y) * 3 + variant * 43); pixels[p + 3] = 255;
     }
     CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
     CGContextRef ctx = CGBitmapContextCreate(pixels, w, h, 8, w * 4, cs,
@@ -200,8 +200,10 @@ static NSData *MakeJPEG(void) {
     return data;
 }
 
-static NSURL *MakeMovie(NSURL *directory) {
-    NSURL *url = [directory URLByAppendingPathComponent:@"synthetic-source.mov"];
+static NSData *MakeJPEG(void) { return MakeJPEGVariant(0); }
+
+static NSURL *MakeMovieVariant(NSURL *directory, NSString *name, uint8_t variant) {
+    NSURL *url = [directory URLByAppendingPathComponent:name];
     NSError *error = nil;
     AVAssetWriter *writer = [[AVAssetWriter alloc] initWithURL:url
         fileType:AVFileTypeQuickTimeMovie error:&error];
@@ -240,8 +242,9 @@ static NSURL *MakeMovie(NSURL *directory) {
         size_t stride = CVPixelBufferGetBytesPerRow(pixel);
         for (int y = 0; y < 32; y++) for (int x = 0; x < 32; x++) {
             uint8_t *p = base + y * stride + x * 4;
-            p[0] = frame & 1 ? 220 : 20; p[1] = (uint8_t)(x * 6);
-            p[2] = frame & 1 ? 25 : 210; p[3] = 255;
+            p[0] = (uint8_t)((frame & 1 ? 220 : 20) + variant * 67);
+            p[1] = (uint8_t)(x * 6 + variant * 53);
+            p[2] = (uint8_t)((frame & 1 ? 25 : 210) + variant * 29); p[3] = 255;
         }
         CVPixelBufferUnlockBaseAddress(pixel, 0);
         BOOL ok = [adaptor appendPixelBuffer:pixel withPresentationTime:CMTimeMake(frame, 2)];
@@ -257,6 +260,10 @@ static NSURL *MakeMovie(NSURL *directory) {
     Check(complete, @"generate two-second 32x32 H.264 movie%@",
           writer.error ? [NSString stringWithFormat:@" (%@)", writer.error] : @"");
     return complete ? url : nil;
+}
+
+static NSURL *MakeMovie(NSURL *directory) {
+    return MakeMovieVariant(directory, @"synthetic-source.mov", 0);
 }
 
 static NSArray<NSString *> *SampleHashes(AVURLAsset *asset, AVAssetTrack *track, NSError **error) {
@@ -454,6 +461,99 @@ static void TestLivePhoto(NSURL *directory) {
     [[NSFileManager defaultManager] removeItemAtURL:pairedMovie error:NULL];
 }
 
+// Submit all pages before pumping; the middle failure must not poison either pair.
+static void TestIndependentLivePhotos(NSURL *directory) {
+    NSData *jpegA = MakeJPEGVariant(1), *jpegB = MakeJPEGVariant(2);
+    Check(jpegA.length > 0 && jpegB.length > 0 && ![jpegA isEqualToData:jpegB],
+          @"album fixtures have distinct nonempty JPEG covers");
+    NSURL *photoA = WriteData(jpegA, directory, @"album-page-0.jpg");
+    NSURL *photoB = WriteData(jpegB, directory, @"album-page-2.jpg");
+    NSURL *movieA = MakeMovieVariant(directory, @"album-page-0.mov", 1);
+    NSURL *movieB = MakeMovieVariant(directory, @"album-page-2.mov", 2);
+    if (!photoA || !photoB || !movieA || !movieB) return;
+    NSArray *photos = @[photoA, [directory URLByAppendingPathComponent:@"album-missing-1.jpg"], photoB];
+    NSArray *movies = @[movieA, [directory URLByAppendingPathComponent:@"album-missing-1.mov"], movieB];
+    NSMutableArray *sourceHashes = [NSMutableArray array];
+    for (NSNumber *index in @[@0, @2]) {
+        NSUInteger page = index.unsignedIntegerValue;
+        AVURLAsset *asset = LoadedAsset(movies[page], @[@"tracks"], @"album source");
+        AVAssetTrack *track = [asset tracksWithMediaType:AVMediaTypeVideo].firstObject;
+        NSError *error = nil;
+        NSArray *hashes = track ? SampleHashes(asset, track, &error) : nil;
+        Check(hashes.count > 0 && !error, @"album page %lu source packets are nonempty", (unsigned long)page);
+        [sourceHashes addObject:hashes ?: @[]];
+    }
+    Check([sourceHashes[0] count] > 0 && [sourceHashes[1] count] > 0 &&
+          ![sourceHashes[0] isEqualToArray:sourceHashes[1]], @"album source H.264 packet hashes really differ");
+    NSMutableArray<NSDictionary *> *results = [NSMutableArray arrayWithArray:@[@{}, @{}, @{}]];
+    __block NSUInteger completed = 0;
+    __block BOOL accepting = YES;
+    for (NSUInteger page = 0; page < 3; page++) {
+        DYYYLikeBuildLivePhoto(photos[page], movies[page], ^(NSURL *p, NSURL *v, NSError *e) {
+            if (!accepting) {
+                if (p) [[NSFileManager defaultManager] removeItemAtURL:p error:NULL];
+                if (v) [[NSFileManager defaultManager] removeItemAtURL:v error:NULL];
+                return;
+            }
+            NSMutableDictionary *result = [@{@"calls": @([results[page][@"calls"] unsignedIntegerValue] + 1),
+                @"main": @(NSThread.isMainThread)} mutableCopy];
+            if (p) result[@"photo"] = p;
+            if (v) result[@"movie"] = v;
+            if (e) result[@"error"] = e;
+            results[page] = result; completed++;
+        });
+    }
+    BOOL timely = PumpUntil(^BOOL{ return completed >= 3; }, 90);
+    accepting = NO;
+    Check(timely, @"all three album page callbacks complete within 90 seconds");
+    for (NSUInteger page = 0; page < 3; page++) {
+        Check([results[page][@"calls"] unsignedIntegerValue] == 1 && [results[page][@"main"] boolValue],
+              @"album page %lu completes once on main", (unsigned long)page);
+    }
+    Check(!results[1][@"photo"] && !results[1][@"movie"] &&
+          [results[1][@"error"] isKindOfClass:NSError.class], @"missing album page returns nil outputs plus error");
+    NSMutableArray *identifiers = [NSMutableArray array], *outputHashes = [NSMutableArray array];
+    for (NSUInteger pair = 0; pair < 2; pair++) {
+        NSUInteger page = pair * 2;
+        NSURL *photo = results[page][@"photo"], *movie = results[page][@"movie"];
+        Check(photo && movie && !results[page][@"error"], @"album page %lu still succeeds", (unsigned long)page);
+        NSString *makerID = nil;
+        NSArray *hashes = nil;
+        if (photo && movie) {
+            CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)photo, NULL);
+            CGImageRef image = source ? CGImageSourceCreateImageAtIndex(source, 0, NULL) : NULL;
+            Check(image != NULL, @"album page %lu JPEG remains decodable after all callbacks", (unsigned long)page);
+            makerID = PropertiesAt(source, 0)[(NSString *)kCGImagePropertyMakerAppleDictionary][@"17"];
+            NSData *scan = JPEGScan(photos[page]);
+            Check(scan && [scan isEqualToData:JPEGScan(photo)], @"album page %lu retains its own JPEG scan", (unsigned long)page);
+            if (image) CGImageRelease(image);
+            if (source) CFRelease(source);
+            AVURLAsset *asset = LoadedAsset(movie, @[@"tracks", @"metadata"], @"album paired movie");
+            NSString *movID = ContentIdentifier(asset);
+            Check(makerID.length > 0 && movID.length > 0 && [makerID isEqualToString:movID],
+                  @"album page %lu MakerApple 17 matches its own MOV ID", (unsigned long)page);
+            AVAssetTrack *track = [asset tracksWithMediaType:AVMediaTypeVideo].firstObject;
+            NSError *error = nil;
+            hashes = track ? SampleHashes(asset, track, &error) : nil;
+            Check(hashes.count > 0 && !error && [hashes isEqualToArray:sourceHashes[pair]],
+                  @"album page %lu nonempty packet hashes match only its own source", (unsigned long)page);
+            AVAssetImageGenerator *generator = asset ? [AVAssetImageGenerator assetImageGeneratorWithAsset:asset] : nil;
+            CGImageRef frame = [generator copyCGImageAtTime:kCMTimeZero actualTime:NULL error:NULL];
+            Check(frame != NULL, @"album page %lu MOV remains decodable after all callbacks", (unsigned long)page);
+            if (frame) CGImageRelease(frame);
+        }
+        [identifiers addObject:makerID ?: @""]; [outputHashes addObject:hashes ?: @[]];
+    }
+    Check([identifiers[0] length] > 0 && [identifiers[1] length] > 0 &&
+          ![identifiers[0] isEqualToString:identifiers[1]], @"successful album pages have independent pairing IDs");
+    Check([outputHashes[0] count] > 0 && [outputHashes[1] count] > 0 &&
+          ![outputHashes[0] isEqualToArray:outputHashes[1]], @"successful album outputs retain distinct H.264 packets");
+    for (NSDictionary *result in results) for (NSString *key in @[@"photo", @"movie"]) {
+        NSURL *url = result[key];
+        if (url) [[NSFileManager defaultManager] removeItemAtURL:url error:NULL];
+    }
+}
+
 int main(void) {
     @autoreleasepool {
         NSURL *directory = MakeTempDirectory();
@@ -470,6 +570,7 @@ int main(void) {
         Check(staticGIF == nil && staticError != nil, @"static JPEG is rejected instead of masquerading as an animation");
         if (staticGIF) [[NSFileManager defaultManager] removeItemAtURL:staticGIF error:NULL];
         TestLivePhoto(directory);
+        TestIndependentLivePhotos(directory);
         fprintf(stdout, "\nMedia tests: %d PASS, %d FAIL\n", gPasses, gFailures);
         [[NSFileManager defaultManager] removeItemAtURL:directory error:NULL];
         return gFailures ? 1 : 0;
