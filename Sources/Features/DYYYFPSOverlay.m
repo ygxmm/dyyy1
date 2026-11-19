@@ -111,7 +111,7 @@ static void DYYYFPSRefreshBadge(void) {
         gDYYYFPSBadge.textAlignment = NSTextAlignmentCenter;
         gDYYYFPSBadge.font = [UIFont monospacedDigitSystemFontOfSize:10 weight:UIFontWeightSemibold];
         gDYYYFPSBadge.textColor = UIColor.whiteColor;
-        gDYYYFPSBadge.backgroundColor = [UIColor.blackColor colorWithAlphaComponent:0.38];
+        gDYYYFPSBadge.backgroundColor = UIColor.clearColor;
         gDYYYFPSBadge.layer.cornerRadius = 5;
         gDYYYFPSBadge.clipsToBounds = YES;
         gDYYYFPSBadge.accessibilityIdentifier = @"dyyy_fps_topbar_badge";
