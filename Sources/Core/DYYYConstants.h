@@ -33,6 +33,9 @@
 // 推荐右侧显示界面回调频率；与高刷开关独立。
 #define DYYY_SHOW_FPS_OVERLAY_KEY @"DYYYShowFPSOverlay"
 
+// 长按点赞弹出原画质视频 / 无水印图片保存菜单；默认关闭。
+#define DYYY_LIKE_LONG_PRESS_SAVE_KEY @"DYYYEnableLikeLongPressSave"
+
 // 保存媒体到相册时是否写入作者、作品链接、文案和发布时间
 #define DYYY_ALBUM_MEDIA_DESCRIPTION_KEY @"DYYYAlbumMediaDescription"
 

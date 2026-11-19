@@ -24,6 +24,7 @@
 #import "DYYYFloatClearButton.h"
 #import "DYYYFloatSpeedButton.h"
 #import "DYYYNativeAutoPlay.h"
+#import "DYYYLikeLongPressSave.h"
 #import "DYYYSettingsHelper.h"
 #import "DYYYUtils.h"
 
@@ -421,7 +422,8 @@ static UIImage *DYYYExactInteractionCountsIcon(CGSize requestedSize) {
 @end
 
 static BOOL DYYYIsGeneratedSettingIconIdentifier(NSString *identifier) {
-    return [identifier isEqualToString:kDYYYFeedNowPlayingSettingIdentifier] ||
+    return [identifier isEqualToString:DYYY_LIKE_LONG_PRESS_SAVE_KEY] ||
+           [identifier isEqualToString:kDYYYFeedNowPlayingSettingIdentifier] ||
            [identifier isEqualToString:kDYYYEnableHighFPSSettingIdentifier] ||
            [identifier isEqualToString:kDYYYShowFPSOverlaySettingIdentifier] ||
            [identifier isEqualToString:kDYYYCommentPausePlaybackSettingIdentifier] ||
@@ -432,6 +434,9 @@ static BOOL DYYYIsGeneratedSettingIconIdentifier(NSString *identifier) {
 }
 
 static UIImage *DYYYGeneratedSettingIconForIdentifier(NSString *identifier, CGSize targetSize) {
+    if ([identifier isEqualToString:DYYY_LIKE_LONG_PRESS_SAVE_KEY]) {
+        return DYYYLikeLongPressSaveSettingsIcon(targetSize);
+    }
     if ([identifier isEqualToString:kDYYYFeedNowPlayingSettingIdentifier]) {
         return DYYYFeedNowPlayingIcon(targetSize);
     }
@@ -2950,7 +2955,13 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
             @"title" : @"启用首页全屏",
             @"detail" : @"",
             @"cellType" : @6,
-            @"imageName" : @"ic_fullscreen_outlined_16"}
+            @"imageName" : @"ic_fullscreen_outlined_16"},
+          @{ @"identifier" : DYYY_LIKE_LONG_PRESS_SAVE_KEY,
+             @"title" : @"长按点赞保存",
+             @"subTitle" : @"长按保存视频、封面与无水印图集；短按点赞不变",
+             @"detail" : @"",
+             @"cellType" : @6,
+             @"imageName" : @"ic_likesave_dyyy_outlined_20" }
       ];
 
       for (NSDictionary *dict in homeLayoutSettings) {

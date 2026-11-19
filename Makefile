@@ -80,6 +80,7 @@ DYYY_FILES = DYYY.xm \
 	Sources/Features/DYYYSearchKeyboardVoiceHooks.m \
 	Sources/Features/DYYYHighFPSHooks.m \
 	Sources/Features/DYYYNativeAutoPlay.m \
+	Sources/Features/DYYYLikeLongPressSave.m \
 	Sources/Features/DYYYFPSOverlay.m \
 	Sources/Features/DYYYFeedTagHooks.m \
 	Sources/Features/DYYYExactInteractionCountHooks.m \

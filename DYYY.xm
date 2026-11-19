@@ -40,6 +40,7 @@
 #import "AwemeHeaders.h"
 #import "DYYYFullscreenCoordinator.h"
 #import "DYYYNativeAutoPlay.h"
+#import "DYYYLikeLongPressSave.h"
 
 
 #import "DYYYConstants.h"
@@ -4155,6 +4156,28 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
 
 %hook AWEFeedVideoButton
 
+- (UITargetedPreview *)contextMenuInteraction:(UIContextMenuInteraction *)interaction previewForHighlightingMenuWithConfiguration:(UIContextMenuConfiguration *)configuration {
+    UITargetedPreview *preview = DYYYLikeLongPressSavePreview(self);
+    if (preview) return preview;
+    return %orig;
+}
+
+- (UITargetedPreview *)contextMenuInteraction:(UIContextMenuInteraction *)interaction previewForDismissingMenuWithConfiguration:(UIContextMenuConfiguration *)configuration {
+    UITargetedPreview *preview = DYYYLikeLongPressSavePreview(self);
+    if (preview) return preview;
+    return %orig;
+}
+
+- (void)contextMenuInteraction:(UIContextMenuInteraction *)interaction willDisplayMenuForConfiguration:(UIContextMenuConfiguration *)configuration animator:(id<UIContextMenuInteractionAnimating>)animator {
+    %orig;
+    DYYYLikeLongPressSaveWillDisplay(self, animator);
+}
+
+- (void)contextMenuInteraction:(UIContextMenuInteraction *)interaction willEndForConfiguration:(UIContextMenuConfiguration *)configuration animator:(id<UIContextMenuInteractionAnimating>)animator {
+    %orig;
+    DYYYLikeLongPressSaveWillEnd(self, animator);
+}
+
 - (id)touchUpInsideBlock {
     id r = %orig;
 
@@ -4219,6 +4242,7 @@ static void DYYYApplyFeedVideoCollectButtonSettingsWithRetry(AWEFeedVideoButton 
 - (void)layoutSubviews {
     %orig;
 
+    DYYYLikeLongPressSaveUpdateButton(self);
     NSString *accessibilityLabel = self.accessibilityLabel;
     BOOL isCollectButton = DYYYIsFeedVideoCollectButton(self);
 

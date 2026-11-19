@@ -8,6 +8,7 @@
 #import "DYYYHideShareContentViewHooks.h"
 #import "DYYYHideTemplateCollectionHooks.h"
 #import "DYYYHighFPSHooks.h"
+#import "DYYYLikeLongPressSave.h"
 #import "DYYYExactInteractionCountHooks.h"
 #import "DYYYLoginRepairHooks.h"
 #import "DYYYMiniProgramRewardBypass.h"
@@ -43,6 +44,7 @@ static const DYYYHookDescriptor kDYYYHookDescriptors[] = {
     { "performance.high-fps", DYYYHookPhaseAfterAgreement, DYYYStartHighFPSHooks },
     { "performance.fps-overlay", DYYYHookPhaseAfterAgreement, DYYYStartFPSOverlay },
     { "interaction-counts.exact", DYYYHookPhaseAfterAgreement, DYYYStartExactInteractionCountHooks },
+    { "like.long-press-save", DYYYHookPhaseAfterAgreement, DYYYStartLikeLongPressSave },
 };
 
 static atomic_bool gDYYYLoaderSafePhaseStarted = false;
