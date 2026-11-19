@@ -58,6 +58,7 @@ static BOOL DYYYLPWritePhoto(NSURL *sourceURL, NSString *identifier, NSURL * __s
     AVURLAsset *_asset;
     AVAssetReader *_reader;
     AVAssetWriter *_writer;
+    AVAssetImageGenerator *_motionVerifier;
     NSURL *_photoOutput, *_movieOutput;
     NSString *_identifier;
     NSString *_albumDescription;
@@ -75,6 +76,8 @@ static BOOL DYYYLPWritePhoto(NSURL *sourceURL, NSString *identifier, NSURL * __s
     _done = YES;
     dispatch_source_cancel(_watchdog);
     _watchdog = nil;
+    [_motionVerifier cancelAllCGImageGeneration];
+    _motionVerifier = nil;
     if (error) {
         [_asset cancelLoading];
         if (_reader.status == AVAssetReaderStatusReading) [_reader cancelReading];
@@ -112,6 +115,32 @@ static BOOL DYYYLPWritePhoto(NSURL *sourceURL, NSString *identifier, NSURL * __s
     return !_done;
 }
 
+- (void)dyyy_verifyMotion {
+    // A container can remux and even produce a PHLivePhoto preview while its
+    // codec cannot produce a frame. Verify the actual MOV before committing it.
+    AVURLAsset *movie = [AVURLAsset URLAssetWithURL:_movieOutput options:nil];
+    _motionVerifier = [[AVAssetImageGenerator alloc] initWithAsset:movie];
+    _motionVerifier.maximumSize = CGSizeMake(160, 160);
+    CMTime position = CMTimeMultiplyByFloat64(_duration, 0.25);
+    __weak typeof(self) weakSelf = self;
+    dispatch_queue_t queue = _queue;
+    [_motionVerifier generateCGImagesAsynchronouslyForTimes:@[[NSValue valueWithCMTime:position]]
+        completionHandler:^(__unused CMTime requestedTime, CGImageRef image, __unused CMTime actualTime,
+            AVAssetImageGeneratorResult result, NSError *error) {
+            BOOL playable = result == AVAssetImageGeneratorSucceeded && image != NULL;
+            dispatch_async(queue, ^{
+                typeof(self) job = weakSelf;
+                if (!job || job->_done) return;
+                if (playable) [job dyyy_finish:nil];
+                else [job dyyy_failMovie:@"系统无法解码该档实况视频。" cause:error];
+            });
+        }];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 12 * NSEC_PER_SEC), queue, ^{
+        typeof(self) job = weakSelf;
+        if (job && !job->_done) [job dyyy_failMovie:@"实况视频解码检查超时。" cause:nil];
+    });
+}
+
 - (void)dyyy_finishInput:(AVAssetWriterInput *)input {
     [input markAsFinished];
     if (--_pendingInputs) return;
@@ -129,7 +158,7 @@ static BOOL DYYYLPWritePhoto(NSURL *sourceURL, NSString *identifier, NSURL * __s
             if (job->_writer.status != AVAssetWriterStatusCompleted) {
                 [job dyyy_failMovie:@"MOV 未能完成写入。" cause:job->_writer.error];
             } else {
-                [job dyyy_finish:nil];
+                [job dyyy_verifyMotion];
             }
         });
     }];
