@@ -10,6 +10,7 @@
 #import "../../Sources/Features/DYYYLikeAnimatedImage.h"
 #include <stdarg.h>
 #include <stdint.h>
+#include <string.h>
 #include <math.h>
 #include <CommonCrypto/CommonDigest.h>
 
@@ -194,7 +195,7 @@ static void TestAnimatedFixture(NSURL *directory, NSString *name, NSString *base
 
 static NSString *const kTestLivePhotoDescription = @"旧菜单实况说明：春の花火 🎆";
 
-static NSData *MakeJPEGVariant(uint8_t variant) {
+static NSData *MakeStillVariant(uint8_t variant, CFStringRef type) {
     const size_t w = 32, h = 24;
     uint8_t pixels[w * h * 4];
     for (size_t y = 0; y < h; y++) for (size_t x = 0; x < w; x++) {
@@ -208,11 +209,12 @@ static NSData *MakeJPEGVariant(uint8_t variant) {
     CGImageRef image = ctx ? CGBitmapContextCreateImage(ctx) : NULL;
     NSMutableData *data = [NSMutableData data];
     CGImageDestinationRef dest = CGImageDestinationCreateWithData((__bridge CFMutableDataRef)data,
-        CFSTR("public.jpeg"), 1, NULL);
+        type, 1, NULL);
     if (dest && image) {
-        CGImageDestinationAddImage(dest, image, (__bridge CFDictionaryRef)@{
+        NSDictionary *properties = CFEqual(type, CFSTR("public.jpeg")) ? @{
             (NSString *)kCGImageDestinationLossyCompressionQuality: @0.83,
-            (NSString *)kCGImagePropertyOrientation: @6});
+            (NSString *)kCGImagePropertyOrientation: @6} : nil;
+        CGImageDestinationAddImage(dest, image, (__bridge CFDictionaryRef)properties);
         CGImageDestinationFinalize(dest);
     }
     if (dest) CFRelease(dest); if (image) CGImageRelease(image);
@@ -220,6 +222,7 @@ static NSData *MakeJPEGVariant(uint8_t variant) {
     return data;
 }
 
+static NSData *MakeJPEGVariant(uint8_t variant) { return MakeStillVariant(variant, CFSTR("public.jpeg")); }
 static NSData *MakeJPEG(void) { return MakeJPEGVariant(0); }
 
 static NSURL *MakeMovieVariant(NSURL *directory, NSString *name, uint8_t variant) {
@@ -611,6 +614,59 @@ static void TestIndependentLivePhotos(NSURL *directory) {
     }
 }
 
+// A PNG compatibility still must not be re-encoded merely to carry its pair ID.
+static NSData *PNGWithoutExif(NSData *png, NSUInteger *exifCount) {
+    static const uint8_t signature[] = {137, 'P', 'N', 'G', 13, 10, 26, 10};
+    const uint8_t *bytes = png.bytes;
+    if (png.length < sizeof(signature) || memcmp(bytes, signature, sizeof(signature))) return nil;
+    NSMutableData *original = [NSMutableData dataWithBytes:signature length:sizeof(signature)];
+    NSUInteger count = 0, offset = sizeof(signature);
+    while (png.length - offset >= 12) {
+        const uint8_t *p = bytes + offset;
+        NSUInteger length = ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3];
+        if (length > png.length - offset - 12) return nil;
+        if (!memcmp(p + 4, "eXIf", 4)) count++;
+        else [original appendBytes:p length:length + 12];
+        offset += length + 12;
+    }
+    if (offset != png.length) return nil;
+    *exifCount = count;
+    return original;
+}
+
+static void TestFullResolutionLivePNG(NSURL *directory) {
+    NSData *source = MakeStillVariant(3, CFSTR("public.png"));
+    NSURL *photo = WriteData(source, directory, @"live-compatibility.png");
+    // TestLivePhoto builds and verifies this movie first.
+    NSURL *movie = [directory URLByAppendingPathComponent:@"synthetic-source.mov"];
+    if (!photo) return;
+    __block BOOL completed = NO;
+    __block NSURL *pairedPhoto = nil, *pairedMovie = nil;
+    __block NSError *failure = nil;
+    DYYYLikeBuildLivePhoto(photo, movie, nil, ^(NSURL *p, NSURL *v, NSError *error) {
+        pairedPhoto = p; pairedMovie = v; failure = error; completed = YES;
+    });
+    BOOL timely = PumpUntil(^BOOL{ return completed; }, 90);
+    Check(timely && pairedPhoto && pairedMovie, @"full-resolution PNG creates an independent pair%@",
+        failure ? [NSString stringWithFormat:@" (%@)", failure] : @"");
+    if (!pairedPhoto || !pairedMovie) return;
+    NSUInteger before = 0, after = 0;
+    NSData *plain = PNGWithoutExif(source, &before);
+    NSData *written = PNGWithoutExif([NSData dataWithContentsOfURL:pairedPhoto], &after);
+    Check(plain && [plain isEqualToData:written] && after == 1,
+        @"PNG IDAT, dimensions, color and all non-eXIf chunks are byte-identical");
+    CGImageSourceRef image = CGImageSourceCreateWithURL((__bridge CFURLRef)pairedPhoto, NULL);
+    NSDictionary *properties = image ? PropertiesAt(image, 0) : nil;
+    if (image) CFRelease(image);
+    NSString *identifier = properties[(__bridge NSString *)kCGImagePropertyMakerAppleDictionary][@"17"];
+    AVURLAsset *asset = LoadedAsset(pairedMovie, @[@"metadata"], @"PNG paired clip");
+    Check(identifier.length > 0 && [identifier isEqualToString:ContentIdentifier(asset)],
+        @"PNG Apple Maker 17 and paired MOV ID match");
+    Check(SameFileBytes(photo, source), @"PNG source is never modified");
+    [NSFileManager.defaultManager removeItemAtURL:pairedPhoto error:NULL];
+    [NSFileManager.defaultManager removeItemAtURL:pairedMovie error:NULL];
+}
+
 extern int DYYYRunMediaSourceSelectionTests(void);
 
 int main(void) {
@@ -630,6 +686,7 @@ int main(void) {
         Check(staticGIF == nil && staticError != nil, @"static JPEG is rejected instead of masquerading as an animation");
         if (staticGIF) [[NSFileManager defaultManager] removeItemAtURL:staticGIF error:NULL];
         TestLivePhoto(directory);
+        TestFullResolutionLivePNG(directory);
         TestIndependentLivePhotos(directory);
         fprintf(stdout, "\nMedia tests: %d PASS, %d FAIL\n", gPasses, gFailures);
         [[NSFileManager defaultManager] removeItemAtURL:directory error:NULL];

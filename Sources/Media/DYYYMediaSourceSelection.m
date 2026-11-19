@@ -100,38 +100,52 @@ static NSNumber *DYYYMediaSourceBitrate(id row) {
     return nil;
 }
 
-NSArray<NSURL *> *DYYYMediaSourceHighestVideoURLs(id video) {
-    NSMutableArray<NSURL *> *urls = [NSMutableArray array];
-    NSMutableSet<NSString *> *seen = [NSMutableSet set];
-    NSNumber *bestRate = nil;
+static NSArray<NSURL *> *DYYYMediaSourceVideoURLs(id video, BOOL live) {
+    NSMutableDictionary<NSNumber *, NSMutableArray<NSURL *> *> *tiers = [NSMutableDictionary dictionary];
     for (NSString *key in @[@"bitrateModels_origin", @"bitrateModels"]) {
         id rows = DYYYMediaSourceGet(video, key);
         if (![rows isKindOfClass:NSArray.class]) continue;
         for (id row in rows) {
             NSArray<NSURL *> *candidates = DYYYMediaSourceURLs(DYYYMediaSourceGet(row, @"playAddr"));
-            if (!candidates.count) continue;
             NSNumber *rate = DYYYMediaSourceBitrate(row);
-            if (!rate) continue;
-            NSComparisonResult comparison = bestRate ? [rate compare:bestRate] : NSOrderedDescending;
-            if (comparison == NSOrderedAscending) continue;
-            if (comparison == NSOrderedDescending) {
-                bestRate = rate;
-                [urls removeAllObjects];
-                [seen removeAllObjects];
-            }
-            for (NSURL *url in candidates) {
-                if (urls.count >= DYYYMediaSourceURLLimit) break;
-                DYYYMediaSourceAdd(url, urls, seen);
-            }
+            if (!candidates.count || !rate) continue;
+            if (!tiers[rate]) tiers[rate] = [NSMutableArray array];
+            [tiers[rate] addObjectsFromArray:candidates];
         }
     }
-    if (!urls.count) {
+    NSMutableArray<NSURL *> *fallbacks = [NSMutableArray array];
+    NSMutableSet<NSString *> *fallbackSeen = [NSMutableSet set];
+    // Reserve one usable URL per trusted fallback field, without starving bitrate tiers.
+    if (live || !tiers.count) {
         for (NSString *key in @[@"h264URL", @"playURL"]) {
-            if (urls.count >= DYYYMediaSourceURLLimit) break;
-            DYYYMediaSourceAppend(DYYYMediaSourceGet(video, key), urls, seen, DYYYMediaSourceURLLimit);
+            DYYYMediaSourceAppend(DYYYMediaSourceGet(video, key), fallbacks, fallbackSeen,
+                                  live ? fallbacks.count + 1 : DYYYMediaSourceURLLimit);
         }
     }
+    NSUInteger limit = live ? 12 - fallbacks.count : DYYYMediaSourceURLLimit;
+    NSMutableArray<NSURL *> *urls = [NSMutableArray array];
+    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    NSArray<NSNumber *> *rates = [tiers.allKeys sortedArrayUsingComparator:^NSComparisonResult(NSNumber *a, NSNumber *b) {
+        return [b compare:a];
+    }];
+    for (NSNumber *rate in rates) {
+        NSUInteger tierStart = urls.count;
+        for (NSURL *url in tiers[rate]) {
+            if (urls.count >= limit || urls.count - tierStart >= (live ? 4 : DYYYMediaSourceURLLimit)) break;
+            DYYYMediaSourceAdd(url, urls, seen);
+        }
+        if (!live || urls.count >= limit) break;
+    }
+    for (NSURL *url in fallbacks) DYYYMediaSourceAdd(url, urls, seen);
     return [urls copy];
+}
+
+NSArray<NSURL *> *DYYYMediaSourceHighestVideoURLs(id video) {
+    return DYYYMediaSourceVideoURLs(video, NO);
+}
+
+NSArray<NSURL *> *DYYYMediaSourceLiveVideoURLs(id video) {
+    return DYYYMediaSourceVideoURLs(video, YES);
 }
 
 NSArray<NSURL *> *DYYYMediaSourceCoverURLs(id video) {

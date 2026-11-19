@@ -103,6 +103,26 @@ int DYYYRunMediaSourceSelectionTests(void) {
         DYYYMediaSourceTestMatches(DYYYMediaSourceImageURLs(@{@"watermarkFreeUrlList": many}, nil), [many subarrayWithRange:NSMakeRange(0, 12)]),
         "generic and gallery candidate limits preserve order");
 
+    NSDictionary *liveVideo = @{@"bitrateModels_origin": @[
+        @{@"realBitrate": @760255, @"playAddr": [many subarrayWithRange:NSMakeRange(4, 4)]},
+        @{@"bitrate": @880099, @"playAddr": many}], @"bitrateModels": @[
+        @{@"videoBitrate": @100000, @"playAddr": [many subarrayWithRange:NSMakeRange(8, 4)]}],
+        @"h264URL": fallback, @"playURL": signedURL};
+    NSArray *liveExpected = [[many subarrayWithRange:NSMakeRange(0, 10)] arrayByAddingObjectsFromArray:@[fallback, signedText]];
+    failures += DYYYMediaSourceTestReport(DYYYMediaSourceTestMatches(DYYYMediaSourceLiveVideoURLs(liveVideo), liveExpected),
+        "live tiers descend, cap mirrors at four, retain the second tier and reserve trusted fallbacks within twelve");
+    failures += DYYYMediaSourceTestReport(DYYYMediaSourceTestMatches(DYYYMediaSourceHighestVideoURLs(liveVideo),
+        [many subarrayWithRange:NSMakeRange(0, 8)]), "highest-only selection still keeps eight top-tier mirrors without fallbacks");
+    failures += DYYYMediaSourceTestReport(DYYYMediaSourceTestMatches(DYYYMediaSourceLiveVideoURLs(@{
+        @"bitrateModels_origin": @[original], @"bitrateModels": @[equal, smaller, badTop],
+        @"h264URL": @[@"https://cdn.example/play?watermark=1", fallback], @"playURL": @[@"not a URL", signedURL],
+        @"downloadURL": @"https://cdn.example/download"}), @[high, backup, tie, low, fallback, signedText]),
+        "live merges equal tiers in original order, filters invalid/watermarked URLs and leaves signatures unchanged");
+    failures += DYYYMediaSourceTestReport(DYYYMediaSourceTestMatches(DYYYMediaSourceLiveVideoURLs(oldVideo), @[fallback, signedText]) &&
+        DYYYMediaSourceLiveVideoURLs(nil).count == 0 &&
+        DYYYMediaSourceLiveVideoURLs(@{@"bitrateModels": @[badTop], @"downloadURL": low}).count == 0,
+        "live supports legacy trusted fallbacks but never download-only or empty candidates");
+
     DYYYMediaSourceTestURLModel *cyclic = [DYYYMediaSourceTestURLModel new];
     cyclic.originURLList = @[cyclic];
     DYYYMediaSourceTestBrokenURLModel *broken = [DYYYMediaSourceTestBrokenURLModel new];

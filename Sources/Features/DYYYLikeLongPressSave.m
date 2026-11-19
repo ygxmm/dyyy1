@@ -439,8 +439,8 @@ static NSDictionary *DYYYLikeSaveImageItem(id image, id original, id fallbackVid
     id originalClip = DYYYLikeSaveObject(original, @"clipVideo");
     BOOL live = visibleClip || originalClip || fallbackVideo || DYYYLikeSaveInteger(image, @"livePhotoType") > 0 ||
         DYYYLikeSaveInteger(original, @"livePhotoType") > 0;
-    NSArray<NSURL *> *videos = DYYYMediaSourceHighestVideoURLs(visibleClip);
-    if (!videos.count) videos = DYYYMediaSourceHighestVideoURLs(originalClip ?: fallbackVideo);
+    NSArray<NSURL *> *videos = DYYYMediaSourceLiveVideoURLs(visibleClip);
+    if (!videos.count) videos = DYYYMediaSourceLiveVideoURLs(originalClip ?: fallbackVideo);
     return DYYYLikeSaveItem(DYYYMediaSourceImageURLs(image, original), videos, live, page);
 }
 
@@ -516,7 +516,7 @@ void DYYYSaveMenuMedia(AWEAwemeModel *model, DYYYMenuMediaSaveAction action) {
             items = @[items[DYYYLikeSaveCurrentIndex(model, items.count)]];
         }
     } else if (action == DYYYMenuMediaSaveCurrent && DYYYLikeSaveObject(model, @"animatedImageVideoInfo")) {
-        items = @[DYYYLikeSaveItem(DYYYMediaSourceCoverURLs(video), DYYYMediaSourceHighestVideoURLs(video), YES, 1)];
+        items = @[DYYYLikeSaveItem(DYYYMediaSourceCoverURLs(video), DYYYMediaSourceLiveVideoURLs(video), YES, 1)];
     }
     NSString *description = [NSUserDefaults.standardUserDefaults boolForKey:DYYY_ALBUM_MEDIA_DESCRIPTION_KEY] ?
         [DYYYManager albumDescriptionForAwemeModel:model] : nil;

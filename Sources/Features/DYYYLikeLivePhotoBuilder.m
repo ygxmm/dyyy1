@@ -399,16 +399,64 @@ static uint32_t DYYYLPAppendIFD(NSMutableData *tiff, uint32_t old, BOOL little, 
     return (uint32_t)offset;
 }
 
-static BOOL DYYYLPWriteJPEG(NSURL *input, NSURL *output, NSString *identifier, NSError **error) {
-    id size = nil;
-    if (![input getResourceValue:&size forKey:NSURLFileSizeKey error:error] || ![size isKindOfClass:NSNumber.class]) return NO;
+static NSData *DYYYLPPairedTIFF(const uint8_t *input, NSUInteger length, NSString *identifier) {
+    NSMutableData *tiff;
+    BOOL little = NO;
+    uint32_t oldRoot = 0, oldExif = 0, exifPointer = 0;
+    if (!input) {
+        const uint8_t header[8] = {'M', 'M', 0, 42, 0, 0, 0, 0};
+        tiff = [NSMutableData dataWithBytes:header length:sizeof(header)];
+    } else {
+        if (length < 8 || length > 65527) return nil;
+        little = !memcmp(input, "II", 2);
+        if ((!little && memcmp(input, "MM", 2)) || DYYYLPReadInt(input + 2, 2, little) != 42) return nil;
+        oldRoot = DYYYLPReadInt(input + 4, 4, little);
+        if (oldRoot < 8) return nil;
+        tiff = [NSMutableData dataWithBytes:input length:length];
+    }
+    NSUInteger originalLength = tiff.length;
+    uint32_t root = DYYYLPAppendIFD(tiff, oldRoot, little, 0x8769, 4, 1, 0, YES, &oldExif, &exifPointer);
+    if (!root) return nil;
+    if (oldExif) {
+        if ((oldExif & 1) || oldExif >= originalLength || originalLength - oldExif < 6) return nil;
+        const uint8_t *original = tiff.bytes;
+        if (DYYYLPReadInt(original + oldExif, 2, little) > (originalLength - oldExif - 6) / 12) return nil;
+    }
+    // Apple MakerNote uses independent big-endian offsets relative to its own header.
+    uint8_t maker[32] = {'A','p','p','l','e',' ','i','O','S',0, 0,1,'M','M', 0,1, 0,0x11,0,2};
+    NSData *uuid = [identifier dataUsingEncoding:NSASCIIStringEncoding];
+    if (uuid.length != 36) return nil;
+    DYYYLPWriteInt(maker + 20, 4, 37, NO);
+    DYYYLPWriteInt(maker + 24, 4, sizeof(maker), NO);
+    uint32_t makerOffset = (uint32_t)tiff.length;
+    uint8_t nul = 0;
+    [tiff appendBytes:maker length:sizeof(maker)];
+    [tiff appendData:uuid];
+    [tiff appendBytes:&nul length:1];
+    // Never discard or relocate an existing vendor MakerNote.
+    uint32_t subIFD = DYYYLPAppendIFD(tiff, oldExif, little, 0x927c, 7, sizeof(maker) + 37, makerOffset, NO, NULL, NULL);
+    if (!subIFD) return nil;
+    uint8_t *rewritten = tiff.mutableBytes;
+    DYYYLPWriteInt(rewritten + 4, 4, root, little);
+    DYYYLPWriteInt(rewritten + exifPointer, 4, subIFD, little);
+    return tiff;
+}
+
+static NSData *DYYYLPReadStillForMetadata(NSURL *input, NSError **error) {
+    NSNumber *size = nil;
     const NSUInteger limit = 64 * 1024 * 1024;
-    if ([size unsignedLongLongValue] > limit) return NO;
-    __attribute__((objc_precise_lifetime)) NSData *jpeg = [NSData dataWithContentsOfURL:input options:NSDataReadingMappedIfSafe error:error];
+    if (![input getResourceValue:&size forKey:NSURLFileSizeKey error:error] ||
+        ![size isKindOfClass:NSNumber.class] || size.unsignedLongLongValue > limit) return nil;
+    NSData *data = [NSData dataWithContentsOfURL:input options:NSDataReadingMappedIfSafe error:error];
+    return data.length <= limit ? data : nil;
+}
+
+static BOOL DYYYLPWriteJPEG(NSURL *input, NSURL *output, NSString *identifier, NSError **error) {
+    __attribute__((objc_precise_lifetime)) NSData *jpeg = DYYYLPReadStillForMetadata(input, error);
     const uint8_t *b = jpeg.bytes;
     NSUInteger n = jpeg.length, p = 2, insertion = 2, scan = 0;
     NSRange exif = NSMakeRange(NSNotFound, 0);
-    if (n < 4 || n > limit || b[0] != 0xff || b[1] != 0xd8) return NO;
+    if (n < 4 || b[0] != 0xff || b[1] != 0xd8) return NO;
     while (p < n) {
         if (b[p++] != 0xff) return NO;
         while (p < n && b[p] == 0xff) ++p;
@@ -430,47 +478,10 @@ static BOOL DYYYLPWriteJPEG(NSURL *input, NSURL *output, NSString *identifier, N
     }
     if (!scan) return NO;
 
-    NSMutableData *tiff;
-    BOOL little = NO;
-    uint32_t oldRoot = 0, oldExif = 0, exifPointer = 0;
-    if (exif.location == NSNotFound) {
-        const uint8_t header[8] = {'M', 'M', 0, 42, 0, 0, 0, 0};
-        tiff = [NSMutableData dataWithBytes:header length:sizeof(header)];
-        exif = NSMakeRange(insertion, 0);
-    } else {
-        if (exif.length < 18) return NO;
-        const uint8_t *originalTIFF = b + exif.location + 10;
-        little = !memcmp(originalTIFF, "II", 2);
-        if ((!little && memcmp(originalTIFF, "MM", 2)) || DYYYLPReadInt(originalTIFF + 2, 2, little) != 42) return NO;
-        oldRoot = DYYYLPReadInt(originalTIFF + 4, 4, little);
-        if (oldRoot < 8) return NO;
-        tiff = [NSMutableData dataWithBytes:originalTIFF length:exif.length - 10];
-    }
-    NSUInteger originalLength = tiff.length;
-    uint32_t root = DYYYLPAppendIFD(tiff, oldRoot, little, 0x8769, 4, 1, 0, YES, &oldExif, &exifPointer);
-    if (!root) return NO;
-    if (oldExif) {
-        if ((oldExif & 1) || oldExif >= originalLength || originalLength - oldExif < 6) return NO;
-        const uint8_t *original = tiff.bytes;
-        if (DYYYLPReadInt(original + oldExif, 2, little) > (originalLength - oldExif - 6) / 12) return NO;
-    }
-    // Apple MakerNote uses independent big-endian offsets relative to its own header.
-    uint8_t maker[32] = {'A','p','p','l','e',' ','i','O','S',0, 0,1,'M','M', 0,1, 0,0x11,0,2};
-    NSData *uuid = [identifier dataUsingEncoding:NSASCIIStringEncoding];
-    if (uuid.length != 36) return NO;
-    DYYYLPWriteInt(maker + 20, 4, 37, NO);
-    DYYYLPWriteInt(maker + 24, 4, sizeof(maker), NO);
-    uint32_t makerOffset = (uint32_t)tiff.length;
-    uint8_t nul = 0;
-    [tiff appendBytes:maker length:sizeof(maker)];
-    [tiff appendData:uuid];
-    [tiff appendBytes:&nul length:1];
-    // Never discard or relocate an existing vendor MakerNote.
-    uint32_t subIFD = DYYYLPAppendIFD(tiff, oldExif, little, 0x927c, 7, sizeof(maker) + 37, makerOffset, NO, NULL, NULL);
-    if (!subIFD) return NO;
-    uint8_t *rewritten = tiff.mutableBytes;
-    DYYYLPWriteInt(rewritten + 4, 4, root, little);
-    DYYYLPWriteInt(rewritten + exifPointer, 4, subIFD, little);
+    NSData *tiff = exif.location == NSNotFound ? DYYYLPPairedTIFF(NULL, 0, identifier) :
+        DYYYLPPairedTIFF(b + exif.location + 10, exif.length - 10, identifier);
+    if (!tiff) return NO;
+    if (exif.location == NSNotFound) exif = NSMakeRange(insertion, 0);
 
     uint8_t app1[10] = {0xff, 0xe1, 0, 0, 'E','x','i','f',0,0};
     DYYYLPWriteInt(app1 + 2, 2, (uint32_t)tiff.length + 8, NO);
@@ -481,6 +492,69 @@ static BOOL DYYYLPWriteJPEG(NSURL *input, NSURL *output, NSString *identifier, N
     // This tail includes every scan header and every compressed scan byte, unmodified.
     NSUInteger tail = NSMaxRange(exif);
     [result appendBytes:b + tail length:n - tail];
+    return [result writeToURL:output options:NSDataWritingAtomic error:error];
+}
+
+static uint32_t DYYYLPChunkCRC(const uint8_t *bytes, NSUInteger length) {
+    uint32_t crc = UINT32_MAX;
+    for (NSUInteger i = 0; i < length; ++i) {
+        crc ^= bytes[i];
+        for (NSUInteger bit = 0; bit < 8; ++bit) {
+            crc = (crc >> 1) ^ ((crc & 1) ? UINT32_C(0xedb88320) : 0);
+        }
+    }
+    return crc ^ UINT32_MAX;
+}
+
+static BOOL DYYYLPWritePNG(NSURL *input, NSURL *output, NSString *identifier, NSError **error) {
+    __attribute__((objc_precise_lifetime)) NSData *png = DYYYLPReadStillForMetadata(input, error);
+    const uint8_t *bytes = png.bytes;
+    const uint8_t signature[] = {137, 'P', 'N', 'G', 13, 10, 26, 10};
+    NSUInteger size = png.length;
+    if (size < 45 || memcmp(bytes, signature, sizeof(signature)) ||
+        DYYYLPReadInt(bytes + 8, 4, NO) != 13 || memcmp(bytes + 12, "IHDR", 4)) return NO;
+
+    NSRange exif = NSMakeRange(NSNotFound, 0);
+    BOOL sawData = NO, sawEnd = NO;
+    for (NSUInteger pos = 33; pos <= size && size - pos >= 12;) {
+        NSUInteger length = DYYYLPReadInt(bytes + pos, 4, NO);
+        if (length > size - pos - 12) return NO;
+        const uint8_t *type = bytes + pos + 4;
+        if (!memcmp(type, "eXIf", 4)) {
+            if (exif.location != NSNotFound || length < 8 || length > 65527) return NO;
+            if (DYYYLPChunkCRC(type, length + 4) != DYYYLPReadInt(type + length + 4, 4, NO)) return NO;
+            exif = NSMakeRange(pos, length + 12);
+        } else if (!memcmp(type, "IDAT", 4)) {
+            sawData = YES;
+        } else if (!memcmp(type, "IEND", 4)) {
+            sawEnd = length == 0 && pos + 12 == size;
+            break;
+        } else if (!memcmp(type, "IHDR", 4) || !memcmp(type, "acTL", 4)) {
+            return NO; // Invalid header or actually animated, not a Live Photo still.
+        }
+        pos += length + 12;
+    }
+    if (!sawData || !sawEnd) return NO;
+    NSData *tiff = exif.location == NSNotFound ? DYYYLPPairedTIFF(NULL, 0, identifier) :
+        DYYYLPPairedTIFF(bytes + exif.location + 8, exif.length - 12, identifier);
+    if (!tiff) return NO;
+    if (exif.location == NSNotFound) exif = NSMakeRange(33, 0); // Immediately after IHDR.
+
+    NSMutableData *chunk = [NSMutableData dataWithLength:8];
+    uint8_t *header = chunk.mutableBytes;
+    DYYYLPWriteInt(header, 4, (uint32_t)tiff.length, NO);
+    memcpy(header + 4, "eXIf", 4);
+    [chunk appendData:tiff];
+    uint8_t crc[4];
+    DYYYLPWriteInt(crc, 4, DYYYLPChunkCRC((const uint8_t *)chunk.bytes + 4, chunk.length - 4), NO);
+    [chunk appendBytes:crc length:sizeof(crc)];
+
+    // Copy IDAT, color, XMP and all other chunks byte-for-byte.
+    NSMutableData *result = [NSMutableData dataWithCapacity:size - exif.length + chunk.length];
+    [result appendBytes:bytes length:exif.location];
+    [result appendData:chunk];
+    NSUInteger tail = NSMaxRange(exif);
+    [result appendBytes:bytes + tail length:size - tail];
     return [result writeToURL:output options:NSDataWritingAtomic error:error];
 }
 
@@ -498,12 +572,19 @@ static BOOL DYYYLPWritePhoto(NSURL *sourceURL, NSString *identifier, NSURL * __s
         *error = DYYYLPError(DYYYLPImageCopy, @"该图片格式不能作为实况照片的无损静帧。", nil);
         return NO;
     }
+    *outputURL = DYYYLPTempURL(identifier, extension);
+    if ([type isEqualToString:@"public.png"]) {
+        NSError *pngError = nil;
+        if (DYYYLPWritePNG(sourceURL, *outputURL, identifier, &pngError) &&
+            DYYYLPPhotoHasIdentifier(*outputURL, (__bridge CFStringRef)type, count, identifier)) return YES;
+        *error = DYYYLPError(DYYYLPMakerNote, @"无法无损写入或验证实况 PNG 配对标记。", pngError);
+        return NO;
+    }
     size_t index = CGImageSourceGetPrimaryImageIndex(source);
     NSString *makerKey = (__bridge NSString *)kCGImagePropertyMakerAppleDictionary;
     NSDictionary *properties = CFBridgingRelease(CGImageSourceCopyPropertiesAtIndex(source, index, NULL));
     NSMutableDictionary *maker = [properties[makerKey] mutableCopy] ?: [NSMutableDictionary dictionary];
     maker[@"17"] = identifier;
-    *outputURL = DYYYLPTempURL(identifier, extension);
     NSMutableDictionary *options = [@{makerKey : maker} mutableCopy];
     id metadata = CFBridgingRelease(CGImageMetadataCreateMutable());
     if (metadata && CGImageMetadataSetValueMatchingImageProperty((__bridge CGMutableImageMetadataRef)metadata,
