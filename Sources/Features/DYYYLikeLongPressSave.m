@@ -2,6 +2,8 @@
 #import "DYYYConstants.h"
 #import "DYYYManager.h"
 #import "DYYYUtils.h"
+#import <ImageIO/ImageIO.h>
+#import <Photos/Photos.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
 
@@ -64,9 +66,12 @@ static id DYYYLikeSaveModelForButton(UIButton *button) {
     return nil;
 }
 
-static NSURL *DYYYLikeSaveImageURL(id image) {
-    // downloadURLList adds a platform watermark. Do not use it as a fallback.
-    return DYYYLikeSaveURL(DYYYLikeSaveObject(image, @"watermarkFreeUrlList")) ?:
+static NSURL *DYYYLikeSaveImageURL(id image, id originalImage) {
+    // Use only URLs supplied by the model. Never rewrite signed CDN templates or
+    // use downloadURLList: the latter contains platform-watermarked images.
+    return DYYYLikeSaveURL(DYYYLikeSaveObject(originalImage, @"watermarkFreeUrlList")) ?:
+           DYYYLikeSaveURL(DYYYLikeSaveObject(image, @"watermarkFreeUrlList")) ?:
+           DYYYLikeSaveURL(DYYYLikeSaveObject(originalImage, @"urlList")) ?:
            DYYYLikeSaveURL(DYYYLikeSaveObject(image, @"urlList"));
 }
 
@@ -90,20 +95,45 @@ static void DYYYLikeSaveRemoveTemporaryURL(NSURL *url) {
 }
 
 static NSURL *DYYYLikeSavePrepareImage(NSURL *rawURL, NSError **error) {
+    // Inspect the actual file, not a URL's advertised size or extension. Preserve
+    // native HEIC/JPEG/PNG/GIF/TIFF bytes (including colour profiles and metadata).
+    CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)rawURL,
+        (__bridge CFDictionaryRef)@{(NSString *)kCGImageSourceShouldCache: @NO});
+    if (source) {
+        NSString *type = (__bridge NSString *)CGImageSourceGetType(source);
+        NSDictionary *extensions = @{@"public.jpeg": @"jpg", @"public.png": @"png",
+            @"public.heic": @"heic", @"public.heif": @"heif", @"public.heics": @"heics",
+            @"com.compuserve.gif": @"gif", @"public.tiff": @"tiff"};
+        NSString *extension = extensions[type ?: @""];
+        NSDictionary *properties = CGImageSourceGetCount(source) ?
+            CFBridgingRelease(CGImageSourceCopyPropertiesAtIndex(source, 0, NULL)) : nil;
+        BOOL valid = [properties[(NSString *)kCGImagePropertyPixelWidth] unsignedLongLongValue] > 0 &&
+                     [properties[(NSString *)kCGImagePropertyPixelHeight] unsignedLongLongValue] > 0;
+        CFRelease(source);
+        if (valid && extension) {
+            if ([rawURL.pathExtension.lowercaseString isEqualToString:extension]) return rawURL;
+            NSURL *output = [rawURL.URLByDeletingLastPathComponent URLByAppendingPathComponent:
+                [NSString stringWithFormat:@"DYYYLikeSave-%@.%@", NSUUID.UUID.UUIDString, extension]];
+            // Correct a misleading download suffix without transcoding the file.
+            return [NSFileManager.defaultManager copyItemAtURL:rawURL toURL:output error:error] ? output : nil;
+        }
+    }
     UIImage *image = [UIImage imageWithContentsOfFile:rawURL.path];
-    if (image.CGImage) return rawURL;
-    NSData *data = [NSData dataWithContentsOfURL:rawURL options:NSDataReadingMappedIfSafe error:error];
-    if (!data) return nil;
-    Class imageClass = NSClassFromString(@"BDImage");
-    SEL selector = NSSelectorFromString(@"imageWithData:scale:decodeForDisplay:shouldScaleDown:error:");
-    if ([imageClass respondsToSelector:selector]) {
-        // Decodes VVIC using Douyin's decoder. Never resize/upscale or fall back to a watermarked URL.
-        @try {
-            image = ((UIImage *(*)(id, SEL, NSData *, double, BOOL, BOOL, NSError **))objc_msgSend)
-                (imageClass, selector, data, 1.0, YES, NO, error);
-        } @catch (__unused NSException *exception) { image = nil; }
+    if (!image.CGImage) {
+        NSData *data = [NSData dataWithContentsOfURL:rawURL options:NSDataReadingMappedIfSafe error:error];
+        if (!data) return nil;
+        Class imageClass = NSClassFromString(@"BDImage");
+        SEL selector = NSSelectorFromString(@"imageWithData:scale:decodeForDisplay:shouldScaleDown:error:");
+        if ([imageClass respondsToSelector:selector]) {
+            @try {
+                image = ((UIImage *(*)(id, SEL, NSData *, double, BOOL, BOOL, NSError **))objc_msgSend)
+                    (imageClass, selector, data, 1.0, NO, NO, error);
+            } @catch (__unused NSException *exception) { image = nil; }
+        }
     }
     if (!image.CGImage) return nil;
+    // Unsupported encodings such as VVIC need a compatible container. PNG is
+    // lossless at the decoder's actual pixels; never resize or manufacture detail.
     NSData *png = UIImagePNGRepresentation(image);
     if (!png.length) return nil;
     NSURL *output = [rawURL.URLByDeletingLastPathComponent URLByAppendingPathComponent:
@@ -112,9 +142,28 @@ static NSURL *DYYYLikeSavePrepareImage(NSURL *rawURL, NSError **error) {
     return output;
 }
 
+static void DYYYLikeSaveOriginalImageFile(NSURL *fileURL, void (^completion)(BOOL)) {
+    // A separate file-resource write deliberately avoids DYYYManager's caption
+    // re-encode and UIImage retry. Quality must not silently degrade on failure.
+    [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelAddOnly handler:^(PHAuthorizationStatus status) {
+        if (status != PHAuthorizationStatusAuthorized && status != PHAuthorizationStatusLimited) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [DYYYUtils showToast:@"请允许添加照片到相册后重试"];
+                completion(NO);
+            });
+            return;
+        }
+        [PHPhotoLibrary.sharedPhotoLibrary performChanges:^{
+            PHAssetCreationRequest *request = [PHAssetCreationRequest creationRequestForAsset];
+            [request addResourceWithType:PHAssetResourceTypePhoto fileURL:fileURL options:nil];
+        } completionHandler:^(BOOL success, __unused NSError *error) {
+            dispatch_async(dispatch_get_main_queue(), ^{ completion(success); });
+        }];
+    }];
+}
+
 @interface DYYYLikeImageSaveJob : NSObject
 @property(nonatomic, copy) NSArray<NSURL *> *URLs;
-@property(nonatomic, copy) NSString *albumDescription;
 @property(nonatomic) NSUInteger index;
 @property(nonatomic) NSUInteger succeeded;
 @property(nonatomic) BOOL finished;
@@ -164,15 +213,14 @@ static DYYYLikeImageSaveJob *gDYYYLikeSaveActiveImageJob;
                             [self saveNext];
                             return;
                         }
-                        [DYYYManager saveMedia:preparedURL mediaType:MediaTypeImage albumDescription:self.albumDescription
-                            completion:^(BOOL success) {
-                                [[DYYYManager shared] finalizeDownloadWithFileURL:rawURL success:success];
-                                DYYYLikeSaveRemoveTemporaryURL(rawURL);
-                                if (![preparedURL isEqual:rawURL]) DYYYLikeSaveRemoveTemporaryURL(preparedURL);
-                                if (success) self.succeeded++;
-                                self.index++;
-                                [self saveNext];
-                            }];
+                        DYYYLikeSaveOriginalImageFile(preparedURL, ^(BOOL success) {
+                            [[DYYYManager shared] finalizeDownloadWithFileURL:rawURL success:success];
+                            DYYYLikeSaveRemoveTemporaryURL(rawURL);
+                            if (![preparedURL isEqual:rawURL]) DYYYLikeSaveRemoveTemporaryURL(preparedURL);
+                            if (success) self.succeeded++;
+                            self.index++;
+                            [self saveNext];
+                        });
                     });
                 }
             });
@@ -184,16 +232,14 @@ static UIImage *DYYYLikeSaveSymbol(NSString *name) {
     return [UIImage systemImageNamed:name] ?: [UIImage systemImageNamed:@"photo"];
 }
 
-static UIAction *DYYYLikeSaveImagesAction(NSString *title, NSString *identifier, NSArray<NSURL *> *URLs, id model) {
+static UIAction *DYYYLikeSaveImagesAction(NSString *title, NSString *identifier, NSArray<NSURL *> *URLs) {
     // Capture immutable resources in the block itself: UIAction copies do not copy associated objects.
     NSArray<NSURL *> *snapshot = [URLs copy];
-    NSString *description = [[DYYYManager albumDescriptionForAwemeModel:model] copy];
     UIAction *action = [UIAction actionWithTitle:title image:DYYYLikeSaveSymbol(snapshot.count > 1 ? @"photo.stack" : @"photo")
         identifier:identifier handler:^(__kindof UIAction *selectedAction) {
             if (!snapshot.count) { [DYYYUtils showToast:@"当前图片暂无无水印资源"]; return; }
             DYYYLikeImageSaveJob *job = [DYYYLikeImageSaveJob new];
             job.URLs = snapshot;
-            job.albumDescription = description;
             [job start];
         }];
     if (!snapshot.count) action.attributes = UIMenuElementAttributesDisabled;
@@ -208,16 +254,18 @@ static NSArray<UIMenuElement *> *DYYYLikeSaveMenuItems(UIButton *button) {
     if (DYYYLikeSaveInteger(model, @"awemeType") == 68 && images.count) {
         NSInteger nativeIndex = DYYYLikeSaveInteger(model, @"currentImageIndex");
         NSUInteger index = nativeIndex > 0 && (NSUInteger)nativeIndex <= images.count ? (NSUInteger)nativeIndex - 1 : 0;
-        NSURL *current = DYYYLikeSaveImageURL(images[index]);
-        [items addObject:DYYYLikeSaveImagesAction(@"保存当前无水印图", @"DYYYLikeSave.CurrentImage", current ? @[current] : @[], model)];
+        NSArray *originals = DYYYLikeSaveArray(DYYYLikeSaveObject(model, @"originalAlbumImages"));
+        BOOL aligned = originals.count == images.count;
+        NSURL *current = DYYYLikeSaveImageURL(images[index], aligned ? originals[index] : nil);
+        [items addObject:DYYYLikeSaveImagesAction(@"保存当前无水印图", @"DYYYLikeSave.CurrentImage", current ? @[current] : @[])];
         if (images.count > 1) {
             NSMutableArray<NSURL *> *URLs = [NSMutableArray arrayWithCapacity:images.count];
-            for (id image in images) {
-                NSURL *url = DYYYLikeSaveImageURL(image);
+            for (NSUInteger imageIndex = 0; imageIndex < images.count; imageIndex++) {
+                NSURL *url = DYYYLikeSaveImageURL(images[imageIndex], aligned ? originals[imageIndex] : nil);
                 if (url) [URLs addObject:url];
             }
             NSString *title = [NSString stringWithFormat:@"保存全部无水印图（%lu张）", (unsigned long)images.count];
-            UIAction *all = DYYYLikeSaveImagesAction(title, @"DYYYLikeSave.AllImages", URLs, model);
+            UIAction *all = DYYYLikeSaveImagesAction(title, @"DYYYLikeSave.AllImages", URLs);
             if (URLs.count != images.count) {
                 all.attributes = UIMenuElementAttributesDisabled;
                 if (@available(iOS 15.0, *)) all.subtitle = @"部分图片暂无无水印资源";
@@ -239,7 +287,7 @@ static NSArray<UIMenuElement *> *DYYYLikeSaveMenuItems(UIButton *button) {
     }
     NSURL *cover = DYYYLikeSaveURL(DYYYLikeSaveObject(video, @"originCover")) ?:
                    DYYYLikeSaveURL(DYYYLikeSaveObject(video, @"coverURL"));
-    if (cover) [items addObject:DYYYLikeSaveImagesAction(@"保存封面原图", @"DYYYLikeSave.Cover", @[cover], model)];
+    if (cover) [items addObject:DYYYLikeSaveImagesAction(@"保存封面原图", @"DYYYLikeSave.Cover", @[cover])];
     return items;
 }
 
