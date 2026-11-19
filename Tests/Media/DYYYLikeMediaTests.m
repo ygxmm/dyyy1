@@ -168,7 +168,7 @@ static NSData *MakeJPEG(void) {
     CGImageRef image = ctx ? CGBitmapContextCreateImage(ctx) : NULL;
     NSMutableData *data = [NSMutableData data];
     CGImageDestinationRef dest = CGImageDestinationCreateWithData((__bridge CFMutableDataRef)data,
-        kUTTypeJPEG, 1, NULL);
+        CFSTR("public.jpeg"), 1, NULL);
     if (dest && image) {
         CGImageDestinationAddImage(dest, image, (__bridge CFDictionaryRef)@{
             (NSString *)kCGImageDestinationLossyCompressionQuality: @0.83,

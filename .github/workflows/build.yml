@@ -4,10 +4,18 @@ on:
   push:
     branches: [ "main" ]
   workflow_dispatch:
+    inputs:
+      runner:
+        description: Standard macOS runner for manual validation
+        type: choice
+        default: macos-latest
+        options:
+          - macos-latest
+          - macos-15-intel
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: ${{ inputs.runner || 'macos-latest' }}
     steps:
       - uses: actions/checkout@v4
 
