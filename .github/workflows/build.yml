@@ -11,6 +11,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Test animated images and Live Photo pairing
+        run: bash Tests/Media/run_media_tests.sh
+
       - name: Setup Theos
         run: |
           export THEOS=$HOME/theos

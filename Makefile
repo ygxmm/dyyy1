@@ -81,6 +81,8 @@ DYYY_FILES = DYYY.xm \
 	Sources/Features/DYYYHighFPSHooks.m \
 	Sources/Features/DYYYNativeAutoPlay.m \
 	Sources/Features/DYYYLikeLongPressSave.m \
+	Sources/Features/DYYYLikeLivePhotoBuilder.m \
+	Sources/Features/DYYYLikeAnimatedImage.m \
 	Sources/Features/DYYYFPSOverlay.m \
 	Sources/Features/DYYYFeedTagHooks.m \
 	Sources/Features/DYYYExactInteractionCountHooks.m \
@@ -94,7 +96,7 @@ DYYY_CFLAGS = -fobjc-arc -w \
 	-I$(THEOS_PROJECT_DIR)/Sources/Features \
 	-I$(THEOS_PROJECT_DIR)/Sources/Hooking
 DYYY_LDFLAGS = -weak_framework AVFAudio -lcompression
-DYYY_FRAMEWORKS = UIKit Foundation AVFoundation CoreAudio UniformTypeIdentifiers Photos ImageIO
+DYYY_FRAMEWORKS = UIKit Foundation AVFoundation CoreAudio UniformTypeIdentifiers Photos ImageIO CoreMedia CoreVideo CoreGraphics
 CXXFLAGS += -std=c++11
 CCFLAGS += -std=c++11
 DYYY_LOGOS_DEFAULT_GENERATOR = internal
