@@ -274,6 +274,16 @@ static NSArray<NSString *> *SampleHashes(AVURLAsset *asset, AVAssetTrack *track,
     while ((sample = [output copyNextSampleBuffer])) {
         CMBlockBufferRef block = CMSampleBufferGetDataBuffer(sample);
         size_t length = block ? CMBlockBufferGetDataLength(block) : 0;
+        if (!length) {
+            CFTypeRef empty = CMGetAttachment(sample, kCMSampleBufferAttachmentKey_EmptyMedia, NULL);
+            BOOL intentional = empty && CFGetTypeID(empty) == CFBooleanGetTypeID() && CFBooleanGetValue((CFBooleanRef)empty);
+            if (intentional || CMSampleBufferGetNumSamples(sample) == 0) {
+                fprintf(stdout, "INFO legal empty-media event, not an encoded picture packet\n");
+                fflush(stdout);
+                CFRelease(sample);
+                continue;
+            }
+        }
         NSMutableData *bytes = [NSMutableData dataWithLength:length];
         OSStatus copied = length ? CMBlockBufferCopyDataBytes(block, 0, length, bytes.mutableBytes) : -1;
         if (!length || copied != kCMBlockBufferNoErr) {
