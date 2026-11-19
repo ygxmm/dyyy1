@@ -71,7 +71,7 @@ static BOOL SameFileBytes(NSURL *url, NSData *before) {
 static NSURL *RunConversion(NSURL *source, NSError **error) {
     __block NSURL *result = nil;
     __block NSError *conversionError = nil;
-    dispatch_sync(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_UTILITY, 0), ^{
+    dispatch_sync(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         result = DYYYLikeConvertAnimatedImageToGIF(source, &conversionError);
     });
     if (error) *error = conversionError;
@@ -210,7 +210,7 @@ static NSURL *MakeMovie(NSURL *directory) {
     BOOL appended = YES;
     for (int frame = 0; frame < 4; frame++) {
         if (!input.readyForMoreMediaData) {
-            appended = PumpUntil(^{ return input.readyForMoreMediaData || writer.status != AVAssetWriterStatusWriting; }, 5);
+            appended = PumpUntil(^BOOL{ return input.readyForMoreMediaData || writer.status != AVAssetWriterStatusWriting; }, 5);
         }
         CVPixelBufferRef pixel = NULL;
         CVReturn rc = CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, adaptor.pixelBufferPool, &pixel);
@@ -281,7 +281,7 @@ static AVURLAsset *LoadedAsset(NSURL *url, NSArray<NSString *> *keys, NSString *
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url options:@{AVURLAssetPreferPreciseDurationAndTimingKey:@YES}];
     __block BOOL done = NO;
     [asset loadValuesAsynchronouslyForKeys:keys completionHandler:^{ done = YES; }];
-    BOOL completed = PumpUntil(^{ return done; }, 30);
+    BOOL completed = PumpUntil(^BOOL{ return done; }, 30);
     Check(completed, @"%@ asset key loading completes", label);
     if (!completed) return nil;
     for (NSString *key in keys) {
@@ -363,7 +363,7 @@ static void TestLivePhoto(NSURL *directory) {
     DYYYLikeBuildLivePhoto(photo, movie, ^(NSURL *p, NSURL *v, NSError *e) {
         onMain = NSThread.isMainThread; pairedPhoto = p; pairedMovie = v; buildError = e; completed = YES;
     });
-    BOOL timely = PumpUntil(^{ return completed; }, 90);
+    BOOL timely = PumpUntil(^BOOL{ return completed; }, 90);
     Check(timely, @"Live Photo builder completes within 90 seconds");
     if (!timely) return;
     Check(onMain, @"Live Photo completion runs on main thread");
