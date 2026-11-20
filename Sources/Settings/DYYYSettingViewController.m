@@ -192,7 +192,8 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
             [DYYYSettingItem itemWithTitle:@"关注二次确认" key:@"DYYYFollowTips" type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"收藏二次确认" key:@"DYYYCollectTips" type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"默认直播画质" key:@"DYYYLiveQuality" type:DYYYSettingItemTypePicker],
-            [DYYYSettingItem itemWithTitle:@"提高视频画质" key:@"DYYYEnableVideoHighestQuality" type:DYYYSettingItemTypeSwitch],
+            [DYYYSettingItem itemWithTitle:@"提高视频画质" key:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY type:DYYYSettingItemTypeSwitch],
+            [DYYYSettingItem itemWithTitle:@"视频画质策略" key:DYYY_VIDEO_QUALITY_POLICY_KEY type:DYYYSettingItemTypePicker],
             [DYYYSettingItem itemWithTitle:@"显示详细互动数" key:@"DYYYShowExactInteractionCounts" type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"禁用直播PCDN功能" key:@"DYYYDisableLivePCDN" type:DYYYSettingItemTypeSwitch]
         ],
@@ -475,6 +476,8 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
         return @[ @"蓝光帧彩", @"蓝光", @"超清", @"高清", @"标清", @"自动" ];
     } else if ([key isEqualToString:@"DYYYHDRMode"]) {
         return @[ @"关闭（交给抖音）", @"全局过滤HDR作品" ];
+    } else if ([key isEqualToString:DYYY_VIDEO_QUALITY_POLICY_KEY]) {
+        return @[ DYYY_VIDEO_QUALITY_HIGHEST, DYYY_VIDEO_QUALITY_PREFER_HDR ];
     }
     return @[];
 }
@@ -489,6 +492,8 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
         return value ?: @"自动";
     } else if ([key isEqualToString:@"DYYYHDRMode"]) {
         return value ?: @"关闭（交给抖音）";
+    } else if ([key isEqualToString:DYYY_VIDEO_QUALITY_POLICY_KEY]) {
+        return [value isEqual:DYYY_VIDEO_QUALITY_PREFER_HDR] ? DYYY_VIDEO_QUALITY_PREFER_HDR : DYYY_VIDEO_QUALITY_HIGHEST;
     }
     return [NSString stringWithFormat:@"%@", value];
 }
@@ -500,6 +505,8 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
         return @"自动";
     } else if ([key isEqualToString:@"DYYYHDRMode"]) {
         return @"关闭（交给抖音）";
+    } else if ([key isEqualToString:DYYY_VIDEO_QUALITY_POLICY_KEY]) {
+        return DYYY_VIDEO_QUALITY_HIGHEST;
     }
     return nil;
 }

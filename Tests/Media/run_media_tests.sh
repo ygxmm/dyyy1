@@ -10,6 +10,9 @@ trap 'rm -rf "$BUILD_DIR"' EXIT
 for file in \
   "$TESTS/DYYYLikeMediaTests.m" \
   "$TESTS/DYYYMediaSourceSelectionTests.m" \
+  "$TESTS/DYYYVideoQualityPolicyTests.m" \
+  "$ROOT/Sources/Media/DYYYVideoQualityPolicy.h" \
+  "$ROOT/Sources/Media/DYYYVideoQualityPolicy.m" \
   "$ROOT/Sources/Media/DYYYMediaSourceSelection.h" \
   "$ROOT/Sources/Media/DYYYMediaSourceSelection.m" \
   "$FEATURES/DYYYLikeLivePhotoBuilder.h" \
@@ -35,6 +38,8 @@ xcrun --sdk macosx clang \
   -I"$FEATURES" \
   "$TESTS/DYYYLikeMediaTests.m" \
   "$TESTS/DYYYMediaSourceSelectionTests.m" \
+  "$TESTS/DYYYVideoQualityPolicyTests.m" \
+  "$ROOT/Sources/Media/DYYYVideoQualityPolicy.m" \
   "$ROOT/Sources/Media/DYYYMediaSourceSelection.m" \
   "$FEATURES/DYYYLikeLivePhotoBuilder.m" \
   "$FEATURES/DYYYLikeAnimatedImage.m" \

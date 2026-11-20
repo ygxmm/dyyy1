@@ -2549,10 +2549,16 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
             @"detail" : @"",
             @"cellType" : @37,
             @"imageName" : kDYYYShowFPSOverlaySVGIconName},
-          @{@"identifier" : @"DYYYEnableVideoHighestQuality",
+          @{ @"identifier" : DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY,
             @"title" : @"提高视频画质",
             @"detail" : @"",
             @"cellType" : @6,
+            @"imageName" : @"ic_squaretriangletwo_outlined_20"},
+          @{ @"identifier" : DYYY_VIDEO_QUALITY_POLICY_KEY,
+            @"title" : @"视频画质策略",
+            @"subTitle" : @"开启提高视频画质后生效。抖音允许且有 HDR 档时优先，否则按原逻辑选档。",
+            @"detail" : DYYY_VIDEO_QUALITY_HIGHEST,
+            @"cellType" : @26,
             @"imageName" : @"ic_squaretriangletwo_outlined_20"},
           @{@"identifier" : @"DYYYHDRMode",
             @"title" : @"全局HDR设置",
@@ -2565,7 +2571,21 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
       for (NSDictionary *dict in qualitySettings) {
           AWESettingItemModel *item = [DYYYSettingsHelper createSettingItem:dict cellTapHandlers:cellTapHandlers];
 
-          if ([item.identifier isEqualToString:@"DYYYHDRMode"]) {
+          if ([item.identifier isEqualToString:DYYY_VIDEO_QUALITY_POLICY_KEY]) {
+              NSString *policy = [NSUserDefaults.standardUserDefaults stringForKey:DYYY_VIDEO_QUALITY_POLICY_KEY];
+              item.detail = [policy isEqualToString:DYYY_VIDEO_QUALITY_PREFER_HDR] ? DYYY_VIDEO_QUALITY_PREFER_HDR : DYYY_VIDEO_QUALITY_HIGHEST;
+              item.cellTappedBlock = ^{
+                [DYYYOptionsSelectionView showWithPreferenceKey:DYYY_VIDEO_QUALITY_POLICY_KEY
+                                                   optionsArray:@[DYYY_VIDEO_QUALITY_HIGHEST, DYYY_VIDEO_QUALITY_PREFER_HDR]
+                                                     headerText:@"选择视频画质策略"
+                                                 onPresentingVC:topView()
+                                               selectionChanged:^(NSString *selectedValue) {
+                                                 item.detail = selectedValue;
+                                                 [item refreshCell];
+                                                 [DYYYUtils showToast:@"画质策略已更新，切换视频后生效"];
+                                               }];
+              };
+          } else if ([item.identifier isEqualToString:@"DYYYHDRMode"]) {
               NSString *savedMode = [[NSUserDefaults standardUserDefaults] stringForKey:@"DYYYHDRMode"] ?: @"关闭（交给抖音）";
               item.detail = savedMode;
               item.cellTappedBlock = ^{

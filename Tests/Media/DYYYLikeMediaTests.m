@@ -689,10 +689,12 @@ static void TestLivePhotoAlbumDates(void) {
 }
 
 extern int DYYYRunMediaSourceSelectionTests(void);
+extern int DYYYRunVideoQualityPolicyTests(void);
 
 int main(void) {
     @autoreleasepool {
         int sourceSelectionFailures = DYYYRunMediaSourceSelectionTests();
+        int qualityPolicyFailures = DYYYRunVideoQualityPolicyTests();
         NSURL *directory = MakeTempDirectory();
         if (!directory) return 2;
         TestAnimatedFixture(directory, @"GIF", @"R0lGODlhAgACAIEAAP8AAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEDAAAh+QQADAAAACwAAAAAAgACAAAIBgABCAQQEAAh+QQAHAAAACwAAAAAAgACAIEAAP8AAAAAAAAAAAAIBgABCAQQEAA7", @"gif");
@@ -712,6 +714,6 @@ int main(void) {
         TestLivePhotoAlbumDates();
         fprintf(stdout, "\nMedia tests: %d PASS, %d FAIL\n", gPasses, gFailures);
         [[NSFileManager defaultManager] removeItemAtURL:directory error:NULL];
-        return (gFailures || sourceSelectionFailures) ? 1 : 0;
+        return (gFailures || sourceSelectionFailures || qualityPolicyFailures) ? 1 : 0;
     }
 }

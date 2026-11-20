@@ -41,6 +41,7 @@
 #import "DYYYFullscreenCoordinator.h"
 #import "DYYYNativeAutoPlay.h"
 #import "DYYYLikeLongPressSave.h"
+#import "DYYYVideoQualityPolicy.h"
 
 
 #import "DYYYConstants.h"
@@ -2416,127 +2417,86 @@ static BOOL DYYYShouldBlockFeedNowPlayingSystemInfoWrite(void) {
 
 %end
 
-// 读取单个码率档位的比特率；档位类型不符或字段缺失时返回 -1，排序时会被沉到末尾。
-static NSInteger DYYYBitrateForBitrateModel(id model) {
-    Class bitrateModelClass = %c(AWEVideoBSModel);
-    if (!bitrateModelClass || ![model isKindOfClass:bitrateModelClass]) {
-        return -1;
-    }
+typedef NS_ENUM(uint32_t, DYYYPlaybackQualityMode) {
+    DYYYPlaybackQualityOriginal,
+    DYYYPlaybackQualityHighest,
+    DYYYPlaybackQualityPreferHDR,
+};
 
-    id bitrateValue = [model bitrate];
-    return bitrateValue ? [bitrateValue integerValue] : -1;
+static DYYYPlaybackQualityMode DYYYConfiguredPlaybackQuality(void) {
+    // Store generation and enum together: playback getters also run off main.
+    static uint64_t cached = UINT64_MAX;
+    uint32_t generation = __atomic_load_n(&gDYYYSettingsGeneration, __ATOMIC_RELAXED);
+    uint64_t snapshot = __atomic_load_n(&cached, __ATOMIC_RELAXED);
+    if (snapshot != UINT64_MAX && (uint32_t)(snapshot >> 32) == generation) {
+        return (DYYYPlaybackQualityMode)(uint32_t)snapshot;
+    }
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    DYYYPlaybackQualityMode mode = DYYYPlaybackQualityOriginal;
+    if ([defaults boolForKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY]) {
+        NSString *policy = [defaults stringForKey:DYYY_VIDEO_QUALITY_POLICY_KEY];
+        mode = [policy isEqualToString:DYYY_VIDEO_QUALITY_PREFER_HDR] ? DYYYPlaybackQualityPreferHDR : DYYYPlaybackQualityHighest;
+    }
+    __atomic_store_n(&cached, ((uint64_t)generation << 32) | (uint32_t)mode, __ATOMIC_RELAXED);
+    return mode;
 }
 
-// 默认视频流最高画质
-
-static NSInteger DYYYResFromGearName(NSString *name) {
-    if (!name.length) return 0;
-    NSUInteger i = 0;
-    while (i < name.length && isdigit([name characterAtIndex:i])) i++;
-    if (i > 0) {
-        NSInteger v = [[name substringToIndex:i] integerValue];
-        if (v >= 240 && v <= 4320) return v;
-    }
-    for (NSString *p in [name componentsSeparatedByString:@"_"]) {
-        if (p.length < 3 || p.length > 4) continue;
-        BOOL d = YES;
-        for (NSUInteger j = 0; j < p.length; j++) if (!isdigit([p characterAtIndex:j])) { d = NO; break; }
-        if (d) { NSInteger v = [p integerValue]; if (v >= 240 && v <= 4320) return v; }
-    }
-    return 0;
+static BOOL DYYYNativeHDRPlaybackAllowed(void) {
+    // The device and Douyin must both allow HDR. Do not write native flags,
+    // display metadata, brightness or the host HDR preference.
+    SEL eligible = NSSelectorFromString(@"eligibleForHDRPlayback");
+    Class player = AVPlayer.class;
+    if (![player respondsToSelector:eligible] || !((BOOL (*)(id, SEL))objc_msgSend)(player, eligible)) return NO;
+    Class serviceClass = NSClassFromString(@"AWEHDRPlaybackSettingService");
+    SEL shared = @selector(sharedService);
+    SEL enabled = NSSelectorFromString(@"isHDRPlaybackEnabled");
+    id service = [serviceClass respondsToSelector:shared] ? ((id (*)(id, SEL))objc_msgSend)(serviceClass, shared) : nil;
+    return [service respondsToSelector:enabled] && ((BOOL (*)(id, SEL))objc_msgSend)(service, enabled);
 }
 
-
-
-
-
-
-
-
+static id DYYYPreferredPlaybackTier(AWEVideoModel *video) {
+    DYYYPlaybackQualityMode mode = DYYYConfiguredPlaybackQuality();
+    if (mode == DYYYPlaybackQualityOriginal) return nil;
+    NSArray *tiers = video.bitrateModels;
+    if (mode == DYYYPlaybackQualityPreferHDR && DYYYNativeHDRPlaybackAllowed()) {
+        id hdrTier = DYYYSelectHDRPlaybackTier(tiers);
+        if (hdrTier) return hdrTier;
+    }
+    return DYYYSelectHighestPlaybackTier(tiers);
+}
 
 %hook AWEVideoModel
 
 - (AWEURLModel *)playURL {
-    if (!DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality")) {
-        return %orig;
-    }
-
-    // 获取比特率模型数组
-    NSArray *bitrateModels = [self bitrateModels];
-    if (!bitrateModels || bitrateModels.count == 0) {
-        return %orig;
-    }
-
-    // 查找比特率最高的模型
-    id highestBitrateModel = nil;
-    NSInteger bestRes = 0, bestBr = 0;
-
-    for (id model in bitrateModels) {
-        NSString *gn = [model valueForKey:@"gearName"];
-        NSInteger res = DYYYResFromGearName(gn);
-        NSNumber *brn = [model valueForKey:@"bitrate"];
-        NSInteger br = brn ? [brn integerValue] : 0;
-        // 选档规则：码率最高优先（提高画质以码率为准），码率相同再比分辨率。
-        if (br > bestBr || (br == bestBr && res > bestRes)) {
-            bestRes = res; bestBr = br; highestBitrateModel = model;
-        }
-    }
-
-    // 如果找到了最高比特率模型，获取其播放地址
-    if (highestBitrateModel) {
-        id playAddr = [highestBitrateModel valueForKey:@"playAddr"];
-        if (playAddr && [playAddr isKindOfClass:%c(AWEURLModel)]) {
-            return playAddr;
-        }
-    }
-
+    id address = [DYYYPreferredPlaybackTier(self) valueForKey:@"playAddr"];
+    if ([address isKindOfClass:%c(AWEURLModel)]) return address;
     return %orig;
 }
 
-// v218: 播放器选档靠 currentPlayingURLKey，hook 它指向最高码率档
-static NSString *(*v218_orig_urlKey)(id, SEL) = NULL;
-
 - (NSString *)currentPlayingURLKey {
-    if (DYYYGetBoolCached(@"DYYYEnableVideoHighestQuality")) {
-        @try {
-            NSArray *ms = [self bitrateModels];
-            id top = nil;
-            NSInteger bestRes = 0, bestBr = 0;
-            for (id m in ms) {
-                NSString *gn = [m valueForKey:@"gearName"];
-                NSInteger res = DYYYResFromGearName(gn);
-                NSNumber *brn = [m valueForKey:@"bitrate"];
-                NSInteger br = brn ? [brn integerValue] : 0;
-                if (br > bestBr || (br == bestBr && res > bestRes)) {
-                    bestRes = res; bestBr = br; top = m;
-                }
-            }
-            if (top) {
-                NSString *key = [top valueForKey:@"gearName"];
-                if ([key isKindOfClass:[NSString class]] && key.length > 0) {
-                    return key;
-                }
-            }
-        } @catch (NSException *e) {}
-    }
+    id key = [DYYYPreferredPlaybackTier(self) valueForKey:@"gearName"];
+    if ([key isKindOfClass:NSString.class] && [key length]) return key;
     return %orig;
 }
 
 - (NSArray *)bitrateModels {
-    // v730 行为：纯透传。提高画质只靠上面的 playURL / currentPlayingURLKey 两个钩子，
-    // 不重排档位表——重排会让播放器起播锁在最高档，弱网时退不下来。
-    return %orig;
+    NSArray *tiers = %orig;
+    static __thread BOOL resolvingManualTiers = NO;
+    if (resolvingManualTiers || DYYYConfiguredPlaybackQuality() != DYYYPlaybackQualityPreferHDR || !DYYYNativeHDRPlaybackAllowed()) return tiers;
+    SEL original = NSSelectorFromString(@"bitrateModels_origin");
+    if (![self respondsToSelector:original] || ![self respondsToSelector:@selector(manualBitrateModels)]) return tiers;
+    resolvingManualTiers = YES;
+    @try {
+        NSArray *origin = ((id (*)(id, SEL))objc_msgSend)(self, original);
+        if (!origin.count) return tiers;
+        // Restore only one still-manually-selectable HDR tier, not the full raw list.
+        return DYYYPlaybackTiersWithPreferredHDR(tiers, self.manualBitrateModels, origin);
+    } @catch (__unused NSException *exception) {
+        return tiers;
+    } @finally {
+        resolvingManualTiers = NO;
+    }
 }
-
-- (NSArray *)manualBitrateModels {
-    return %orig;
-}
-
-
-- (NSArray *)bitrateRawData {
-    return %orig;
-}
-
 
 %end
 

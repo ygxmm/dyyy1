@@ -67,6 +67,7 @@ DYYY_FILES = DYYY.xm \
 	Sources/Media/DYYYManager.m \
 	Sources/Media/DYYYAlbumImageDescription.m \
 	Sources/Media/DYYYMediaSourceSelection.m \
+	Sources/Media/DYYYVideoQualityPolicy.m \
 	Sources/Core/DYYYUtils.m \
 	Sources/Features/DYYYLoginBypassManager.m \
 	Sources/Features/DYYYLoginRepairHooks.m \

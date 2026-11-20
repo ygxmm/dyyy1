@@ -33,6 +33,12 @@
 // 推荐右侧显示界面回调频率；与高刷开关独立。
 #define DYYY_SHOW_FPS_OVERLAY_KEY @"DYYYShowFPSOverlay"
 
+// Independent of download quality and the host's HDR switch.
+#define DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY @"DYYYEnableVideoHighestQuality"
+#define DYYY_VIDEO_QUALITY_POLICY_KEY @"DYYYVideoQualityPolicy"
+#define DYYY_VIDEO_QUALITY_HIGHEST @"最高码率（原逻辑）"
+#define DYYY_VIDEO_QUALITY_PREFER_HDR @"HDR 首选"
+
 // 长按点赞弹出原画质视频 / 无水印图片保存菜单；默认关闭。
 #define DYYY_LIKE_LONG_PRESS_SAVE_KEY @"DYYYEnableLikeLongPressSave"
 
