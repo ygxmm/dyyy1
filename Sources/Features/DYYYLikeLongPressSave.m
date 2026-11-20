@@ -123,7 +123,7 @@ static NSURL *DYYYLikeSavePrepareImage(NSURL *rawURL, BOOL *convertedAnimation, 
     return output;
 }
 
-static void DYYYLikeSaveMediaFiles(NSURL *fileURL, NSURL *pairedVideoURL, void (^completion)(NSError *)) {
+static void DYYYLikeSaveMediaFiles(NSURL *fileURL, NSURL *pairedVideoURL, NSDate *creationDate, void (^completion)(NSError *)) {
     if (pairedVideoURL && ![PHAssetCreationRequest supportsAssetResourceTypes:
             @[@(PHAssetResourceTypePhoto), @(PHAssetResourceTypePairedVideo)]]) {
         completion(DYYYLikeSaveError(@"当前系统不支持实况入库"));
@@ -132,6 +132,7 @@ static void DYYYLikeSaveMediaFiles(NSURL *fileURL, NSURL *pairedVideoURL, void (
     // One transaction per page. Never retry a rejected Live Photo as a still.
     [PHPhotoLibrary.sharedPhotoLibrary performChanges:^{
         PHAssetCreationRequest *request = [PHAssetCreationRequest creationRequestForAsset];
+        if (creationDate) request.creationDate = creationDate;
         [request addResourceWithType:PHAssetResourceTypePhoto fileURL:fileURL options:nil];
         if (pairedVideoURL) {
             [request addResourceWithType:PHAssetResourceTypePairedVideo fileURL:pairedVideoURL options:nil];
@@ -145,6 +146,7 @@ static void DYYYLikeSaveMediaFiles(NSURL *fileURL, NSURL *pairedVideoURL, void (
 
 @interface DYYYLikeGallerySaveJob : NSObject
 @property(nonatomic, copy) NSArray<NSDictionary *> *items;
+@property(nonatomic, copy) NSArray<NSDate *> *albumDates;
 @property(nonatomic, copy) NSString *albumDescription;
 @property(nonatomic, strong) NSMutableSet<NSURL *> *temporaryURLs;
 @property(nonatomic, strong) NSURLSession *session;
@@ -190,6 +192,11 @@ static DYYYLikeGallerySaveJob *gDYYYLikeSaveActiveGallery;
                 [self finish];
                 return;
             }
+            NSMutableArray<NSNumber *> *livePages = [NSMutableArray arrayWithCapacity:self.items.count];
+            for (NSDictionary *item in self.items) {
+                [livePages addObject:@([item[@"live"] boolValue] && [item[@"imageURLs"] count] && [item[@"videoURLs"] count])];
+            }
+            self.albumDates = DYYYLikeLivePhotoAlbumDates(livePages, NSDate.date);
             NSURLSessionConfiguration *config = NSURLSessionConfiguration.ephemeralSessionConfiguration;
             config.HTTPShouldSetCookies = NO;
             config.URLCredentialStorage = nil;
@@ -372,8 +379,9 @@ static DYYYLikeGallerySaveJob *gDYYYLikeSaveActiveGallery;
 }
 - (void)savePreparedImage:(NSURL *)imageURL {
     if (self.cancelled) { [self finish]; return; }
+    NSDate *creationDate = self.albumDates[self.index];
     if (![self.items[self.index][@"live"] boolValue]) {
-        DYYYLikeSaveMediaFiles(imageURL, nil, ^(NSError *error) {
+        DYYYLikeSaveMediaFiles(imageURL, nil, creationDate, ^(NSError *error) {
             [self completeItem:error.localizedDescription];
         });
         return;
@@ -396,7 +404,7 @@ static DYYYLikeGallerySaveJob *gDYYYLikeSaveActiveGallery;
         }
         // The builder validates the pair; PhotoKit, not the preview renderer,
         // is the final authority on whether both resources were committed.
-        DYYYLikeSaveMediaFiles(photo, video, ^(NSError *saveError) {
+        DYYYLikeSaveMediaFiles(photo, video, creationDate, ^(NSError *saveError) {
             [self completeItem:saveError.localizedDescription];
         });
     });

@@ -667,6 +667,27 @@ static void TestFullResolutionLivePNG(NSURL *directory) {
     [NSFileManager.defaultManager removeItemAtURL:pairedMovie error:NULL];
 }
 
+static void TestLivePhotoAlbumDates(void) {
+    NSDate *now = [NSDate dateWithTimeIntervalSince1970:1795128000.0];
+    Check(!DYYYLikeLivePhotoAlbumDates(@[], now), @"empty selection keeps normal PhotoKit date");
+    Check(!DYYYLikeLivePhotoAlbumDates(@[@NO, @NO], now), @"ordinary image batch keeps normal PhotoKit dates");
+    Check(!DYYYLikeLivePhotoAlbumDates(@[@YES], now), @"single Live Photo keeps its ordinary date");
+    Check(!DYYYLikeLivePhotoAlbumDates(@[@NO, @YES, @NO], now), @"one Live Photo among stills needs no date change");
+
+    NSArray<NSDate *> *dates = DYYYLikeLivePhotoAlbumDates(@[@YES, @YES, @YES], now);
+    Check(dates.count == 3, @"all three live pages have an explicit PhotoKit date");
+    Check(dates.count == 3 && [dates[1] timeIntervalSinceDate:dates[0]] == 4.0 &&
+        [dates[2] timeIntervalSinceDate:dates[1]] == 4.0, @"rapid commits still receive four-second gaps");
+    Check([dates.lastObject isEqualToDate:now] && [dates.firstObject timeIntervalSinceDate:now] == -8.0,
+        @"insertion schedule preserves page order without future dates");
+
+    NSArray<NSDate *> *mixed = DYYYLikeLivePhotoAlbumDates(@[@YES, @NO, @YES], now);
+    Check(mixed.count == 3 && [mixed[1] timeIntervalSinceDate:mixed[0]] == 4.0 &&
+        [mixed[2] timeIntervalSinceDate:mixed[1]] == 4.0, @"mixed batch keeps the still between both live pages");
+    Check(mixed.count == 3 && [mixed[2] timeIntervalSinceDate:mixed[0]] == 8.0,
+        @"skipping a failed middle page cannot close the eight-second gap");
+}
+
 extern int DYYYRunMediaSourceSelectionTests(void);
 
 int main(void) {
@@ -688,6 +709,7 @@ int main(void) {
         TestLivePhoto(directory);
         TestFullResolutionLivePNG(directory);
         TestIndependentLivePhotos(directory);
+        TestLivePhotoAlbumDates();
         fprintf(stdout, "\nMedia tests: %d PASS, %d FAIL\n", gPasses, gFailures);
         [[NSFileManager defaultManager] removeItemAtURL:directory error:NULL];
         return (gFailures || sourceSelectionFailures) ? 1 : 0;

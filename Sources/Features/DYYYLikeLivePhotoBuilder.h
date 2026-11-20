@@ -15,4 +15,8 @@ FOUNDATION_EXPORT void DYYYLikeBuildLivePhoto(NSURL *photoURL, NSURL *videoURL,
 /// Whether this failure came from the motion clip rather than the still image.
 FOUNDATION_EXPORT BOOL DYYYLikeLivePhotoHasVideoError(NSError * _Nullable error);
 
+/// PhotoKit dates for a batch with two or more Live Photos; nil leaves dates alone.
+/// Space pages by four seconds while keeping order and never dating them in the future.
+FOUNDATION_EXPORT NSArray<NSDate *> * _Nullable DYYYLikeLivePhotoAlbumDates(NSArray<NSNumber *> *livePages, NSDate *latestDate);
+
 NS_ASSUME_NONNULL_END

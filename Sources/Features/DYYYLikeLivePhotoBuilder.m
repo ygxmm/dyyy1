@@ -25,6 +25,23 @@ BOOL DYYYLikeLivePhotoHasVideoError(NSError *error) {
     return [error.domain isEqualToString:DYYYLPErrorDomain] && error.code == DYYYLPMovie;
 }
 
+NSArray<NSDate *> *DYYYLikeLivePhotoAlbumDates(NSArray<NSNumber *> *livePages, NSDate *latestDate) {
+    NSUInteger liveCount = 0;
+    for (NSNumber *page in livePages) {
+        if (page.boolValue && ++liveCount == 2) break;
+    }
+    if (liveCount < 2) return nil;
+
+    // Photos can extend playback across closely dated Live Photos. Keep the
+    // existing four-second rule without waiting or assigning future dates.
+    NSMutableArray<NSDate *> *dates = [NSMutableArray arrayWithCapacity:livePages.count];
+    for (NSUInteger index = 0; index < livePages.count; ++index) {
+        NSTimeInterval secondsBeforeLatest = 4.0 * (livePages.count - 1 - index);
+        [dates addObject:[latestDate dateByAddingTimeInterval:-secondsBeforeLatest]];
+    }
+    return [dates copy];
+}
+
 static AVMutableMetadataItem *DYYYLPItem(NSString *key, NSString *type, id value) {
     AVMutableMetadataItem *item = [AVMutableMetadataItem metadataItem];
     item.keySpace = AVMetadataKeySpaceQuickTimeMetadata;
