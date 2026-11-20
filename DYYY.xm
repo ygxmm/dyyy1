@@ -2457,15 +2457,25 @@ static id DYYYPreferredPlaybackTier(AWEVideoModel *video) {
     return DYYYSelectHighestPlaybackTier(tiers);
 }
 
-static id DYYYPreferredNativePlaybackTier(AWEVideoModel *video, id nativeTier) {
+static __thread NSUInteger dyyyNativeSelectionDepth = 0;
+
+static id DYYYPreferredNativePlaybackTier(id owner, id nativeTier, BOOL selectorOwnsVideo) {
     DYYYPlaybackQualityMode mode = DYYYConfiguredPlaybackQuality();
-    if (!nativeTier || mode != DYYYPlaybackQualityPreferHDR) return nativeTier;
+    if (!nativeTier || dyyyNativeSelectionDepth || mode != DYYYPlaybackQualityPreferHDR) return nativeTier;
     static __thread BOOL resolvingNativeTier = NO;
     if (resolvingNativeTier) return nativeTier;
     resolvingNativeTier = YES;
     @try {
         if (!DYYYNativeHDRPlaybackAllowed()) return nativeTier;
-        return DYYYResolveNativePlaybackTier(nativeTier, video.bitrateModels, mode, YES);
+        id video = owner;
+        if (selectorOwnsVideo) {
+            // Read the weak owner only after mode/permission/reentrancy guards.
+            // Prefetch may target an off-screen item, never a global controller.
+            SEL videoGetter = NSSelectorFromString(@"video");
+            if (![owner respondsToSelector:videoGetter]) return nativeTier;
+            video = ((id (*)(id, SEL))objc_msgSend)(owner, videoGetter);
+        }
+        return DYYYResolveNativePlaybackTierForVideo(nativeTier, video, mode, YES);
     } @catch (__unused NSException *exception) {
         return nativeTier;
     } @finally {
@@ -2473,40 +2483,86 @@ static id DYYYPreferredNativePlaybackTier(AWEVideoModel *video, id nativeTier) {
     }
 }
 
+static id DYYYRunNativeSelectorSelection(id selector, id (^nativeSelection)(void)) {
+    id nativeTier = nil;
+    ++dyyyNativeSelectionDepth;
+    @try {
+        nativeTier = nativeSelection();
+    } @finally {
+        --dyyyNativeSelectionDepth;
+    }
+    // Public overloads can call each other. Only the outermost return is
+    // coordinated, so native outer code does not cache an inner replacement.
+    return DYYYPreferredNativePlaybackTier(selector, nativeTier, YES);
+}
+
+// The media player's BDSim selectors are distinct objects/IMPs from the AWE
+// model helpers. Reconcile their public result boundary, including select-once
+// early returns, and leave native cache writes/bookkeeping to %orig exactly once.
+%hook BDSimBitrateSelector
+
+- (id)awe_playBSModel {
+    return DYYYRunNativeSelectorSelection(self, ^id{
+        return %orig;
+    });
+}
+
+- (id)awe_playBSModelBandwidthFactor:(double)factor {
+    return DYYYRunNativeSelectorSelection(self, ^id{
+        return %orig(factor);
+    });
+}
+
+- (id)awe_playDynamicBSModel:(id)model {
+    return DYYYRunNativeSelectorSelection(self, ^id{
+        return %orig(model);
+    });
+}
+
+- (id)awe_playDynamicBSModel:(id)model bandwidthFactor:(double)factor {
+    return DYYYRunNativeSelectorSelection(self, ^id{
+        return %orig(model, factor);
+    });
+}
+
+%end
+
+%hook BDSimPrefetchBitrateSelector
+
+- (id)awe_prefetchBSModel {
+    return DYYYRunNativeSelectorSelection(self, ^id{
+        return %orig;
+    });
+}
+
+- (id)awe_prefetchBSModelNeedSave:(BOOL)needSave bandwidthFactor:(double)factor {
+    return DYYYRunNativeSelectorSelection(self, ^id{
+        return %orig(needSave, factor);
+    });
+}
+
+- (id)awe_prefetchBSModelWithAutoBitrateModel:(id)model needSave:(BOOL)needSave bandwidthFactor:(double)factor {
+    return DYYYRunNativeSelectorSelection(self, ^id{
+        return %orig(model, needSave, factor);
+    });
+}
+
+- (id)awe_prefetchDynamicBSModel:(id)model needSave:(BOOL)needSave bandwidthFactor:(double)factor {
+    return DYYYRunNativeSelectorSelection(self, ^id{
+        return %orig(model, needSave, factor);
+    });
+}
+
+%end
+
 %hook AWEVideoModel
 
-// Select-once paths return this cached object before consulting playURL.
-// Override the read, not the stored cache: Off exposes the native result again.
+// Select-once AWE consumers can still read the cached object directly.
+// Keep this getter, but do not confuse AWE's similarly named private helpers
+// with the BDSim selector instances used by the actual media player.
 - (id)preloadedBSModel {
     id nativeTier = %orig;
-    return DYYYPreferredNativePlaybackTier(self, nativeTier);
-}
-
-// Shared 41.2 model entrypoints. Run native bookkeeping once, retaining each
-// needSave argument and native nil semantics; only reconcile the returned tier.
-- (id)__prefetchBSModelNeedSave:(BOOL)needSave bandwidthFactor:(double)factor {
-    id nativeTier = %orig(needSave, factor);
-    return DYYYPreferredNativePlaybackTier(self, nativeTier);
-}
-
-- (id)__prefetchBSModelWithAutoBitrateModel:(id)model needSave:(BOOL)needSave bandwidthFactor:(double)factor {
-    id nativeTier = %orig(model, needSave, factor);
-    return DYYYPreferredNativePlaybackTier(self, nativeTier);
-}
-
-- (id)__prefetchBSModelWithAwemeModel:(id)model needSave:(BOOL)needSave bandwidthFactor:(double)factor {
-    id nativeTier = %orig(model, needSave, factor);
-    return DYYYPreferredNativePlaybackTier(self, nativeTier);
-}
-
-- (id)__playBSModelBandwidthFactor:(double)factor {
-    id nativeTier = %orig(factor);
-    return DYYYPreferredNativePlaybackTier(self, nativeTier);
-}
-
-- (id)__playDynamicBSModel:(id)model bandwidthFactor:(double)factor {
-    id nativeTier = %orig(model, factor);
-    return DYYYPreferredNativePlaybackTier(self, nativeTier);
+    return DYYYPreferredNativePlaybackTier(self, nativeTier, NO);
 }
 
 - (AWEURLModel *)playURL {

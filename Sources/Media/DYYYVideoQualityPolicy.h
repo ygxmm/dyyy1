@@ -21,6 +21,11 @@ FOUNDATION_EXPORT id _Nullable DYYYSelectHDRPlaybackTier(NSArray * _Nullable tie
 FOUNDATION_EXPORT id _Nullable DYYYResolveNativePlaybackTier(id _Nullable nativeTier,
     NSArray * _Nullable tiers, DYYYPlaybackQualityMode mode, BOOL nativeHDRAllowed);
 
+// Resolve against the selector-owned video, not a global visible item. This
+// bridge is shared by cache reads and BDSim's public selection boundaries.
+FOUNDATION_EXPORT id _Nullable DYYYResolveNativePlaybackTierForVideo(id _Nullable nativeTier,
+    id _Nullable video, DYYYPlaybackQualityMode mode, BOOL nativeHDRAllowed);
+
 // Restore at most one HDR tier that the host exposes for manual selection and
 // originally supplied for this same video. Retain all native fallback tiers.
 FOUNDATION_EXPORT NSArray * _Nullable DYYYPlaybackTiersWithPreferredHDR(NSArray * _Nullable effective,

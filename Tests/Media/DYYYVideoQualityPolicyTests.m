@@ -1,6 +1,49 @@
 #import "../../Sources/Media/DYYYVideoQualityPolicy.h"
 #import "../../Sources/Core/DYYYConstants.h"
 #include <stdio.h>
+#import <objc/runtime.h>
+
+// Foundation-only host doubles, not a real Aweme/BDSim integration test.
+@interface DYYYQualityAddressFixture : NSObject
+@property (nonatomic, copy) NSArray *originURLList;
+@end
+@implementation DYYYQualityAddressFixture
+@end
+
+@interface DYYYQualityTierFixture : NSObject
+@property (nonatomic, copy) NSString *gearName;
+@property (nonatomic, strong) NSNumber *bitrate;
+@property (nonatomic, copy) NSString *hdrType;
+@property (nonatomic, strong) id playAddr;
+@end
+@implementation DYYYQualityTierFixture
+@end
+
+@interface DYYYQualityVideoFixture : NSObject
+@property (nonatomic, copy) NSArray *nativeTiers;
+@property (nonatomic, strong) id preloadedBSModel;
+@property (nonatomic, assign) NSUInteger tierReads;
+@property (nonatomic, assign) BOOL throwOnRead;
+- (NSArray *)bitrateModels;
+@end
+@implementation DYYYQualityVideoFixture
+- (NSArray *)bitrateModels {
+    self.tierReads++;
+    if (self.throwOnRead) [NSException raise:@"DYYYTestGetter" format:@"unavailable native list"];
+    return self.nativeTiers;
+}
+@end
+
+static DYYYQualityTierFixture *DYYYQualityObjectTier(Class addressClass, NSString *gear, NSInteger rate, NSString *hdr, NSString *url) {
+    DYYYQualityAddressFixture *address = [addressClass new];
+    address.originURLList = url ? @[url] : @[];
+    DYYYQualityTierFixture *tier = [DYYYQualityTierFixture new];
+    tier.gearName = gear;
+    tier.bitrate = @(rate);
+    tier.hdrType = hdr;
+    tier.playAddr = address;
+    return tier;
+}
 
 static NSDictionary *DYYYQualityTier(NSString *gear, NSInteger rate, id hdr, NSString *url) {
     return @{@"gearName":gear, @"bitrate":@(rate), @"hdrType":hdr, @"hdrBit":@"10",
@@ -13,6 +56,8 @@ static int DYYYVerifyQuality(BOOL pass, const char *meaning) {
 }
 
 int DYYYRunVideoQualityPolicyTests(void) {
+    // These host doubles require a fresh macOS test process, never Aweme.
+    if (NSClassFromString(@"AWEURLModel")) return DYYYVerifyQuality(NO, "host fixture requires an isolated test process");
     int failed = 0;
     failed += DYYYVerifyQuality(DYYYPlaybackQualityModeForSettings(NO, DYYY_VIDEO_QUALITY_PREFER_HDR) == DYYYPlaybackQualityOriginal,
         "master switch off always preserves native selection");
@@ -98,5 +143,60 @@ int DYYYRunVideoQualityPolicyTests(void) {
         "equal bitrates use the original resolution tie-break");
     failed += DYYYVerifyQuality(DYYYSelectHighestPlaybackTier(nil) == nil && DYYYSelectHDRPlaybackTier(@[]) == nil,
         "missing and empty lists fall through to stock playback");
+    // Register a synthetic host address subclass only after the dictionary
+    // cases, so this matrix also exercises the production AWEURLModel guard.
+    Class addressClass = objc_allocateClassPair(DYYYQualityAddressFixture.class, "AWEURLModel", 0);
+    if (!addressClass) return failed + DYYYVerifyQuality(NO, "synthetic host address class allocation succeeds");
+    objc_registerClassPair(addressClass);
+    DYYYQualityTierFixture *nativeObject = DYYYQualityObjectTier(addressClass, @"1440_1_1", 5857463, @"", @"https://cdn.example/775547-sdr?sig=a%2Bb");
+    DYYYQualityTierFixture *hdrObject = DYYYQualityObjectTier(addressClass, @"adapt_lowest_1440_1", 4886602, @"3", @"https://cdn.example/775547-hdr?sig=c%2Bd");
+    DYYYQualityVideoFixture *selectorVideo = [DYYYQualityVideoFixture new];
+    selectorVideo.nativeTiers = @[nativeObject, hdrObject];
+    // This mirrors the failed samples: BDSim has a native result while the AWE
+    // preloaded ivar is empty. The BDSim result must not depend on that getter.
+    failed += DYYYVerifyQuality(selectorVideo.preloadedBSModel == nil &&
+        DYYYResolveNativePlaybackTierForVideo(nativeObject, selectorVideo, DYYYPlaybackQualityPreferHDR, YES) == hdrObject,
+        "selector-owned native SDR resolves to HDR even with no AWE preloaded cache");
+    failed += DYYYVerifyQuality(selectorVideo.preloadedBSModel == nil &&
+        [selectorVideo.nativeTiers isEqualToArray:@[nativeObject, hdrObject]] && [nativeObject.hdrType isEqual:@""],
+        "native objects, original cache and fallback array remain unmodified");
+    DYYYQualityTierFixture *nativeObjectCopy = DYYYQualityObjectTier(addressClass, nativeObject.gearName, nativeObject.bitrate.integerValue,
+        nativeObject.hdrType, @"https://cdn.example/775547-sdr?sig=a%2Bb");
+    failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(nativeObjectCopy, selectorVideo, DYYYPlaybackQualityPreferHDR, YES) == hdrObject,
+        "native object copy matches by exact issued URL rather than object address");
+    DYYYQualityTierFixture *wrongSignature = DYYYQualityObjectTier(addressClass, nativeObject.gearName, nativeObject.bitrate.integerValue,
+        nativeObject.hdrType, @"https://cdn.example/775547-sdr?sig=DIFFERENT");
+    failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(wrongSignature, selectorVideo, DYYYPlaybackQualityPreferHDR, YES) == wrongSignature,
+        "identical object metadata with a different signed URL stays native");
+    DYYYQualityVideoFixture *otherVideo = [DYYYQualityVideoFixture new];
+    otherVideo.nativeTiers = @[wrongSignature, hdrObject];
+    failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(nativeObject, otherVideo, DYYYPlaybackQualityPreferHDR, YES) == nativeObject,
+        "selector ownership cannot be borrowed from the visible or another video");
+    failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(hdrObject, selectorVideo, DYYYPlaybackQualityPreferHDR, YES) == hdrObject,
+        "an already selected native HDR object is not cloned or relabeled");
+    NSUInteger readsBefore = selectorVideo.tierReads;
+    failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(nativeObject, selectorVideo, DYYYPlaybackQualityOriginal, YES) == nativeObject &&
+        selectorVideo.tierReads == readsBefore, "Off forwards original result without reading candidate getters");
+    failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(nativeObject, selectorVideo, DYYYPlaybackQualityHighest, YES) == nativeObject &&
+        selectorVideo.tierReads == readsBefore, "legacy highest mode leaves native selector result untouched");
+    failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(nativeObject, selectorVideo, DYYYPlaybackQualityPreferHDR, NO) == nativeObject &&
+        selectorVideo.tierReads == readsBefore, "HDR denial does not inspect or override the native candidate list");
+    failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(nil, selectorVideo, DYYYPlaybackQualityPreferHDR, YES) == nil &&
+        selectorVideo.tierReads == readsBefore, "a nil native selector result is not synthesized from candidates");
+    failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(nativeObject, nil, DYYYPlaybackQualityPreferHDR, YES) == nativeObject,
+        "a released weak selector video keeps its original native result");
+    selectorVideo.nativeTiers = @[nativeObject];
+    failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(nativeObject, selectorVideo, DYYYPlaybackQualityPreferHDR, YES) == nativeObject,
+        "no HDR candidates remains a native SDR fallback");
+    selectorVideo.throwOnRead = YES;
+    failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(nativeObject, selectorVideo, DYYYPlaybackQualityPreferHDR, YES) == nativeObject,
+        "an unavailable native list getter fails closed to the native result");
+    selectorVideo.throwOnRead = NO;
+    DYYYQualityTierFixture *wrongAddressClass = DYYYQualityObjectTier(DYYYQualityAddressFixture.class, @"1080_1_1", 1, @"", @"https://cdn.example/opaque");
+    selectorVideo.nativeTiers = @[wrongAddressClass, hdrObject];
+    failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(wrongAddressClass, selectorVideo, DYYYPlaybackQualityPreferHDR, YES) == wrongAddressClass,
+        "wrong native address class is not promoted even if its URL looks valid");
+    failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(nativeObject, [NSObject new], DYYYPlaybackQualityPreferHDR, YES) == nativeObject,
+        "a non-video selector owner preserves the original tier");
     return failed;
 }

@@ -2,6 +2,10 @@
 #import "DYYYMediaSourceSelection.h"
 #import "../Core/DYYYConstants.h"
 
+@protocol DYYYPlaybackVideoTierSource <NSObject>
+- (NSArray *)bitrateModels;
+@end
+
 NSString *DYYYNormalizedPlaybackQualityPolicy(id preference) {
     if ([preference isEqual:DYYY_VIDEO_QUALITY_OFF]) return DYYY_VIDEO_QUALITY_OFF;
     if ([preference isEqual:DYYY_VIDEO_QUALITY_PREFER_HDR]) return DYYY_VIDEO_QUALITY_PREFER_HDR;
@@ -118,6 +122,18 @@ id DYYYResolveNativePlaybackTier(id nativeTier, NSArray *tiers, DYYYPlaybackQual
     }
     // A detached DASH model, stale URL or unrelated source stays native.
     return nativeTier;
+}
+
+id DYYYResolveNativePlaybackTierForVideo(id nativeTier, id video, DYYYPlaybackQualityMode mode, BOOL nativeHDRAllowed) {
+    // Preserve Off/highest/denied/nil paths without even touching a model getter.
+    if (!nativeTier || !video || mode != DYYYPlaybackQualityPreferHDR || !nativeHDRAllowed) return nativeTier;
+    @try {
+        if (![video respondsToSelector:@selector(bitrateModels)]) return nativeTier;
+        NSArray *tiers = [(id<DYYYPlaybackVideoTierSource>)video bitrateModels];
+        return DYYYResolveNativePlaybackTier(nativeTier, tiers, mode, nativeHDRAllowed);
+    } @catch (__unused NSException *exception) {
+        return nativeTier;
+    }
 }
 
 NSArray *DYYYPlaybackTiersWithPreferredHDR(NSArray *effective, NSArray *manual, NSArray *original) {
