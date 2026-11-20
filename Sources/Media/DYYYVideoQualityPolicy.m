@@ -1,5 +1,17 @@
 #import "DYYYVideoQualityPolicy.h"
 #import "DYYYMediaSourceSelection.h"
+#import "../Core/DYYYConstants.h"
+
+NSString *DYYYNormalizedPlaybackQualityPolicy(id preference) {
+    if ([preference isEqual:DYYY_VIDEO_QUALITY_OFF]) return DYYY_VIDEO_QUALITY_OFF;
+    if ([preference isEqual:DYYY_VIDEO_QUALITY_PREFER_HDR]) return DYYY_VIDEO_QUALITY_PREFER_HDR;
+    return DYYY_VIDEO_QUALITY_HIGHEST;
+}
+
+DYYYPlaybackQualityMode DYYYPlaybackQualityModeForSettings(BOOL enabled, id preference) {
+    if (!enabled || [preference isEqual:DYYY_VIDEO_QUALITY_OFF]) return DYYYPlaybackQualityOriginal;
+    return [preference isEqual:DYYY_VIDEO_QUALITY_PREFER_HDR] ? DYYYPlaybackQualityPreferHDR : DYYYPlaybackQualityHighest;
+}
 
 static id DYYYPlaybackTierValue(id tier, NSString *key) {
     @try { return [tier valueForKey:key]; }
@@ -49,13 +61,17 @@ static NSInteger DYYYPlaybackTierHDRType(id tier) {
     return [scanner scanInteger:&type] && scanner.isAtEnd ? type : 0;
 }
 
-static BOOL DYYYPlaybackTierIsUsableHDR(id tier) {
-    if (DYYYPlaybackTierHDRType(tier) <= 0 || DYYYPlaybackTierBitrate(tier) <= 0) return NO;
+static BOOL DYYYPlaybackTierHasUsableSource(id tier) {
+    if (DYYYPlaybackTierBitrate(tier) <= 0) return NO;
     id address = DYYYPlaybackTierValue(tier, @"playAddr");
     Class addressClass = NSClassFromString(@"AWEURLModel");
     if (addressClass && ![address isKindOfClass:addressClass]) return NO;
     id key = DYYYPlaybackTierValue(tier, @"gearName");
     return [key isKindOfClass:NSString.class] && [key length] > 0 && DYYYMediaSourceURLs(address).count > 0;
+}
+
+static BOOL DYYYPlaybackTierIsUsableHDR(id tier) {
+    return DYYYPlaybackTierHDRType(tier) > 0 && DYYYPlaybackTierHasUsableSource(tier);
 }
 
 static BOOL DYYYPlaybackTierRanksHigher(id candidate, id best) {
@@ -79,7 +95,7 @@ id DYYYSelectHDRPlaybackTier(NSArray *tiers) {
     return best;
 }
 
-static BOOL DYYYPlaybackSameHDRSource(id a, id b) {
+static BOOL DYYYPlaybackSameSource(id a, id b) {
     if (a == b) return YES;
     if (DYYYPlaybackTierBitrate(a) != DYYYPlaybackTierBitrate(b) || DYYYPlaybackTierHDRType(a) != DYYYPlaybackTierHDRType(b) ||
         ![DYYYPlaybackTierValue(a, @"gearName") isEqual:DYYYPlaybackTierValue(b, @"gearName")]) return NO;
@@ -88,6 +104,20 @@ static BOOL DYYYPlaybackSameHDRSource(id a, id b) {
         if ([originURLs containsObject:url]) return YES;
     }
     return NO;
+}
+
+id DYYYResolveNativePlaybackTier(id nativeTier, NSArray *tiers, DYYYPlaybackQualityMode mode, BOOL nativeHDRAllowed) {
+    // Never turn a native nil / unsupported model into a playable source.
+    // Keep the host's stored cache untouched: Off immediately exposes it again.
+    if (mode != DYYYPlaybackQualityPreferHDR || !nativeHDRAllowed ||
+        !DYYYPlaybackTierHasUsableSource(nativeTier) || ![tiers isKindOfClass:NSArray.class]) return nativeTier;
+    id hdrTier = DYYYSelectHDRPlaybackTier(tiers);
+    if (!hdrTier || hdrTier == nativeTier) return nativeTier;
+    for (id tier in tiers) {
+        if (DYYYPlaybackSameSource(nativeTier, tier)) return hdrTier;
+    }
+    // A detached DASH model, stale URL or unrelated source stays native.
+    return nativeTier;
 }
 
 NSArray *DYYYPlaybackTiersWithPreferredHDR(NSArray *effective, NSArray *manual, NSArray *original) {
@@ -100,11 +130,11 @@ NSArray *DYYYPlaybackTiersWithPreferredHDR(NSArray *effective, NSArray *manual, 
         // HDR representation (including its source URL) as already restored.
         BOOL tierExists = NO;
         for (id tier in effective) {
-            if (DYYYPlaybackSameHDRSource(tier, candidate)) { tierExists = YES; break; }
+            if (DYYYPlaybackSameSource(tier, candidate)) { tierExists = YES; break; }
         }
         if (tierExists) continue;
         for (id tier in original) {
-            if (DYYYPlaybackSameHDRSource(tier, candidate)) { add = tier; break; }
+            if (DYYYPlaybackSameSource(tier, candidate)) { add = tier; break; }
         }
     }
     return add ? [effective arrayByAddingObject:add] : effective;

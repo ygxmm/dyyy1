@@ -2,6 +2,7 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import "DYYYConstants.h"
+#import "DYYYVideoQualityPolicy.h"
 #import "DYYYFloatClearButton.h"
 #import "DYYYFloatSpeedButton.h"
 #import "DYYYKeyboardAvoidanceCoordinator.h"
@@ -477,7 +478,7 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
     } else if ([key isEqualToString:@"DYYYHDRMode"]) {
         return @[ @"关闭（交给抖音）", @"全局过滤HDR作品" ];
     } else if ([key isEqualToString:DYYY_VIDEO_QUALITY_POLICY_KEY]) {
-        return @[ DYYY_VIDEO_QUALITY_HIGHEST, DYYY_VIDEO_QUALITY_PREFER_HDR ];
+        return @[ DYYY_VIDEO_QUALITY_OFF, DYYY_VIDEO_QUALITY_HIGHEST, DYYY_VIDEO_QUALITY_PREFER_HDR ];
     }
     return @[];
 }
@@ -493,7 +494,7 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
     } else if ([key isEqualToString:@"DYYYHDRMode"]) {
         return value ?: @"关闭（交给抖音）";
     } else if ([key isEqualToString:DYYY_VIDEO_QUALITY_POLICY_KEY]) {
-        return [value isEqual:DYYY_VIDEO_QUALITY_PREFER_HDR] ? DYYY_VIDEO_QUALITY_PREFER_HDR : DYYY_VIDEO_QUALITY_HIGHEST;
+        return DYYYNormalizedPlaybackQualityPolicy(value);
     }
     return [NSString stringWithFormat:@"%@", value];
 }

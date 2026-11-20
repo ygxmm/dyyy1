@@ -36,6 +36,7 @@
 // Independent of download quality and the host's HDR switch.
 #define DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY @"DYYYEnableVideoHighestQuality"
 #define DYYY_VIDEO_QUALITY_POLICY_KEY @"DYYYVideoQualityPolicy"
+#define DYYY_VIDEO_QUALITY_OFF @"关闭（交给抖音）"
 #define DYYY_VIDEO_QUALITY_HIGHEST @"最高码率（原逻辑）"
 #define DYYY_VIDEO_QUALITY_PREFER_HDR @"HDR 首选"
 

@@ -27,6 +27,8 @@ for file in \
   fi
 done
 
+python3 "$TESTS/check_video_quality_integration.py"
+
 if ! command -v xcrun >/dev/null 2>&1; then
   echo "FAIL xcrun is required; run this test on macOS (e.g. GitHub Actions macos-latest)." >&2
   exit 2

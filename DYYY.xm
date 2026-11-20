@@ -2417,12 +2417,6 @@ static BOOL DYYYShouldBlockFeedNowPlayingSystemInfoWrite(void) {
 
 %end
 
-typedef NS_ENUM(uint32_t, DYYYPlaybackQualityMode) {
-    DYYYPlaybackQualityOriginal,
-    DYYYPlaybackQualityHighest,
-    DYYYPlaybackQualityPreferHDR,
-};
-
 static DYYYPlaybackQualityMode DYYYConfiguredPlaybackQuality(void) {
     // Store generation and enum together: playback getters also run off main.
     static uint64_t cached = UINT64_MAX;
@@ -2432,11 +2426,9 @@ static DYYYPlaybackQualityMode DYYYConfiguredPlaybackQuality(void) {
         return (DYYYPlaybackQualityMode)(uint32_t)snapshot;
     }
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    DYYYPlaybackQualityMode mode = DYYYPlaybackQualityOriginal;
-    if ([defaults boolForKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY]) {
-        NSString *policy = [defaults stringForKey:DYYY_VIDEO_QUALITY_POLICY_KEY];
-        mode = [policy isEqualToString:DYYY_VIDEO_QUALITY_PREFER_HDR] ? DYYYPlaybackQualityPreferHDR : DYYYPlaybackQualityHighest;
-    }
+    DYYYPlaybackQualityMode mode = DYYYPlaybackQualityModeForSettings(
+        [defaults boolForKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY],
+        [defaults objectForKey:DYYY_VIDEO_QUALITY_POLICY_KEY]);
     __atomic_store_n(&cached, ((uint64_t)generation << 32) | (uint32_t)mode, __ATOMIC_RELAXED);
     return mode;
 }
@@ -2465,7 +2457,57 @@ static id DYYYPreferredPlaybackTier(AWEVideoModel *video) {
     return DYYYSelectHighestPlaybackTier(tiers);
 }
 
+static id DYYYPreferredNativePlaybackTier(AWEVideoModel *video, id nativeTier) {
+    DYYYPlaybackQualityMode mode = DYYYConfiguredPlaybackQuality();
+    if (!nativeTier || mode != DYYYPlaybackQualityPreferHDR) return nativeTier;
+    static __thread BOOL resolvingNativeTier = NO;
+    if (resolvingNativeTier) return nativeTier;
+    resolvingNativeTier = YES;
+    @try {
+        if (!DYYYNativeHDRPlaybackAllowed()) return nativeTier;
+        return DYYYResolveNativePlaybackTier(nativeTier, video.bitrateModels, mode, YES);
+    } @catch (__unused NSException *exception) {
+        return nativeTier;
+    } @finally {
+        resolvingNativeTier = NO;
+    }
+}
+
 %hook AWEVideoModel
+
+// Select-once paths return this cached object before consulting playURL.
+// Override the read, not the stored cache: Off exposes the native result again.
+- (id)preloadedBSModel {
+    id nativeTier = %orig;
+    return DYYYPreferredNativePlaybackTier(self, nativeTier);
+}
+
+// Shared 41.2 model entrypoints. Run native bookkeeping once, retaining each
+// needSave argument and native nil semantics; only reconcile the returned tier.
+- (id)__prefetchBSModelNeedSave:(BOOL)needSave bandwidthFactor:(double)factor {
+    id nativeTier = %orig(needSave, factor);
+    return DYYYPreferredNativePlaybackTier(self, nativeTier);
+}
+
+- (id)__prefetchBSModelWithAutoBitrateModel:(id)model needSave:(BOOL)needSave bandwidthFactor:(double)factor {
+    id nativeTier = %orig(model, needSave, factor);
+    return DYYYPreferredNativePlaybackTier(self, nativeTier);
+}
+
+- (id)__prefetchBSModelWithAwemeModel:(id)model needSave:(BOOL)needSave bandwidthFactor:(double)factor {
+    id nativeTier = %orig(model, needSave, factor);
+    return DYYYPreferredNativePlaybackTier(self, nativeTier);
+}
+
+- (id)__playBSModelBandwidthFactor:(double)factor {
+    id nativeTier = %orig(factor);
+    return DYYYPreferredNativePlaybackTier(self, nativeTier);
+}
+
+- (id)__playDynamicBSModel:(id)model bandwidthFactor:(double)factor {
+    id nativeTier = %orig(model, factor);
+    return DYYYPreferredNativePlaybackTier(self, nativeTier);
+}
 
 - (AWEURLModel *)playURL {
     id address = [DYYYPreferredPlaybackTier(self) valueForKey:@"playAddr"];
@@ -2482,13 +2524,14 @@ static id DYYYPreferredPlaybackTier(AWEVideoModel *video) {
 - (NSArray *)bitrateModels {
     NSArray *tiers = %orig;
     static __thread BOOL resolvingManualTiers = NO;
-    if (resolvingManualTiers || DYYYConfiguredPlaybackQuality() != DYYYPlaybackQualityPreferHDR || !DYYYNativeHDRPlaybackAllowed()) return tiers;
-    SEL original = NSSelectorFromString(@"bitrateModels_origin");
-    if (![self respondsToSelector:original] || ![self respondsToSelector:@selector(manualBitrateModels)]) return tiers;
+    if (resolvingManualTiers || DYYYConfiguredPlaybackQuality() != DYYYPlaybackQualityPreferHDR) return tiers;
     resolvingManualTiers = YES;
     @try {
+        if (!DYYYNativeHDRPlaybackAllowed()) return tiers;
+        SEL original = NSSelectorFromString(@"bitrateModels_origin");
+        if (![self respondsToSelector:original] || ![self respondsToSelector:@selector(manualBitrateModels)]) return tiers;
         NSArray *origin = ((id (*)(id, SEL))objc_msgSend)(self, original);
-        if (!origin.count) return tiers;
+        if (![origin isKindOfClass:NSArray.class] || !origin.count) return tiers;
         // Restore only one still-manually-selectable HDR tier, not the full raw list.
         return DYYYPlaybackTiersWithPreferredHDR(tiers, self.manualBitrateModels, origin);
     } @catch (__unused NSException *exception) {

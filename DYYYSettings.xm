@@ -21,6 +21,7 @@
 #import "DYYYOptionsSelectionView.h"
 
 #import "DYYYConstants.h"
+#import "DYYYVideoQualityPolicy.h"
 #import "DYYYFloatClearButton.h"
 #import "DYYYFloatSpeedButton.h"
 #import "DYYYNativeAutoPlay.h"
@@ -2556,7 +2557,7 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
             @"imageName" : @"ic_squaretriangletwo_outlined_20"},
           @{ @"identifier" : DYYY_VIDEO_QUALITY_POLICY_KEY,
             @"title" : @"视频画质策略",
-            @"subTitle" : @"开启提高视频画质后生效。抖音允许且有 HDR 档时优先，否则按原逻辑选档。",
+            @"subTitle" : @"开启提高视频画质后生效。关闭＝交给抖音；HDR 首选需原生允许且有可用源，切换视频后生效。",
             @"detail" : DYYY_VIDEO_QUALITY_HIGHEST,
             @"cellType" : @26,
             @"imageName" : @"ic_squaretriangletwo_outlined_20"},
@@ -2573,10 +2574,10 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
 
           if ([item.identifier isEqualToString:DYYY_VIDEO_QUALITY_POLICY_KEY]) {
               NSString *policy = [NSUserDefaults.standardUserDefaults stringForKey:DYYY_VIDEO_QUALITY_POLICY_KEY];
-              item.detail = [policy isEqualToString:DYYY_VIDEO_QUALITY_PREFER_HDR] ? DYYY_VIDEO_QUALITY_PREFER_HDR : DYYY_VIDEO_QUALITY_HIGHEST;
+              item.detail = DYYYNormalizedPlaybackQualityPolicy(policy);
               item.cellTappedBlock = ^{
                 [DYYYOptionsSelectionView showWithPreferenceKey:DYYY_VIDEO_QUALITY_POLICY_KEY
-                                                   optionsArray:@[DYYY_VIDEO_QUALITY_HIGHEST, DYYY_VIDEO_QUALITY_PREFER_HDR]
+                                                   optionsArray:@[DYYY_VIDEO_QUALITY_OFF, DYYY_VIDEO_QUALITY_HIGHEST, DYYY_VIDEO_QUALITY_PREFER_HDR]
                                                      headerText:@"选择视频画质策略"
                                                  onPresentingVC:topView()
                                                selectionChanged:^(NSString *selectedValue) {
