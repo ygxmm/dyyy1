@@ -96,13 +96,13 @@ NSArray *DYYYPlaybackTiersWithPreferredHDR(NSArray *effective, NSArray *manual, 
     id current = DYYYSelectHDRPlaybackTier(effective), add = nil;
     for (id candidate in manual) {
         if (!DYYYPlaybackTierIsUsableHDR(candidate) || !DYYYPlaybackTierRanksHigher(candidate, add ?: current)) continue;
-        // The host must still expose this representation to its manual selector.
-        id key = DYYYPlaybackTierValue(candidate, @"gearName");
-        BOOL keyExists = NO;
+        // Gear names can be shared by SDR and HDR variants. Treat only the same
+        // HDR representation (including its source URL) as already restored.
+        BOOL tierExists = NO;
         for (id tier in effective) {
-            if ([key isEqual:DYYYPlaybackTierValue(tier, @"gearName")]) { keyExists = YES; break; }
+            if (DYYYPlaybackSameHDRSource(tier, candidate)) { tierExists = YES; break; }
         }
-        if (keyExists) continue;
+        if (tierExists) continue;
         for (id tier in original) {
             if (DYYYPlaybackSameHDRSource(tier, candidate)) { add = tier; break; }
         }

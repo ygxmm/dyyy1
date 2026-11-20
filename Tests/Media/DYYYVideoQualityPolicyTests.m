@@ -23,6 +23,16 @@ int DYYYRunVideoQualityPolicyTests(void) {
     failed += DYYYVerifyQuality(DYYYSelectHighestPlaybackTier(issued) == sdr, "original policy still picks highest bitrate, not HDR");
     failed += DYYYVerifyQuality([choices isEqualToArray:@[sdr,sdrSmall,hdr]] && [stock isEqualToArray:@[sdr,sdrSmall]],
         "restore one native manual HDR tier with SDR fallbacks unmodified and in order");
+    NSDictionary *sameGearSDR = DYYYQualityTier(@"adapt_lowest_1440_1", 3000000, @0, @"https://cdn.example/same-gear-sdr");
+    NSDictionary *sameGearHDR = DYYYQualityTier(@"adapt_lowest_1440_1", 2800000, @3, @"https://cdn.example/same-gear-hdr");
+    NSDictionary *sameGearHDRSmall = DYYYQualityTier(@"adapt_lowest_1080_1", 1400000, @3, @"https://cdn.example/same-gear-hdr-small");
+    NSArray *sameGearEffective = @[sameGearSDR, sdrSmall];
+    NSArray *sameGearNative = @[sameGearSDR, sameGearHDR, sdrSmall, sameGearHDRSmall];
+    NSArray *sameGearChoices = DYYYPlaybackTiersWithPreferredHDR(sameGearEffective, sameGearNative, sameGearNative);
+    failed += DYYYVerifyQuality(sameGearChoices.count == 3 && sameGearChoices[0] == sameGearSDR &&
+        sameGearChoices[1] == sdrSmall && sameGearChoices[2] == sameGearHDR &&
+        DYYYSelectHDRPlaybackTier(sameGearChoices) == sameGearHDR,
+        "restore HDR when SDR and HDR share a gear name, preserving SDR order");
     failed += DYYYVerifyQuality(DYYYSelectHDRPlaybackTier(choices) == hdr, "prefer top HDR despite SDR having a higher bitrate");
     failed += DYYYVerifyQuality(DYYYSelectHDRPlaybackTier(stock) == nil && DYYYSelectHighestPlaybackTier(stock) == sdr,
         "no HDR evidence (including 10-bit alone) falls back to the original ranking");
