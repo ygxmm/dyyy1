@@ -2469,11 +2469,14 @@ static id DYYYPreferredNativePlaybackTier(id owner, id nativeTier, BOOL selector
         if (!DYYYNativeHDRPlaybackAllowed()) return nativeTier;
         id video = owner;
         if (selectorOwnsVideo) {
-            // Read the weak owner only after mode/permission/reentrancy guards.
-            // Prefetch may target an off-screen item, never a global controller.
+            // This is the final stream selector's Aweme owner, not the similarly
+            // named bitrate selector's video or a global visible controller.
+            SEL modelGetter = NSSelectorFromString(@"model");
             SEL videoGetter = NSSelectorFromString(@"video");
-            if (![owner respondsToSelector:videoGetter]) return nativeTier;
-            video = ((id (*)(id, SEL))objc_msgSend)(owner, videoGetter);
+            if (![owner respondsToSelector:modelGetter]) return nativeTier;
+            id model = ((id (*)(id, SEL))objc_msgSend)(owner, modelGetter);
+            if (![model respondsToSelector:videoGetter]) return nativeTier;
+            video = ((id (*)(id, SEL))objc_msgSend)(model, videoGetter);
         }
         return DYYYResolveNativePlaybackTierForVideo(nativeTier, video, mode, YES);
     } @catch (__unused NSException *exception) {
@@ -2496,60 +2499,14 @@ static id DYYYRunNativeSelectorSelection(id selector, id (^nativeSelection)(void
     return DYYYPreferredNativePlaybackTier(selector, nativeTier, YES);
 }
 
-// The media player's BDSim selectors are distinct objects/IMPs from the AWE
-// model helpers. Reconcile their public result boundary, including select-once
-// early returns, and leave native cache writes/bookkeeping to %orig exactly once.
-%hook BDSimBitrateSelector
+// Observed 41.2 feed playback calls this final stream boundary while bypassing
+// BDSimBitrateSelector's public awe_* helpers. Reconcile only this final result;
+// keep native gear/manual/SR arguments, bookkeeping and nil semantics intact.
+%hook BDSimPlayStreamSelector
 
-- (id)awe_playBSModel {
+- (id)selectPlayVideoBSModelWithCurrentBSModel:(id)currentBSModel currentGearType:(unsigned long long)gearType enableSR:(BOOL)enableSR {
     return DYYYRunNativeSelectorSelection(self, ^id{
-        return %orig;
-    });
-}
-
-- (id)awe_playBSModelBandwidthFactor:(double)factor {
-    return DYYYRunNativeSelectorSelection(self, ^id{
-        return %orig(factor);
-    });
-}
-
-- (id)awe_playDynamicBSModel:(id)model {
-    return DYYYRunNativeSelectorSelection(self, ^id{
-        return %orig(model);
-    });
-}
-
-- (id)awe_playDynamicBSModel:(id)model bandwidthFactor:(double)factor {
-    return DYYYRunNativeSelectorSelection(self, ^id{
-        return %orig(model, factor);
-    });
-}
-
-%end
-
-%hook BDSimPrefetchBitrateSelector
-
-- (id)awe_prefetchBSModel {
-    return DYYYRunNativeSelectorSelection(self, ^id{
-        return %orig;
-    });
-}
-
-- (id)awe_prefetchBSModelNeedSave:(BOOL)needSave bandwidthFactor:(double)factor {
-    return DYYYRunNativeSelectorSelection(self, ^id{
-        return %orig(needSave, factor);
-    });
-}
-
-- (id)awe_prefetchBSModelWithAutoBitrateModel:(id)model needSave:(BOOL)needSave bandwidthFactor:(double)factor {
-    return DYYYRunNativeSelectorSelection(self, ^id{
-        return %orig(model, needSave, factor);
-    });
-}
-
-- (id)awe_prefetchDynamicBSModel:(id)model needSave:(BOOL)needSave bandwidthFactor:(double)factor {
-    return DYYYRunNativeSelectorSelection(self, ^id{
-        return %orig(model, needSave, factor);
+        return %orig(currentBSModel, gearType, enableSR);
     });
 }
 

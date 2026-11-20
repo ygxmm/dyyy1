@@ -24,21 +24,14 @@ def hook_methods(text, class_name):
 
 expected = {
     'AWEVideoModel': {'preloadedBSModel': '%orig'},
-    'BDSimBitrateSelector': {
-        'awe_playBSModel': '%orig',
-        'awe_playBSModelBandwidthFactor:': '%orig(factor)',
-        'awe_playDynamicBSModel:': '%orig(model)',
-        'awe_playDynamicBSModel:bandwidthFactor:': '%orig(model, factor)',
-    },
-    'BDSimPrefetchBitrateSelector': {
-        'awe_prefetchBSModel': '%orig',
-        'awe_prefetchBSModelNeedSave:bandwidthFactor:': '%orig(needSave, factor)',
-        'awe_prefetchBSModelWithAutoBitrateModel:needSave:bandwidthFactor:': '%orig(model, needSave, factor)',
-        'awe_prefetchDynamicBSModel:needSave:bandwidthFactor:': '%orig(model, needSave, factor)',
+    'BDSimPlayStreamSelector': {
+        'selectPlayVideoBSModelWithCurrentBSModel:currentGearType:enableSR:': '%orig(currentBSModel, gearType, enableSR)',
     },
 }
 
 def check_native_boundaries(text, emit=False):
+    for obsolete in ('BDSimBitrateSelector', 'BDSimPrefetchBitrateSelector'):
+        assert not re.search(r'^%hook ' + obsolete + r'\s*$', text, re.M), 'Remove bypassed helper hooks: ' + obsolete
     for class_name, selectors in expected.items():
         block, methods = hook_methods(text, class_name)
         assert not any(s.startswith('__') for s in methods), 'Do not retain the old private-helper stack: ' + class_name
@@ -74,9 +67,9 @@ print('PASS native quality wiring: wrong-class regressions are rejected')
 assert 'DYYYPlaybackQualityModeForSettings(' in source
 assert 'DYYYResolveNativePlaybackTierForVideo(nativeTier, video, mode, YES)' in source
 bridge = re.search(r'static id DYYYPreferredNativePlaybackTier\(.*?\n\}', source, re.S).group(0)
-assert 'objc_msgSend)(owner, videoGetter)' in bridge and '@catch' in bridge
-assert bridge.index('mode != DYYYPlaybackQualityPreferHDR') < bridge.index('videoGetter')
-assert bridge.index('DYYYNativeHDRPlaybackAllowed()') < bridge.index('videoGetter')
+assert 'objc_msgSend)(owner, modelGetter)' in bridge and 'objc_msgSend)(model, videoGetter)' in bridge and '@catch' in bridge
+assert bridge.index('mode != DYYYPlaybackQualityPreferHDR') < bridge.index('modelGetter')
+assert bridge.index('DYYYNativeHDRPlaybackAllowed()') < bridge.index('modelGetter')
 assert 'dyyyNativeSelectionDepth ||' in bridge and 'resolvingNativeTier' in bridge
 bridge_code = re.sub(r'//[^\n]*|/\*.*?\*/', '', bridge, flags=re.S)
 assert 'current' not in bridge_code.lower(), 'Never borrow a global visible video for prefetch ownership'
