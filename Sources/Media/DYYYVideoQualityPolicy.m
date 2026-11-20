@@ -1,6 +1,7 @@
 #import "DYYYVideoQualityPolicy.h"
 #import "DYYYMediaSourceSelection.h"
 #import "../Core/DYYYConstants.h"
+#include <math.h>
 
 @protocol DYYYPlaybackVideoTierSource <NSObject>
 - (NSArray *)bitrateModels;
@@ -78,16 +79,41 @@ static BOOL DYYYPlaybackTierIsUsableHDR(id tier) {
     return DYYYPlaybackTierHDRType(tier) > 0 && DYYYPlaybackTierHasUsableSource(tier);
 }
 
+typedef struct { double shortEdge, pixels; } DYYYPlaybackTierDimensions;
+
+static DYYYPlaybackTierDimensions DYYYPlaybackTierSize(id tier) {
+    id address = DYYYPlaybackTierValue(tier, @"playAddr");
+    id width = DYYYPlaybackTierValue(address, @"imageWidth");
+    id height = DYYYPlaybackTierValue(address, @"imageHeight");
+    if ([width respondsToSelector:@selector(doubleValue)] && [height respondsToSelector:@selector(doubleValue)]) {
+        double w = [width doubleValue], h = [height doubleValue], pixels = w * h;
+        if (isfinite(w) && isfinite(h) && w > 0 && h > 0 && isfinite(pixels) && pixels > 0)
+            return (DYYYPlaybackTierDimensions){ fmin(w, h), pixels };
+    }
+    return (DYYYPlaybackTierDimensions){ DYYYPlaybackTierResolution(tier), 0 };
+}
+
 static BOOL DYYYPlaybackTierRanksHigher(id candidate, id best) {
     NSInteger bitrate = DYYYPlaybackTierBitrate(candidate), bestBitrate = DYYYPlaybackTierBitrate(best);
-    return bitrate > bestBitrate || (bitrate == bestBitrate && DYYYPlaybackTierResolution(candidate) > DYYYPlaybackTierResolution(best));
+    if (bitrate != bestBitrate) return bitrate > bestBitrate;
+    DYYYPlaybackTierDimensions a = DYYYPlaybackTierSize(candidate), b = DYYYPlaybackTierSize(best);
+    // A fixed per-tier key stays transitive with mixed known/unknown dimensions.
+    if (a.shortEdge != b.shortEdge) return a.shortEdge > b.shortEdge;
+    return a.pixels > b.pixels;
+}
+
+static id DYYYSelectHighestAllowedPlaybackTier(NSArray *tiers, BOOL allowHDR) {
+    if (![tiers isKindOfClass:NSArray.class]) return nil;
+    id best = nil;
+    for (id tier in tiers) {
+        if (!DYYYPlaybackTierHasUsableSource(tier) || (!allowHDR && DYYYPlaybackTierHDRType(tier) > 0)) continue;
+        if (DYYYPlaybackTierRanksHigher(tier, best)) best = tier;
+    }
+    return best;
 }
 
 id DYYYSelectHighestPlaybackTier(NSArray *tiers) {
-    if (![tiers isKindOfClass:NSArray.class]) return nil;
-    id best = nil;
-    for (id tier in tiers) if (DYYYPlaybackTierRanksHigher(tier, best)) best = tier;
-    return best;
+    return DYYYSelectHighestAllowedPlaybackTier(tiers, YES);
 }
 
 id DYYYSelectHDRPlaybackTier(NSArray *tiers) {
@@ -97,6 +123,16 @@ id DYYYSelectHDRPlaybackTier(NSArray *tiers) {
         if (DYYYPlaybackTierIsUsableHDR(tier) && DYYYPlaybackTierRanksHigher(tier, best)) best = tier;
     }
     return best;
+}
+
+id DYYYSelectPlaybackTier(NSArray *tiers, DYYYPlaybackQualityMode mode, BOOL nativeHDRAllowed) {
+    if (mode == DYYYPlaybackQualityOriginal) return nil;
+    if (mode == DYYYPlaybackQualityPreferHDR && nativeHDRAllowed) {
+        id hdrTier = DYYYSelectHDRPlaybackTier(tiers);
+        if (hdrTier) return hdrTier;
+    }
+    // Denied HDR is not a playable fallback, even when it has the highest rate.
+    return DYYYSelectHighestAllowedPlaybackTier(tiers, nativeHDRAllowed);
 }
 
 static BOOL DYYYPlaybackSameSource(id a, id b) {
@@ -113,20 +149,20 @@ static BOOL DYYYPlaybackSameSource(id a, id b) {
 id DYYYResolveNativePlaybackTier(id nativeTier, NSArray *tiers, DYYYPlaybackQualityMode mode, BOOL nativeHDRAllowed) {
     // Never turn a native nil / unsupported model into a playable source.
     // Keep the host's stored cache untouched: Off immediately exposes it again.
-    if (mode != DYYYPlaybackQualityPreferHDR || !nativeHDRAllowed ||
-        !DYYYPlaybackTierHasUsableSource(nativeTier) || ![tiers isKindOfClass:NSArray.class]) return nativeTier;
-    id hdrTier = DYYYSelectHDRPlaybackTier(tiers);
-    if (!hdrTier || hdrTier == nativeTier) return nativeTier;
+    if (mode == DYYYPlaybackQualityOriginal || !DYYYPlaybackTierHasUsableSource(nativeTier) ||
+        ![tiers isKindOfClass:NSArray.class]) return nativeTier;
+    id preferredTier = DYYYSelectPlaybackTier(tiers, mode, nativeHDRAllowed);
+    if (!preferredTier || preferredTier == nativeTier) return nativeTier;
     for (id tier in tiers) {
-        if (DYYYPlaybackSameSource(nativeTier, tier)) return hdrTier;
+        if (DYYYPlaybackSameSource(nativeTier, tier)) return preferredTier;
     }
     // A detached DASH model, stale URL or unrelated source stays native.
     return nativeTier;
 }
 
 id DYYYResolveNativePlaybackTierForVideo(id nativeTier, id video, DYYYPlaybackQualityMode mode, BOOL nativeHDRAllowed) {
-    // Preserve Off/highest/denied/nil paths without even touching a model getter.
-    if (!nativeTier || !video || mode != DYYYPlaybackQualityPreferHDR || !nativeHDRAllowed) return nativeTier;
+    // Off/nil paths do not even read candidates; both enabled policies use this video.
+    if (!nativeTier || !video || mode == DYYYPlaybackQualityOriginal) return nativeTier;
     @try {
         if (![video respondsToSelector:@selector(bitrateModels)]) return nativeTier;
         NSArray *tiers = [(id<DYYYPlaybackVideoTierSource>)video bitrateModels];

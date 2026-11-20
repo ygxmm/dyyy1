@@ -2449,24 +2449,19 @@ static BOOL DYYYNativeHDRPlaybackAllowed(void) {
 static id DYYYPreferredPlaybackTier(AWEVideoModel *video) {
     DYYYPlaybackQualityMode mode = DYYYConfiguredPlaybackQuality();
     if (mode == DYYYPlaybackQualityOriginal) return nil;
-    NSArray *tiers = video.bitrateModels;
-    if (mode == DYYYPlaybackQualityPreferHDR && DYYYNativeHDRPlaybackAllowed()) {
-        id hdrTier = DYYYSelectHDRPlaybackTier(tiers);
-        if (hdrTier) return hdrTier;
-    }
-    return DYYYSelectHighestPlaybackTier(tiers);
+    return DYYYSelectPlaybackTier(video.bitrateModels, mode, DYYYNativeHDRPlaybackAllowed());
 }
 
 static __thread NSUInteger dyyyNativeSelectionDepth = 0;
 
 static id DYYYPreferredNativePlaybackTier(id owner, id nativeTier, BOOL selectorOwnsVideo) {
     DYYYPlaybackQualityMode mode = DYYYConfiguredPlaybackQuality();
-    if (!nativeTier || dyyyNativeSelectionDepth || mode != DYYYPlaybackQualityPreferHDR) return nativeTier;
+    if (!nativeTier || dyyyNativeSelectionDepth || mode == DYYYPlaybackQualityOriginal) return nativeTier;
     static __thread BOOL resolvingNativeTier = NO;
     if (resolvingNativeTier) return nativeTier;
     resolvingNativeTier = YES;
     @try {
-        if (!DYYYNativeHDRPlaybackAllowed()) return nativeTier;
+        BOOL hdrAllowed = DYYYNativeHDRPlaybackAllowed();
         id video = owner;
         if (selectorOwnsVideo) {
             // This is the final stream selector's Aweme owner, not the similarly
@@ -2478,7 +2473,7 @@ static id DYYYPreferredNativePlaybackTier(id owner, id nativeTier, BOOL selector
             if (![model respondsToSelector:videoGetter]) return nativeTier;
             video = ((id (*)(id, SEL))objc_msgSend)(model, videoGetter);
         }
-        return DYYYResolveNativePlaybackTierForVideo(nativeTier, video, mode, YES);
+        return DYYYResolveNativePlaybackTierForVideo(nativeTier, video, mode, hdrAllowed);
     } @catch (__unused NSException *exception) {
         return nativeTier;
     } @finally {

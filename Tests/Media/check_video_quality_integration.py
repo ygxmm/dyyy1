@@ -65,10 +65,11 @@ for class_name in expected:
         raise AssertionError('Class ownership mutation was not detected: ' + class_name)
 print('PASS native quality wiring: wrong-class regressions are rejected')
 assert 'DYYYPlaybackQualityModeForSettings(' in source
-assert 'DYYYResolveNativePlaybackTierForVideo(nativeTier, video, mode, YES)' in source
+assert 'DYYYResolveNativePlaybackTierForVideo(nativeTier, video, mode, hdrAllowed)' in source
 bridge = re.search(r'static id DYYYPreferredNativePlaybackTier\(.*?\n\}', source, re.S).group(0)
 assert 'objc_msgSend)(owner, modelGetter)' in bridge and 'objc_msgSend)(model, videoGetter)' in bridge and '@catch' in bridge
-assert bridge.index('mode != DYYYPlaybackQualityPreferHDR') < bridge.index('modelGetter')
+assert bridge.index('mode == DYYYPlaybackQualityOriginal') < bridge.index('modelGetter')
+assert 'mode != DYYYPlaybackQualityPreferHDR' not in bridge, 'Both enabled policies must reach native coordination'
 assert bridge.index('DYYYNativeHDRPlaybackAllowed()') < bridge.index('modelGetter')
 assert 'dyyyNativeSelectionDepth ||' in bridge and 'resolvingNativeTier' in bridge
 bridge_code = re.sub(r'//[^\n]*|/\*.*?\*/', '', bridge, flags=re.S)
@@ -79,6 +80,16 @@ assert '++dyyyNativeSelectionDepth;' in scope and '--dyyyNativeSelectionDepth;' 
 assert scope.index('--dyyyNativeSelectionDepth;') < scope.index('return DYYYPreferredNativePlaybackTier')
 assert 'return DYYYPreferredNativePlaybackTier(selector, nativeTier, YES);' in scope
 print('PASS native quality wiring: guards precede owner reads; nested selection coordinates only on exit')
+policy = (root / 'Sources/Media/DYYYVideoQualityPolicy.m').read_text()
+addresses = re.search(r'static id DYYYPreferredPlaybackTier\(.*?\n\}', source, re.S).group(0)
+assert 'DYYYSelectPlaybackTier(video.bitrateModels, mode, DYYYNativeHDRPlaybackAllowed())' in addresses
+resolver = re.search(r'^id DYYYResolveNativePlaybackTier\(.*?\n\}', policy, re.M | re.S).group(0)
+assert 'DYYYSelectPlaybackTier(tiers, mode, nativeHDRAllowed)' in resolver
+assert 'DYYYPlaybackSameSource(nativeTier, tier)' in resolver
+assert 'DYYYPlaybackTierHasUsableSource(nativeTier)' in resolver
+assert 'DYYYSelectHighestAllowedPlaybackTier(tiers, nativeHDRAllowed)' in policy
+assert 'DYYYPlaybackTierHasUsableSource(tier)' in policy
+print('PASS native quality wiring: addresses and native results share both policies and allowed-source fallback')
 for filename in ('DYYYSettings.xm', 'Sources/Settings/DYYYSettingViewController.m'):
     ui = (root / filename).read_text()
     assert re.search(r'@\[\s*DYYY_VIDEO_QUALITY_OFF,\s*DYYY_VIDEO_QUALITY_HIGHEST,\s*DYYY_VIDEO_QUALITY_PREFER_HDR\s*\]', ui), filename

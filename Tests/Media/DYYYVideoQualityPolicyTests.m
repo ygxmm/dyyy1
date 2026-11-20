@@ -1,6 +1,7 @@
 #import "../../Sources/Media/DYYYVideoQualityPolicy.h"
 #import "../../Sources/Core/DYYYConstants.h"
 #include <stdio.h>
+#include <math.h>
 #import <objc/runtime.h>
 
 // Foundation-only host doubles, not a real Aweme/BDSim integration test.
@@ -50,15 +51,159 @@ static NSDictionary *DYYYQualityTier(NSString *gear, NSInteger rate, id hdr, NSS
         @"playAddr":url ? @{@"originURLList":@[url]} : @{} };
 }
 
+static NSDictionary *DYYYQualitySizedTier(NSString *gear, NSInteger rate, double width, double height) {
+    NSMutableDictionary *tier = [DYYYQualityTier(gear, rate, @0, @"https://cdn.example/sized") mutableCopy];
+    tier[@"playAddr"] = @{@"originURLList":@[@"https://cdn.example/sized"], @"imageWidth":@(width), @"imageHeight":@(height)};
+    return tier;
+}
+
 static int DYYYVerifyQuality(BOOL pass, const char *meaning) {
     printf("%s video quality: %s\n", pass ? "PASS" : "FAIL", meaning);
     return !pass;
 }
 
+static int DYYYRunPlaybackPolicySelectionCases(void) {
+    int failed = 0;
+    NSDictionary *low = DYYYQualityTier(@"720_1_1", 1000000, @0, @"https://cdn.example/low?sig=a%2Bb");
+    NSDictionary *high = DYYYQualityTier(@"1440_1_1", 6000000, @0, @"https://cdn.example/high?sig=c%2Bd");
+    NSDictionary *hdr = DYYYQualityTier(@"adapt_lowest_1080_1", 3000000, @3, @"https://cdn.example/hdr");
+    NSDictionary *hdrTop = DYYYQualityTier(@"adapt_lowest_1440_1", 8000000, @3, @"https://cdn.example/hdr-top");
+    NSArray *mixed = @[low, hdr, high];
+    failed += DYYYVerifyQuality(DYYYSelectPlaybackTier(mixed, DYYYPlaybackQualityOriginal, YES) == nil,
+        "Off does not produce an address-layer replacement");
+    failed += DYYYVerifyQuality(DYYYSelectPlaybackTier(mixed, DYYYPlaybackQualityHighest, YES) == high,
+        "highest mode selects maximum bitrate rather than preferring HDR");
+    failed += DYYYVerifyQuality(DYYYSelectPlaybackTier(mixed, DYYYPlaybackQualityPreferHDR, YES) == hdr,
+        "HDR mode prefers a usable HDR tier even below SDR bitrate");
+    failed += DYYYVerifyQuality(DYYYSelectPlaybackTier(@[low, high], DYYYPlaybackQualityPreferHDR, YES) == high,
+        "HDR mode without HDR chooses highest bitrate rather than the native lower tier");
+    failed += DYYYVerifyQuality(DYYYSelectPlaybackTier(@[high, hdrTop], DYYYPlaybackQualityHighest, YES) == hdrTop,
+        "highest mode can select permitted HDR when it is the maximum bitrate");
+    failed += DYYYVerifyQuality(DYYYSelectPlaybackTier(@[high, hdr, hdrTop], DYYYPlaybackQualityPreferHDR, YES) == hdrTop,
+        "HDR preference selects the maximum bitrate among usable HDR sources");
+    failed += DYYYVerifyQuality(DYYYSelectPlaybackTier(@[high, hdrTop], DYYYPlaybackQualityHighest, NO) == high &&
+        DYYYSelectPlaybackTier(@[high, hdrTop], DYYYPlaybackQualityPreferHDR, NO) == high,
+        "both modes exclude HDR denied by the device or native service");
+    failed += DYYYVerifyQuality(DYYYSelectPlaybackTier(@[hdrTop], DYYYPlaybackQualityPreferHDR, NO) == nil,
+        "no allowed source means native fallback instead of manufacturing playable HDR");
+    NSDictionary *badAddress = DYYYQualityTier(@"2160_1_1", 9000000, @0, nil);
+    NSDictionary *badHDR = DYYYQualityTier(@"adapt_lowest_2160_1", 10000000, @3, nil);
+    NSDictionary *badKey = DYYYQualityTier(@"", 11000000, @0, @"https://cdn.example/no-key");
+    NSDictionary *zero = DYYYQualityTier(@"2160_1_1", 0, @0, @"https://cdn.example/zero");
+    NSDictionary *negative = DYYYQualityTier(@"2160_1_1", -1, @0, @"https://cdn.example/negative");
+    NSArray *invalid = @[badAddress, badHDR, badKey, zero, negative, [NSObject new]];
+    failed += DYYYVerifyQuality(DYYYSelectHighestPlaybackTier([invalid arrayByAddingObject:high]) == high,
+        "bad maximum source, empty key and nonpositive bitrate cannot hide the valid runner-up");
+    failed += DYYYVerifyQuality(DYYYSelectHighestPlaybackTier(invalid) == nil,
+        "an entirely unusable list cannot return an address with an unrelated key");
+    failed += DYYYVerifyQuality(DYYYSelectPlaybackTier(@[badHDR, low, high], DYYYPlaybackQualityPreferHDR, YES) == high,
+        "unusable HDR counts as absent and falls back to maximum usable bitrate");
+    failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTier(low, @[low, high], DYYYPlaybackQualityHighest, YES) == high,
+        "final native low result is upgraded in highest mode");
+    failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTier(low, @[low, high], DYYYPlaybackQualityPreferHDR, YES) == high,
+        "final native low result upgrades to maximum bitrate when HDR is absent");
+    failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTier(low, mixed, DYYYPlaybackQualityPreferHDR, YES) == hdr,
+        "final native low result uses the same HDR preference as address selection");
+    NSDictionary *foreign = DYYYQualityTier(@"720_1_1", 1000000, @0, @"https://cdn.example/foreign");
+    failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTier(foreign, mixed, DYYYPlaybackQualityHighest, YES) == foreign &&
+        DYYYResolveNativePlaybackTier(nil, mixed, DYYYPlaybackQualityHighest, YES) == nil,
+        "highest mode preserves nil and unrelated native sources");
+    NSDictionary *large = DYYYQualitySizedTier(@"4_1_1", 3000000, 1900, 3378);
+    NSDictionary *small = DYYYQualitySizedTier(@"1080_1_1", 3000000, 1080, 1920);
+    failed += DYYYVerifyQuality(DYYYSelectHighestPlaybackTier(@[small, large]) == large &&
+        DYYYSelectHighestPlaybackTier(@[large, small]) == large,
+        "real dimensions resolve equal-bitrate opaque gear names independently of array order");
+    NSDictionary *higherRate = DYYYQualitySizedTier(@"720_1_1", 3000001, 720, 1280);
+    failed += DYYYVerifyQuality(DYYYSelectHighestPlaybackTier(@[large, higherRate]) == higherRate,
+        "pixel dimensions never outrank a higher bitrate");
+    NSDictionary *samePixels = DYYYQualitySizedTier(@"2160_1_1", 3000000, 1080, 1920);
+    failed += DYYYVerifyQuality(DYYYSelectHighestPlaybackTier(@[small, samePixels]) == small,
+        "identical real resolution and bitrate retain native order without trusting the gear label");
+    NSDictionary *unknownSize = DYYYQualitySizedTier(@"1440_1_1", 3000000, -1, 2560);
+    failed += DYYYVerifyQuality(DYYYSelectHighestPlaybackTier(@[small, unknownSize]) == unknownSize,
+        "invalid or missing dimensions fall back to comparable legacy gear names");
+    double invalidSizes[][2] = {{0, 2560}, {-1, 2560}, {NAN, 2560}, {INFINITY, 2560}, {1e300, 1e300}};
+    for (NSUInteger i = 0; i < sizeof(invalidSizes) / sizeof(invalidSizes[0]); ++i) {
+        NSDictionary *invalidSize = DYYYQualitySizedTier(@"1440_1_1", 3000000, invalidSizes[i][0], invalidSizes[i][1]);
+        failed += DYYYVerifyQuality(DYYYSelectHighestPlaybackTier(@[small, invalidSize]) == invalidSize,
+            "zero, negative, nonfinite and overflowing dimensions use a finite gear fallback");
+    }
+    NSDictionary *wide = DYYYQualitySizedTier(@"720_1_1", 3000000, 720, 3000);
+    NSDictionary *misnamed = DYYYQualitySizedTier(@"2160_1_1", 3000000, 1080, 1920);
+    NSDictionary *estimated = DYYYQualityTier(@"1440_1_1", 3000000, @0, @"https://cdn.example/estimated");
+    NSArray *permutations = @[@[wide, misnamed, estimated], @[wide, estimated, misnamed],
+        @[misnamed, wide, estimated], @[misnamed, estimated, wide], @[estimated, wide, misnamed], @[estimated, misnamed, wide]];
+    for (NSArray *order in permutations) {
+        failed += DYYYVerifyQuality(DYYYSelectHighestPlaybackTier(order) == estimated,
+            "a fixed real-or-estimated short-edge key avoids mixed-dimension comparison cycles");
+    }
+    failed += DYYYVerifyQuality([mixed isEqualToArray:@[low, hdr, high]] &&
+        DYYYResolveNativePlaybackTier(low, mixed, DYYYPlaybackQualityOriginal, YES) == low,
+        "selection never reorders the original list and Off restores its native result");
+    return failed;
+}
+
+static int DYYYRunNativePlaybackPolicyCases(Class addressClass) {
+    int failed = 0;
+    DYYYQualityTierFixture *low = DYYYQualityObjectTier(addressClass, @"720_1_1", 1000000, @"", @"https://cdn.example/object-low?sig=a%2Bb");
+    DYYYQualityTierFixture *high = DYYYQualityObjectTier(addressClass, @"1440_1_1", 6000000, @"", @"https://cdn.example/object-high");
+    DYYYQualityTierFixture *hdr = DYYYQualityObjectTier(addressClass, @"adapt_lowest_1080_1", 3000000, @"3", @"https://cdn.example/object-hdr");
+    DYYYQualityTierFixture *bad = DYYYQualityObjectTier(addressClass, @"2160_1_1", 9000000, @"", nil);
+    DYYYQualityTierFixture *wrongClass = DYYYQualityObjectTier(DYYYQualityAddressFixture.class, @"2160_1_1", 10000000, @"", @"https://cdn.example/wrong-class");
+    DYYYQualityTierFixture *copy = DYYYQualityObjectTier(addressClass, low.gearName, low.bitrate.integerValue, @"", @"https://cdn.example/object-low?sig=a%2Bb");
+    DYYYQualityTierFixture *foreign = DYYYQualityObjectTier(addressClass, low.gearName, low.bitrate.integerValue, @"", @"https://cdn.example/object-low?sig=OTHER");
+    DYYYQualityVideoFixture *video = [DYYYQualityVideoFixture new];
+    video.preloadedBSModel = low;
+    DYYYPlaybackQualityMode modes[] = { DYYYPlaybackQualityHighest, DYYYPlaybackQualityPreferHDR };
+    for (NSUInteger i = 0; i < 2; ++i) {
+        DYYYPlaybackQualityMode mode = modes[i];
+        video.nativeTiers = @[low, high, hdr, bad, wrongClass];
+        id expected = mode == DYYYPlaybackQualityHighest ? high : hdr;
+        failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(low, video, mode, YES) == expected,
+            "enabled policy replaces a genuinely lower final native result with its selected real object");
+        failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(copy, video, mode, YES) == expected,
+            "both policies recognize exact signed source copies, not just object pointers");
+        failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(foreign, video, mode, YES) == foreign,
+            "both policies reject same-gear same-rate native results with another signature");
+        failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(low, video, mode, NO) == high &&
+            DYYYResolveNativePlaybackTierForVideo(hdr, video, mode, NO) == high,
+            "denied HDR falls back to the highest SDR for both low SDR and HDR native inputs");
+        NSUInteger reads = video.tierReads;
+        failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(nil, video, mode, YES) == nil && video.tierReads == reads,
+            "both enabled policies preserve nil without inspecting or synthesizing a source");
+        NSObject *opaque = [NSObject new];
+        failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(opaque, video, mode, YES) == opaque &&
+            DYYYResolveNativePlaybackTierForVideo(wrongClass, video, mode, YES) == wrongClass,
+            "opaque DASH and wrong native address types stay untouched in both modes");
+        video.nativeTiers = @[low, high];
+        failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(low, video, mode, YES) == high,
+            "a video without HDR still upgrades its lower native result to maximum bitrate");
+        video.nativeTiers = @[low];
+        failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(low, video, mode, YES) == low,
+            "single usable native source remains unchanged");
+        video.nativeTiers = @[];
+        failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(low, video, mode, YES) == low,
+            "an empty list cannot manufacture a native replacement");
+        video.nativeTiers = nil;
+        failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(low, video, mode, YES) == low,
+            "a nil list preserves the native object in both modes");
+        video.nativeTiers = @[hdr];
+        failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(hdr, video, mode, NO) == hdr,
+            "no permitted alternative returns the native result rather than forcing an invalid source");
+        video.throwOnRead = YES;
+        failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(low, video, mode, YES) == low,
+            "both policies fail closed when the owner's list is unavailable");
+        video.throwOnRead = NO;
+    }
+    failed += DYYYVerifyQuality(video.preloadedBSModel == low && low.bitrate.integerValue == 1000000 && [low.hdrType isEqual:@""],
+        "coordinating both policies never mutates the original cache or tier metadata");
+    return failed;
+}
+
 int DYYYRunVideoQualityPolicyTests(void) {
     // These host doubles require a fresh macOS test process, never Aweme.
     if (NSClassFromString(@"AWEURLModel")) return DYYYVerifyQuality(NO, "host fixture requires an isolated test process");
-    int failed = 0;
+    int failed = DYYYRunPlaybackPolicySelectionCases();
     failed += DYYYVerifyQuality(DYYYPlaybackQualityModeForSettings(NO, DYYY_VIDEO_QUALITY_PREFER_HDR) == DYYYPlaybackQualityOriginal,
         "master switch off always preserves native selection");
     failed += DYYYVerifyQuality(DYYYPlaybackQualityModeForSettings(YES, DYYY_VIDEO_QUALITY_OFF) == DYYYPlaybackQualityOriginal &&
@@ -102,9 +247,9 @@ int DYYYRunVideoQualityPolicyTests(void) {
     failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTier(sameGearHDR, sameGearChoices, DYYYPlaybackQualityOriginal, YES) == sameGearHDR,
         "Off preserves an HDR model that the host itself selected");
     failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTier(sameGearSDR, sameGearChoices, DYYYPlaybackQualityHighest, YES) == sameGearSDR,
-        "native model hooks do not change the legacy highest-bitrate mode");
+        "an already highest native tier remains the same object in highest mode");
     failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTier(sameGearSDR, sameGearChoices, DYYYPlaybackQualityPreferHDR, NO) == sameGearSDR,
-        "system or native HDR denial preserves the native result");
+        "HDR denial retains an already highest SDR result");
     failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTier(nil, sameGearChoices, DYYYPlaybackQualityPreferHDR, YES) == nil,
         "an empty native cache is not fabricated and native first-selection bookkeeping can run");
     failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTier(sameGearSDR, sameGearEffective, DYYYPlaybackQualityPreferHDR, YES) == sameGearSDR &&
@@ -148,6 +293,7 @@ int DYYYRunVideoQualityPolicyTests(void) {
     Class addressClass = objc_allocateClassPair(DYYYQualityAddressFixture.class, "AWEURLModel", 0);
     if (!addressClass) return failed + DYYYVerifyQuality(NO, "synthetic host address class allocation succeeds");
     objc_registerClassPair(addressClass);
+    failed += DYYYRunNativePlaybackPolicyCases(addressClass);
     DYYYQualityTierFixture *nativeObject = DYYYQualityObjectTier(addressClass, @"1440_1_1", 5857463, @"", @"https://cdn.example/775547-sdr?sig=a%2Bb");
     DYYYQualityTierFixture *hdrObject = DYYYQualityObjectTier(addressClass, @"adapt_lowest_1440_1", 4886602, @"3", @"https://cdn.example/775547-hdr?sig=c%2Bd");
     DYYYQualityVideoFixture *selectorVideo = [DYYYQualityVideoFixture new];
@@ -178,9 +324,10 @@ int DYYYRunVideoQualityPolicyTests(void) {
     failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(nativeObject, selectorVideo, DYYYPlaybackQualityOriginal, YES) == nativeObject &&
         selectorVideo.tierReads == readsBefore, "Off forwards original result without reading candidate getters");
     failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(nativeObject, selectorVideo, DYYYPlaybackQualityHighest, YES) == nativeObject &&
-        selectorVideo.tierReads == readsBefore, "legacy highest mode leaves native selector result untouched");
+        selectorVideo.tierReads == readsBefore + 1, "highest mode checks candidates and retains the already highest native object");
     failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(nativeObject, selectorVideo, DYYYPlaybackQualityPreferHDR, NO) == nativeObject &&
-        selectorVideo.tierReads == readsBefore, "HDR denial does not inspect or override the native candidate list");
+        selectorVideo.tierReads == readsBefore + 2, "HDR denial falls back to the highest allowed SDR rather than skipping selection");
+    readsBefore = selectorVideo.tierReads;
     failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(nil, selectorVideo, DYYYPlaybackQualityPreferHDR, YES) == nil &&
         selectorVideo.tierReads == readsBefore, "a nil native selector result is not synthesized from candidates");
     failed += DYYYVerifyQuality(DYYYResolveNativePlaybackTierForVideo(nativeObject, nil, DYYYPlaybackQualityPreferHDR, YES) == nativeObject,
