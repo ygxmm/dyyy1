@@ -63,7 +63,7 @@ int DYYYRunFullscreenGeometryTests(void) {
     CGRect invalid[] = {CGRectZero, CGRectNull, CGRectInfinite,
         CGRectMake(NAN, 0, 393, 792), CGRectMake(0, NAN, 393, 792),
         CGRectMake(0, 0, INFINITY, 792), CGRectMake(0, 0, 393, NAN),
-        CGRectMake(0, 0, -393, 792)};
+        CGRectMake(0, 0, -393, 792), CGRectMake(0, 0, 393, -792), CGRectMake(0, 0, -393, -792)};
     for (NSUInteger i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
         failures += DYYYFullscreenExpectFrame(applied, invalid[i], applied, YES, applied,
             "无效或非有限的保存坐标不得恢复");

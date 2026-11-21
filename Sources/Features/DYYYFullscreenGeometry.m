@@ -10,7 +10,7 @@
     return CGRectOffset(rect, current.origin.x - previous.origin.x, current.origin.y - previous.origin.y);
 }
 + (BOOL)isUsablePlayerFrame:(CGRect)frame {
-    return !CGRectIsNull(frame) && !CGRectIsInfinite(frame) && !CGRectIsEmpty(frame) &&
+    return !CGRectIsNull(frame) && !CGRectIsInfinite(frame) && frame.size.width > 0 && frame.size.height > 0 &&
         isfinite(frame.origin.x) && isfinite(frame.origin.y) && isfinite(frame.size.width) && isfinite(frame.size.height);
 }
 + (BOOL)awaitsNativePlayerFrame:(BOOL)awaiting adjusted:(BOOL)adjusted current:(CGRect)current lastApplied:(CGRect)lastApplied {
