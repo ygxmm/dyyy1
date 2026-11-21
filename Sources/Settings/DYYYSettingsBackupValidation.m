@@ -1,4 +1,5 @@
 #import "DYYYSettingsBackupValidation.h"
+#import "DYYYAvatarSurroundingPolicy.h"
 #import <ImageIO/ImageIO.h>
 #import <math.h>
 #import <fcntl.h>
@@ -142,7 +143,14 @@ static BOOL DYYYBackupValidKey(id key) {
 }
 
 static BOOL DYYYBackupValidateKnownValue(NSString *key, id value, NSError **error) {
-    NSArray *flags = @[@"DYYYEnableAutoPlay", @"DYYYisEnableAutoPlay", @"DYYYHDRModeMigratedV1", @"DYYYHDRModeLabelV2", @"DYYYScaleAndSizeSettingsMigratedV1", @"DYYYScaleAndSizeSettingsMigratedV2", @"DYYYDisableAllHDR", @"DYYYFilterFeedHDR"];
+    NSArray *flags = @[
+        @"DYYYEnableAutoPlay", @"DYYYisEnableAutoPlay",
+        @"DYYYHDRModeMigratedV1", @"DYYYHDRModeLabelV2",
+        @"DYYYScaleAndSizeSettingsMigratedV1", @"DYYYScaleAndSizeSettingsMigratedV2",
+        @"DYYYDisableAllHDR", @"DYYYFilterFeedHDR",
+        // 头像拆分键与旧总开关都必须按布尔值校验，旧键只用于备份兼容迁移。
+        DYYYHideAvatarStoryRingKey, DYYYHideAvatarDecorationKey, DYYYHideAvatarSurroundingKey
+    ];
     if ([flags containsObject:key]) {
         if ([value isKindOfClass:NSNumber.class]) return isfinite([value doubleValue]) || DYYYBackupFail(error, @"开关值不是有限数字");
         if ([value isKindOfClass:NSString.class]) {
@@ -476,6 +484,26 @@ NSDictionary<NSString *, id> *DYYYNormalizeLegacySettingsBackup(NSDictionary<NSS
                 normalized[@"DYYYIPLabelScale"] = scale;
             normalized[@"DYYYScaleAndSizeSettingsMigratedV2"] = @YES;
         }
+
+        // 旧备份只按自身携带的旧总开关映射；绝不从本机旧键推导新值。
+        // 备份显式的新值优先；若本机已有新值，也保留它，让旧备份不会覆盖用户的拆分选择。
+        id legacyAvatarValue = settings[DYYYHideAvatarSurroundingKey];
+        BOOL payloadHasStoryRing = settings[DYYYHideAvatarStoryRingKey] != nil;
+        BOOL payloadHasDecoration = settings[DYYYHideAvatarDecorationKey] != nil;
+        if (legacyAvatarValue != nil) {
+            BOOL legacyEnabled = [legacyAvatarValue boolValue];
+            if (!payloadHasStoryRing && existingSettings[DYYYHideAvatarStoryRingKey] == nil)
+                normalized[DYYYHideAvatarStoryRingKey] = @(legacyEnabled);
+            if (!payloadHasDecoration && existingSettings[DYYYHideAvatarDecorationKey] == nil)
+                normalized[DYYYHideAvatarDecorationKey] = @(legacyEnabled);
+        }
+        // 只有备份自身携带旧总开关时才迁移并移除旧键；单独导入新键必须保留本机旧回退，
+        // 这样未导入的另一项仍可继承本机旧 true，而本项显式 false 已由上面的新键优先规则覆盖旧值。
+        if (legacyAvatarValue != nil) {
+            [normalized removeObjectForKey:DYYYHideAvatarSurroundingKey];
+            [removed addObject:DYYYHideAvatarSurroundingKey];
+        }
+
         if (keysToRemove) *keysToRemove = [removed copy];
         return [normalized copy];
     } @catch (__unused NSException *exception) {

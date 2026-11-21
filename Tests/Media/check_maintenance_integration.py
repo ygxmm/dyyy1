@@ -27,6 +27,28 @@ check(re.search(r'if \(!DYYYDownloadStateIsActive\(state\)\) \{\s*completion\(DY
 check('DYYYLikeStartGallerySave(snapshot, nil)' in like,'保留点赞图片原动作不嵌作品说明')
 check('dyyy_containsHDRMetadataInObject' not in xm and 'DYYYAwemeRawVideoHasHDRMetadata(arg1)' in xm,'原始 HDR 检查限定当前视频结构')
 check('AWEFeedRefreshFooter' not in xm,'删除未安装的 footer 死构造器，没有另加 Hook')
+
+# 只控制视频右侧头像各自的原生显隐；不靠全局 UIView 或拦截播放/点击。
+avatar_checks = (
+ ('AWEPlayInteractionUserAvatarElement', 'shouldShowColorRing', 'StoryRing'),
+ ('AWEPlayInteractionUserAvatarElement', 'shouldShowAvatarDecoration:(id)model', 'Decoration'),
+ ('AWEPlayInteractionUserAvatarStoryController', 'shouldShowColorRing:(id)model', 'StoryRing'),
+ ('AWEPlayInteractionUserAvatarDecorationController', 'shouldShowAvatarDecoration:(id)model', 'Decoration'),
+)
+for cls, signature, kind in avatar_checks:
+ hook = re.search(r'(?ms)^%hook '+cls+r'\b(.*?)^%end\b',xm)
+ entry = re.search(r'-\s*\(BOOL\)\s*'+re.escape(signature)+r'\s*\{([^}]+)\}',hook.group(1)) if hook else None
+ check(entry and re.fullmatch(r'\s*return DYYYAvatarSurroundingHidden\(DYYYAvatarSurrounding'+kind+r'\) \? NO : %orig(?:\(model\))?;\s*', entry.group(1)),
+       cls+' '+signature+' 仅受对应分项控制，关闭走原生')
+settings=(r/'DYYYSettings.xm').read_text()
+fallback=(r/'Sources/Settings/DYYYSettingViewController.m').read_text()
+keys=('DYYYHideAvatarStoryRingKey','DYYYHideAvatarDecorationKey')
+check(all(key in settings and key in fallback for key in keys) and '隐藏头像周边' not in settings,
+      '主设置和备用设置均展示两项并移除旧总开关')
+check('DYYYApplyAvatarSurroundingSettingsForOwner' not in xm and 'DYYYShouldForceAvatarSurroundingViewHidden' not in xm
+      and '@"DYYYHideAvatarSurrounding"' not in xm and '@"DYYYHideAvatarLive"' in settings,
+      '旧周边视图兜底已移除，直播提示设置仍独立')
+
 for helper in ('Sources/Core/DYYYABConfigValidation.m','Sources/Settings/DYYYSettingsBackupValidation.m'):
  check(make.count(helper)==1 and (r/helper).is_file(),helper+' 仅加入编译一次')
 # 仅扫描实际参与编译的 Logos 文件，不把历史版本片段当成生效 Hook。

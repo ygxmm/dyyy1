@@ -4,6 +4,7 @@
 #import "DYYYConstants.h"
 #import "DYYYNativeAutoPlay.h"
 #import "DYYYPickerDelegates.h"
+#import "DYYYAvatarSurroundingPolicy.h"
 #import "DYYYUtils.h"
 
 #import "DYYYAboutDialogView.h"
@@ -14,8 +15,12 @@
 
 // 获取用户默认设置
 + (BOOL)getUserDefaults:(NSString *)key {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     if ([key isEqualToString:DYYY_ENABLE_AUTO_PLAY_KEY]) return DYYYAutoPlayIsEnabled();
-    return [[NSUserDefaults standardUserDefaults] boolForKey:key];
+    if ([key isEqualToString:DYYYHideAvatarStoryRingKey] || [key isEqualToString:DYYYHideAvatarDecorationKey]) {
+        return DYYYAvatarSurroundingSettingEnabled(defaults, key);
+    }
+    return [defaults boolForKey:key];
 }
 
 // 设置用户默认设置

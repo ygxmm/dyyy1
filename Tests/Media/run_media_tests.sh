@@ -15,10 +15,12 @@ for file in \
   "$TESTS/DYYYABConfigValidationTests.m" \
   "$TESTS/DYYYDownloadLifecycleTests.m" \
   "$TESTS/DYYYHDRMetadataTests.m" \
+  "$TESTS/DYYYAvatarSurroundingPolicyTests.m" \
   "$ROOT/Sources/Media/DYYYVideoQualityPolicy.h" \
   "$ROOT/Sources/Media/DYYYVideoQualityPolicy.m" \
   "$ROOT/Sources/Core/DYYYABConfigValidation.m" \
   "$ROOT/Sources/Settings/DYYYSettingsBackupValidation.m" \
+  "$FEATURES/DYYYAvatarSurroundingPolicy.h" \
   "$ROOT/Sources/Media/DYYYMediaSourceSelection.h" \
   "$ROOT/Sources/Media/DYYYMediaSourceSelection.m" \
   "$FEATURES/DYYYLikeLivePhotoBuilder.h" \
@@ -56,6 +58,7 @@ xcrun --sdk macosx clang \
   "$TESTS/DYYYABConfigValidationTests.m" \
   "$TESTS/DYYYDownloadLifecycleTests.m" \
   "$TESTS/DYYYHDRMetadataTests.m" \
+  "$TESTS/DYYYAvatarSurroundingPolicyTests.m" \
   "$ROOT/Sources/Media/DYYYVideoQualityPolicy.m" \
   "$ROOT/Sources/Core/DYYYABConfigValidation.m" \
   "$ROOT/Sources/Settings/DYYYSettingsBackupValidation.m" \

@@ -40,6 +40,7 @@
 #import "AwemeHeaders.h"
 #import "DYYYFullscreenCoordinator.h"
 #import "DYYYNativeAutoPlay.h"
+#import "DYYYAvatarSurroundingPolicy.h"
 #import "DYYYLikeLongPressSave.h"
 #import "DYYYVideoQualityPolicy.h"
 
@@ -3291,7 +3292,36 @@ static void DYYYRunDeferredFollowConfirm(void (^action)(void)) {
     });
 }
 
+// 头像周边使用各自的原生显示判断，设置变更后按需重读，不处理 UIView 的隐藏状态。
+typedef NS_OPTIONS(uint8_t, DYYYAvatarSurroundingKind) {
+    DYYYAvatarSurroundingStoryRing = 1 << 0,
+    DYYYAvatarSurroundingDecoration = 1 << 1,
+};
+
+static BOOL DYYYAvatarSurroundingHidden(DYYYAvatarSurroundingKind kind) {
+    static __thread uint32_t cachedGeneration;
+    static __thread BOOL initialized;
+    static __thread DYYYAvatarSurroundingKind hiddenKinds;
+    uint32_t generation = __atomic_load_n(&gDYYYSettingsGeneration, __ATOMIC_RELAXED);
+    if (!initialized || cachedGeneration != generation) {
+        NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+        hiddenKinds = (DYYYAvatarSurroundingSettingEnabled(defaults, DYYYHideAvatarStoryRingKey) ? DYYYAvatarSurroundingStoryRing : 0) |
+                      (DYYYAvatarSurroundingSettingEnabled(defaults, DYYYHideAvatarDecorationKey) ? DYYYAvatarSurroundingDecoration : 0);
+        cachedGeneration = generation;
+        initialized = YES;
+    }
+    return (hiddenKinds & kind) != 0;
+}
+
 %hook AWEPlayInteractionUserAvatarElement
+- (BOOL)shouldShowColorRing {
+    return DYYYAvatarSurroundingHidden(DYYYAvatarSurroundingStoryRing) ? NO : %orig;
+}
+
+- (BOOL)shouldShowAvatarDecoration:(id)model {
+    return DYYYAvatarSurroundingHidden(DYYYAvatarSurroundingDecoration) ? NO : %orig(model);
+}
+
 - (void)onFollowViewClicked:(UITapGestureRecognizer *)gesture {
     if (DYYYGetBool(@"DYYYFollowTips")) {
         // 获取用户信息
@@ -7761,7 +7791,6 @@ static char kDYYYAvatarActionRemovedViewKey;
 static char kDYYYAvatarActionChromeViewKey;
 static char kDYYYAvatarActionHiddenLayerKey;
 static char kDYYYAvatarActionChromeLayerKey;
-static char kDYYYAvatarSurroundingHiddenViewKey;
 
 static BOOL DYYYAvatarFollowOptionsEnabled(void) {
     return DYYYGetBoolCached(@"DYYYHideLOTAnimationView") || DYYYGetBoolCached(@"DYYYHideFollowPromptView");
@@ -7860,42 +7889,6 @@ static void DYYYHideAvatarVisualForSelector(id object, SEL selector) {
     UIView *view = DYYYAvatarViewForSelector(object, selector);
     if (view) {
         view.hidden = YES;
-    }
-}
-
-static void DYYYMarkAvatarSurroundingViewHidden(UIView *view) {
-    if (!view) {
-        return;
-    }
-
-    objc_setAssociatedObject(view, &kDYYYAvatarSurroundingHiddenViewKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    view.hidden = YES;
-    view.userInteractionEnabled = NO;
-}
-
-static BOOL DYYYShouldForceAvatarSurroundingViewHidden(UIView *view) {
-    return view && DYYYGetBoolCached(@"DYYYHideAvatarSurrounding") && objc_getAssociatedObject(view, &kDYYYAvatarSurroundingHiddenViewKey);
-}
-
-static void DYYYHideAvatarSurroundingVisualForSelector(id object, SEL selector) {
-    UIView *view = DYYYAvatarViewForSelector(object, selector);
-    DYYYMarkAvatarSurroundingViewHidden(view);
-}
-
-static void DYYYApplyAvatarSurroundingSettingsForOwner(id owner) {
-    if (!owner || !DYYYGetBool(@"DYYYHideAvatarSurrounding")) {
-        return;
-    }
-
-    for (NSString *selectorName in @[
-             @"colorRingView",
-             @"storyRingView",
-             @"story25RingView",
-             @"decorationView",
-             @"avatarDecorationView",
-             @"avatarPendantView",
-         ]) {
-        DYYYHideAvatarSurroundingVisualForSelector(owner, NSSelectorFromString(selectorName));
     }
 }
 
@@ -12859,8 +12852,6 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
     if (DYYYGetBool(@"DYYYHideAvatarButton")) {
         DYYYHideAvatarVisualForSelector(self, NSSelectorFromString(@"userAvatarView"));
     }
-    DYYYApplyAvatarSurroundingSettingsForOwner(self);
-
     DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
@@ -13045,7 +13036,6 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
         id context = DYYYAvatarObjectForSelector(self, NSSelectorFromString(@"userAvatarContext"));
         DYYYHideAvatarVisualForSelector(context, NSSelectorFromString(@"avatarPicView"));
     }
-    DYYYApplyAvatarSurroundingSettingsForOwner(self);
     DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 %end
@@ -13057,7 +13047,6 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
         id context = DYYYAvatarObjectForSelector(self, NSSelectorFromString(@"userAvatarContext"));
         DYYYHideAvatarVisualForSelector(context, NSSelectorFromString(@"avatarPicView"));
     }
-    DYYYApplyAvatarSurroundingSettingsForOwner(self);
     DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
@@ -13079,34 +13068,30 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 
 %hook AWEPlayInteractionUserAvatarStoryController
 
-// v226: 只 hook shouldShowColorRing 返回 NO
-// 让抖音原生逻辑判断"不该显示彩环"，走原生路径（不触发异常日志）
-// 之前 hook showStory25RingView 直接 return 会导致抖音打印循环引用对象崩溃
-- (BOOL)shouldShowColorRing:(id)arg {
-    if (DYYYGetBool(@"DYYYHideAvatarSurrounding")) {
-        return NO;
-    }
-    return %orig(arg);
+// 走小日常原生显隐判定，不拦截展示流程或头像点击。
+- (BOOL)shouldShowColorRing:(id)model {
+    return DYYYAvatarSurroundingHidden(DYYYAvatarSurroundingStoryRing) ? NO : %orig(model);
 }
 
 %end
 
 %hook AWEPlayInteractionUserAvatarDecorationController
+- (BOOL)shouldShowAvatarDecoration:(id)model {
+    return DYYYAvatarSurroundingHidden(DYYYAvatarSurroundingDecoration) ? NO : %orig(model);
+}
+
 - (void)layoutElementView {
     %orig;
-    DYYYApplyAvatarSurroundingSettingsForOwner(self);
     DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)viewController_willDisplay {
     %orig;
-    DYYYApplyAvatarSurroundingSettingsForOwner(self);
     DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)setDecorationStyle:(long long)style {
     %orig(style);
-    DYYYApplyAvatarSurroundingSettingsForOwner(self);
     DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 %end
@@ -14492,8 +14477,7 @@ static Class tabBarButtonClass = nil;
 
 %end
 
-// v741: setHidden 是转场时最热的钩子之一（每次页面切换数百次）。
-// 三个功能全关时直接透传，省掉三次函数调用 + 三次关联对象查询。
+// setHidden 是转场时的高频钩子；周边已使用原生谓词，不再接入全局视图拦截。
 static BOOL DYYYViewHideGate(void) {
     static uint32_t gen = UINT32_MAX;
     static BOOL enabled = NO;
@@ -14501,7 +14485,6 @@ static BOOL DYYYViewHideGate(void) {
     if (gen != g) {
         enabled = DYYYGetBool(@"DYYYHideLOTAnimationView") ||
                   DYYYGetBool(@"DYYYHideFollowPromptView") ||
-                  DYYYGetBool(@"DYYYHideAvatarSurrounding") ||
                   DYYYFeedVideoCollectButtonHideEnabled();
         gen = g;
     }
@@ -14523,9 +14506,7 @@ static BOOL DYYYViewHideGate(void) {
         return;
     }
 
-    BOOL shouldForceHidden = DYYYShouldForceAvatarActionViewHidden(self) ||
-                             DYYYShouldForceAvatarSurroundingViewHidden(self) ||
-                             DYYYShouldForceHideFeedVideoCollectButtonView(self);
+    BOOL shouldForceHidden = DYYYShouldForceAvatarActionViewHidden(self) || DYYYShouldForceHideFeedVideoCollectButtonView(self);
 
     // v378: 黑条要显示时直接拒绝（frame={0,0,屏宽,40~80} + 颜色纯黑）
     if (!hidden && !shouldForceHidden) {

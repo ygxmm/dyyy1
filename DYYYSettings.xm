@@ -25,6 +25,7 @@
 #import "DYYYFloatClearButton.h"
 #import "DYYYFloatSpeedButton.h"
 #import "DYYYNativeAutoPlay.h"
+#import "DYYYAvatarSurroundingPolicy.h"
 #import "DYYYLikeLongPressSave.h"
 #import "DYYYSettingsHelper.h"
 #import "Sources/Settings/DYYYSettingsBackupValidation.h"
@@ -3360,11 +3361,18 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
             @"detail" : @"",
             @"cellType" : @6,
             @"imageName" : @"ic_eyeslash_outlined_16"},
-          @{@"identifier" : @"DYYYHideAvatarSurrounding",
-            @"title" : @"隐藏头像周边",
-            @"detail" : @"",
-            @"cellType" : @6,
-            @"imageName" : @"ic_eyeslash_outlined_16"},
+          @{ @"identifier" : DYYYHideAvatarStoryRingKey,
+             @"title" : @"隐藏头像日常彩环",
+             @"subTitle" : @"隐藏视频右侧头像外的小日常彩环，不影响直播提示",
+             @"detail" : @"",
+             @"cellType" : @37,
+             @"imageName" : @"ic_eyeslash_outlined_16" },
+          @{ @"identifier" : DYYYHideAvatarDecorationKey,
+             @"title" : @"隐藏头像挂件/装饰",
+             @"subTitle" : @"隐藏视频右侧头像的挂件和装饰，不影响头像本体",
+             @"detail" : @"",
+             @"cellType" : @37,
+             @"imageName" : @"ic_eyeslash_outlined_16" },
           @{@"identifier" : @"DYYYHideAvatarLive",
             @"title" : @"隐藏头像直播提示",
             @"detail" : @"",

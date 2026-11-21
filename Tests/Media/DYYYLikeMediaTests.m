@@ -695,13 +695,15 @@ extern int DYYYRunSettingsBackupTransactionTests(void);
 extern int DYYYRunABConfigValidationTests(void);
 extern int DYYYRunDownloadLifecycleTests(void);
 extern int DYYYRunHDRMetadataTests(void);
+extern int DYYYRunAvatarSurroundingPolicyTests(void);
 
 int main(void) {
     @autoreleasepool {
         int sourceSelectionFailures = DYYYRunMediaSourceSelectionTests();
         int qualityPolicyFailures = DYYYRunVideoQualityPolicyTests();
         int maintenanceFailures = DYYYRunSettingsBackupValidationTests() + DYYYRunSettingsBackupTransactionTests() +
-            DYYYRunABConfigValidationTests() + DYYYRunDownloadLifecycleTests() + DYYYRunHDRMetadataTests();
+            DYYYRunABConfigValidationTests() + DYYYRunDownloadLifecycleTests() + DYYYRunHDRMetadataTests() +
+            DYYYRunAvatarSurroundingPolicyTests();
         NSURL *directory = MakeTempDirectory();
         if (!directory) return 2;
         TestAnimatedFixture(directory, @"GIF", @"R0lGODlhAgACAIEAAP8AAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEDAAAh+QQADAAAACwAAAAAAgACAAAIBgABCAQQEAAh+QQAHAAAACwAAAAAAgACAIEAAP8AAAAAAAAAAAAIBgABCAQQEAA7", @"gif");
