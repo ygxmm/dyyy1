@@ -49,8 +49,30 @@ check('DYYYApplyAvatarSurroundingSettingsForOwner' not in xm and 'DYYYShouldForc
       and '@"DYYYHideAvatarSurrounding"' not in xm and '@"DYYYHideAvatarLive"' in settings,
       '旧周边视图兜底已移除，直播提示设置仍独立')
 
+check('DYYYNowPlayingPrivacy.m' in make and 'DYYYNowPlayingPolicy.m' in make and
+      'AVKit MediaPlayer' in make and 'media.now-playing-privacy' in (r/'Sources/Hooking/DYYYHookManager.m').read_text(),
+      '统一Now Playing策略在loader-safe阶段安装并链接系统会话框架')
+check('DYYYApplyNowPlayingPrivacySettingChange' in settings and 'DYYYApplyNowPlayingPrivacySettingChange' in fallback and
+      (r/'Sources/Features/DYYYNowPlayingPrivacy.h').is_file() and (r/'Sources/Features/DYYYNowPlayingPolicy.h').is_file(),
+      '主/备用开关持久化后都通知同一运行时状态机')
+check('DYYY_DISABLE_FEED_NOW_PLAYING_INFO_KEY' in (r/'Sources/Settings/DYYYSettingsBackupValidation.m').read_text() and
+      'DYYYApplyNowPlayingPrivacySettingChange' in settings and
+      'DYYYApplyFeedNowPlayingSettingChange' not in xm and
+      'MRMediaRemoteSetCanBeNowPlayingApplication' not in xm,
+      '备份采用严格布尔值；旧全局清空与源对象早退入口已移除')
+check('MPNowPlayingSession' in (r/'Sources/Features/DYYYNowPlayingPrivacy.m').read_text() and
+      'AVPlayerViewController' in (r/'Sources/Features/DYYYNowPlayingPrivacy.m').read_text() and
+      'MPNowPlayingInfoCenter' in (r/'Sources/Features/DYYYNowPlayingPrivacy.m').read_text() and
+      'class_getInstanceMethod(cls, NSSelectorFromString(selectorName))' in (r/'Sources/Features/DYYYNowPlayingPrivacy.m').read_text() and
+      'MRMediaRemoteSetCanBeNowPlayingApplication' not in (r/'Sources/Features/DYYYNowPlayingPrivacy.m').read_text(),
+      '运行时校验新版会话入口，屏蔽应用私有资格全局副作用')
+
+check('DYYYRunNowPlayingPolicyTests' in (r/'Tests/Media/DYYYLikeMediaTests.m').read_text() and
+      'DYYYNowPlayingPolicyTests.m' in (r/'Tests/Media/run_media_tests.sh').read_text(),
+      '策略切换/原生恢复合成断言确实进入CI执行')
+
 for helper in ('Sources/Core/DYYYABConfigValidation.m','Sources/Settings/DYYYSettingsBackupValidation.m'):
- check(make.count(helper)==1 and (r/helper).is_file(),helper+' 仅加入编译一次')
+    check(make.count(helper)==1 and (r/helper).is_file(),helper+' 仅加入编译一次')
 # 仅扫描实际参与编译的 Logos 文件，不把历史版本片段当成生效 Hook。
 sources=re.search(r'DYYY_FILES\s*=\s*(.*?)\nDYYY_CFLAGS',make,re.S).group(1).replace('\\','').split()
 seen={};duplicates=[]

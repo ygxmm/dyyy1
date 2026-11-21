@@ -21,6 +21,7 @@
 #define DYYYGeonamesErrorDomain @"com.dyyy.geonames.api.error"
 #define DYYYGeonamesStatusUserInfoKey @"com.dyyy.geonames.api.status"
 
+// 该兼容键控制抖音全部媒体卡片，不表示只作用首页视频。
 #define DYYY_DISABLE_FEED_NOW_PLAYING_INFO_KEY @"DYYYDisableFeedNowPlayingInfo"
 #define DYYY_ENABLE_AUTO_PLAY_KEY @"DYYYEnableAutoPlay"
 
@@ -55,7 +56,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-void DYYYApplyFeedNowPlayingSettingChange(BOOL disableNowPlayingInfo);
+void DYYYApplyNowPlayingPrivacySettingChange(BOOL hidden);
 #ifdef __cplusplus
 }
 #endif

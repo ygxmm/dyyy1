@@ -17,9 +17,14 @@ for file in \
   "$TESTS/DYYYHDRMetadataTests.m" \
   "$TESTS/DYYYAvatarSurroundingPolicyTests.m" \
   "$TESTS/DYYYFullscreenGeometryTests.m" \
+  "$TESTS/DYYYNowPlayingPolicyTests.m" \
   "$TESTS/check_fullscreen_frame_stability.py" \
   "$ROOT/Sources/Features/DYYYFullscreenGeometry.h" \
   "$ROOT/Sources/Features/DYYYFullscreenGeometry.m" \
+  "$FEATURES/DYYYNowPlayingPrivacy.h" \
+  "$FEATURES/DYYYNowPlayingPrivacy.m" \
+  "$FEATURES/DYYYNowPlayingPolicy.h" \
+  "$FEATURES/DYYYNowPlayingPolicy.m" \
   "$ROOT/Sources/Media/DYYYVideoQualityPolicy.h" \
   "$ROOT/Sources/Media/DYYYVideoQualityPolicy.m" \
   "$ROOT/Sources/Core/DYYYABConfigValidation.m" \
@@ -66,6 +71,8 @@ xcrun --sdk macosx clang \
   "$TESTS/DYYYAvatarSurroundingPolicyTests.m" \
   "$TESTS/DYYYFullscreenGeometryTests.m" \
   "$FEATURES/DYYYFullscreenGeometry.m" \
+  "$TESTS/DYYYNowPlayingPolicyTests.m" \
+  "$FEATURES/DYYYNowPlayingPolicy.m" \
   "$ROOT/Sources/Media/DYYYVideoQualityPolicy.m" \
   "$ROOT/Sources/Core/DYYYABConfigValidation.m" \
   "$ROOT/Sources/Settings/DYYYSettingsBackupValidation.m" \

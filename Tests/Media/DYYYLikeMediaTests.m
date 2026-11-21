@@ -697,6 +697,7 @@ extern int DYYYRunDownloadLifecycleTests(void);
 extern int DYYYRunHDRMetadataTests(void);
 extern int DYYYRunAvatarSurroundingPolicyTests(void);
 extern int DYYYRunFullscreenGeometryTests(void);
+extern int DYYYRunNowPlayingPolicyTests(void);
 
 int main(void) {
     @autoreleasepool {
@@ -706,6 +707,7 @@ int main(void) {
             DYYYRunABConfigValidationTests() + DYYYRunDownloadLifecycleTests() + DYYYRunHDRMetadataTests() +
             DYYYRunAvatarSurroundingPolicyTests();
         int fullscreenGeometryFailures = DYYYRunFullscreenGeometryTests();
+        int nowPlayingPolicyFailures = DYYYRunNowPlayingPolicyTests();
         NSURL *directory = MakeTempDirectory();
         if (!directory) return 2;
         TestAnimatedFixture(directory, @"GIF", @"R0lGODlhAgACAIEAAP8AAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEDAAAh+QQADAAAACwAAAAAAgACAAAIBgABCAQQEAAh+QQAHAAAACwAAAAAAgACAIEAAP8AAAAAAAAAAAAIBgABCAQQEAA7", @"gif");
@@ -725,6 +727,6 @@ int main(void) {
         TestLivePhotoAlbumDates();
         fprintf(stdout, "\nMedia tests: %d PASS, %d FAIL\n", gPasses, gFailures);
         [[NSFileManager defaultManager] removeItemAtURL:directory error:NULL];
-        return (gFailures || sourceSelectionFailures || qualityPolicyFailures || maintenanceFailures || fullscreenGeometryFailures) ? 1 : 0;
+        return (gFailures || sourceSelectionFailures || qualityPolicyFailures || maintenanceFailures || fullscreenGeometryFailures || nowPlayingPolicyFailures) ? 1 : 0;
     }
 }

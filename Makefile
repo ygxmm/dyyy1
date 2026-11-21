@@ -43,6 +43,8 @@ TWEAK_NAME = DYYY
 DYYY_FILES = DYYY.xm \
 	Sources/Features/DYYYFullscreenCoordinator.m \
 	Sources/Features/DYYYFullscreenGeometry.m \
+	Sources/Features/DYYYNowPlayingPrivacy.m \
+	Sources/Features/DYYYNowPlayingPolicy.m \
 	DYYYFloatClearButton.xm \
 	DYYYSettings.xm \
 	DYYYABTestHook.xm \
@@ -101,7 +103,7 @@ DYYY_CFLAGS = -fobjc-arc -w \
 	-I$(THEOS_PROJECT_DIR)/Sources/Features \
 	-I$(THEOS_PROJECT_DIR)/Sources/Hooking
 DYYY_LDFLAGS = -weak_framework AVFAudio -lcompression
-DYYY_FRAMEWORKS = UIKit Foundation AVFoundation CoreAudio UniformTypeIdentifiers Photos ImageIO CoreMedia CoreVideo CoreGraphics
+DYYY_FRAMEWORKS = UIKit Foundation AVFoundation AVKit MediaPlayer CoreAudio UniformTypeIdentifiers Photos ImageIO CoreMedia CoreVideo CoreGraphics
 CXXFLAGS += -std=c++11
 CCFLAGS += -std=c++11
 DYYY_LOGOS_DEFAULT_GENERATOR = internal

@@ -59,6 +59,9 @@ static BOOL DYYYCommitValidatedBackup(NSDictionary *settings, NSDictionary<NSStr
         if (error) *error = [NSError errorWithDomain:DYYYSettingsBackupValidationErrorDomain code:3 userInfo:@{NSLocalizedDescriptionKey: @"恢复失败，提交前发生异常"}];
         return NO;
     }
+    if ([settings objectForKey:DYYY_DISABLE_FEED_NOW_PLAYING_INFO_KEY]) {
+        DYYYApplyNowPlayingPrivacySettingChange([settings[DYYY_DISABLE_FEED_NOW_PLAYING_INFO_KEY] boolValue]);
+    }
     if (settings[DYYY_ENABLE_AUTO_PLAY_KEY]) {
         BOOL applied = NO;
         @try { applied = DYYYAutoPlaySetEnabled([settings[DYYY_ENABLE_AUTO_PLAY_KEY] boolValue]); }
@@ -2896,7 +2899,7 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
             @"imageName" : @"ic_eyeslash_outlined_16"},
           @{@"identifier" : @"DYYYDisableFeedNowPlayingInfo",
             @"title" : kDYYYFeedNowPlayingSettingTitle,
-            @"subTitle" : @"开启后禁止信息流视频播放信息显示在灵动岛",
+            @"subTitle" : @"开启后屏蔽抖音媒体卡片（灵动岛/锁屏/控制中心），不影响播放",
             @"detail" : @"",
             @"cellType" : @37,
             @"imageName" : kDYYYFeedNowPlayingSVGIconName}
@@ -2910,7 +2913,7 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
                 if (originalSwitchChangedBlock) {
                     originalSwitchChangedBlock();
                 }
-                DYYYApplyFeedNowPlayingSettingChange([DYYYSettingsHelper getUserDefaults:kDYYYFeedNowPlayingSettingIdentifier]);
+                DYYYApplyNowPlayingPrivacySettingChange([DYYYSettingsHelper getUserDefaults:kDYYYFeedNowPlayingSettingIdentifier]);
               };
           }
           [privacyItems addObject:item];

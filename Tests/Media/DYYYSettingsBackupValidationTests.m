@@ -6,6 +6,7 @@
 #import <sys/stat.h>
 #include <stdio.h>
 #import "DYYYSettingsBackupValidation.h"
+#import "DYYYConstants.h"
 
 static int DYYYBackupCheck(BOOL passed, const char *meaning) {
     printf("%s backup: %s\n", passed ? "PASS" : "FAIL", meaning);
@@ -91,6 +92,12 @@ int DYYYRunSettingsBackupValidationTests(void) {
         }
         for (NSString *key in @[@"DYYYEnableAutoPlay", @"DYYYisEnableAutoPlay", @"DYYYHDRModeMigratedV1", @"DYYYScaleAndSizeSettingsMigratedV1", @"DYYYHDRMode", @"DYYYNicknameScale"]) {
             failures += DYYYBackupCheck(DYYYBackupReject(@{key: @[]}) && DYYYBackupReject(@{key: @{}}), "关键标量配置不得接受容器类型");
+        }
+        failures += DYYYBackupCheck(DYYYValidateSettingsBackupData(DYYYBackupJSON(@{DYYY_DISABLE_FEED_NOW_PLAYING_INFO_KEY:@YES}), &error) != nil && !error,
+            "新版播放卡片屏蔽布尔键可从备份导入");
+        for (id invalidNowPlayingValue in @[@2, @(-1), @1.5, @"true", @[], @{}]) {
+            failures += DYYYBackupCheck(DYYYBackupReject(@{DYYY_DISABLE_FEED_NOW_PLAYING_INFO_KEY: invalidNowPlayingValue}),
+                "播放卡片开关拒绝非布尔备份值");
         }
         for (NSString *number in @[@"NaN", @"Infinity", @"-Infinity", @"1e9999"]) {
             NSData *badNumber = [[NSString stringWithFormat:@"{\"DYYYNumber\":%@}", number] dataUsingEncoding:NSUTF8StringEncoding];

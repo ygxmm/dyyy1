@@ -12,6 +12,7 @@
 #import "DYYYExactInteractionCountHooks.h"
 #import "DYYYLoginRepairHooks.h"
 #import "DYYYMiniProgramRewardBypass.h"
+#import "DYYYNowPlayingPrivacy.h"
 #import "DYYYSearchKeyboardVoiceHooks.h"
 
 #import <mach/mach_time.h>
@@ -32,6 +33,7 @@ typedef struct {
 } DYYYHookDescriptor;
 
 static const DYYYHookDescriptor kDYYYHookDescriptors[] = {
+    { "media.now-playing-privacy", DYYYHookPhaseLoaderSafe, DYYYStartNowPlayingPrivacy },
     { "feed.tags", DYYYHookPhaseLoaderSafe, DYYYStartFeedTagHooks },
     { "share.prompt", DYYYHookPhaseLoaderSafe, DYYYStartHideShareContentViewHooks },
     { "login.repair", DYYYHookPhaseAfterLoginCore, DYYYLoginRepairInstallHooks },

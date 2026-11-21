@@ -181,6 +181,7 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
             [DYYYSettingItem itemWithTitle:@"长按点赞保存" key:DYYY_LIKE_LONG_PRESS_SAVE_KEY type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"启用屏蔽广告" key:@"DYYYNoAds" type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"屏蔽检测更新" key:@"DYYYNoUpdates" type:DYYYSettingItemTypeSwitch],
+            [DYYYSettingItem itemWithTitle:@"屏蔽抖音播放卡片" key:DYYY_DISABLE_FEED_NOW_PLAYING_INFO_KEY type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"去青少年弹窗" key:@"DYYYHideTeenMode" type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"评论区毛玻璃" key:@"DYYYEnableCommentBlur" type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"通知玻璃效果" key:@"DYYYEnableNotificationTransparency" type:DYYYSettingItemTypeSwitch],
@@ -846,6 +847,9 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
     DYYYSettingItem *item = self.settingSections[indexPath.section][indexPath.row];
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     [DYYYSettingsHelper setUserDefaults:@(sender.isOn) forKey:item.key];
+    if ([item.key isEqualToString:DYYY_DISABLE_FEED_NOW_PLAYING_INFO_KEY]) {
+        DYYYApplyNowPlayingPrivacySettingChange(sender.isOn);
+    }
     if ([item.key isEqualToString:DYYY_ENABLE_AUTO_PLAY_KEY]) {
         [sender setOn:[DYYYSettingsHelper getUserDefaults:item.key] animated:YES];
     }

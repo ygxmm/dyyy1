@@ -2582,7 +2582,7 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 
 // 抖音私有媒体信息中心（SDK 未暴露）
-// 用于 DYYYDisableFeedNowPlayingInfo：禁止首页视频污染锁屏/控制中心
+// 兼容保留的设置键：当前策略屏蔽抖音全部 Now Playing 媒体卡片。
 @interface AWENowPlayingInfoCenter : NSObject
 @property(nonatomic, weak) id playingPlayer;                          // 当前播放器实例
 @end

@@ -1,6 +1,6 @@
 #import "DYYYSettingsBackupValidation.h"
 #import "DYYYAvatarSurroundingPolicy.h"
-#import <ImageIO/ImageIO.h>
+#import "DYYYConstants.h"
 #import <math.h>
 #import <fcntl.h>
 #import <sys/stat.h>
@@ -143,12 +143,18 @@ static BOOL DYYYBackupValidKey(id key) {
 }
 
 static BOOL DYYYBackupValidateKnownValue(NSString *key, id value, NSError **error) {
+    if ([key isEqualToString:DYYY_DISABLE_FEED_NOW_PLAYING_INFO_KEY]) {
+        if ([value isKindOfClass:NSNumber.class] && isfinite([value doubleValue]) &&
+            ([value doubleValue] == 0.0 || [value doubleValue] == 1.0)) return YES;
+        return DYYYBackupFail(error, @"抖音播放卡片开关必须为布尔值");
+    }
     NSArray *flags = @[
         @"DYYYEnableAutoPlay", @"DYYYisEnableAutoPlay",
         @"DYYYHDRModeMigratedV1", @"DYYYHDRModeLabelV2",
         @"DYYYScaleAndSizeSettingsMigratedV1", @"DYYYScaleAndSizeSettingsMigratedV2",
         @"DYYYDisableAllHDR", @"DYYYFilterFeedHDR",
         // 头像拆分键与旧总开关都必须按布尔值校验，旧键只用于备份兼容迁移。
+        DYYY_DISABLE_FEED_NOW_PLAYING_INFO_KEY,
         DYYYHideAvatarStoryRingKey, DYYYHideAvatarDecorationKey, DYYYHideAvatarSurroundingKey
     ];
     if ([flags containsObject:key]) {
