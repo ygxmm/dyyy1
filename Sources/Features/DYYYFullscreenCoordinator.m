@@ -682,8 +682,22 @@
         }
         return native;
     }
+    BOOL nativeFillsPage = fabs(native.size.width - viewport.size.width) < 1.0 && fabs(native.origin.x) < 1.0;
+    if (recommended && nativeFillsPage && player.superview) {
+        // Feed 全屏只有一个几何真值：播放器宿主 bounds。上游同一页会交替送入 y=0/-27.95，
+        // 交互层也会短暂在 852/792 间切换；不可逐次把这些瞬态值写回可见播放器。
+        native = [DYYYFullscreenGeometry stableFullscreenPlayerFrame:native inSuperviewBounds:player.superview.bounds];
+        if (!activeComment) {
+            state.normalWindowFrame = [player.superview convertRect:native toView:window];
+            state.normalCell = cell;
+            state.normalCellWindowFrame = [cell convertRect:cell.bounds toView:window];
+            state.hasNormalWindowFrame = YES;
+            state.normalWindow = window;
+        }
+        return native;
+    }
     if (media.width > media.height) {
-        // 横屏视频沿用原生信息层的布局高度；背景仍由全高 Feed 承载。
+        // 小窗/非全宽横屏沿用交互层高度，不参与首页全屏的稳定宿主规则。
         for (UIViewController *controller in [self interactions].allObjects) {
             UIView *interaction = controller.viewIfLoaded;
             if (interaction.window != window || ![interaction isDescendantOfView:cell]) continue;

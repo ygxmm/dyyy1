@@ -16,6 +16,10 @@ for file in \
   "$TESTS/DYYYDownloadLifecycleTests.m" \
   "$TESTS/DYYYHDRMetadataTests.m" \
   "$TESTS/DYYYAvatarSurroundingPolicyTests.m" \
+  "$TESTS/DYYYFullscreenGeometryTests.m" \
+  "$TESTS/check_fullscreen_frame_stability.py" \
+  "$ROOT/Sources/Features/DYYYFullscreenGeometry.h" \
+  "$ROOT/Sources/Features/DYYYFullscreenGeometry.m" \
   "$ROOT/Sources/Media/DYYYVideoQualityPolicy.h" \
   "$ROOT/Sources/Media/DYYYVideoQualityPolicy.m" \
   "$ROOT/Sources/Core/DYYYABConfigValidation.m" \
@@ -38,6 +42,7 @@ done
 python3 "$TESTS/check_video_quality_integration.py"
 python3 "$TESTS/check_maintenance_integration.py"
 python3 "$TESTS/check_story_layout_integration.py"
+python3 "$TESTS/check_fullscreen_frame_stability.py"
 
 if ! command -v xcrun >/dev/null 2>&1; then
   echo "FAIL xcrun is required; run this test on macOS (e.g. GitHub Actions macos-latest)." >&2
@@ -59,6 +64,8 @@ xcrun --sdk macosx clang \
   "$TESTS/DYYYDownloadLifecycleTests.m" \
   "$TESTS/DYYYHDRMetadataTests.m" \
   "$TESTS/DYYYAvatarSurroundingPolicyTests.m" \
+  "$TESTS/DYYYFullscreenGeometryTests.m" \
+  "$FEATURES/DYYYFullscreenGeometry.m" \
   "$ROOT/Sources/Media/DYYYVideoQualityPolicy.m" \
   "$ROOT/Sources/Core/DYYYABConfigValidation.m" \
   "$ROOT/Sources/Settings/DYYYSettingsBackupValidation.m" \

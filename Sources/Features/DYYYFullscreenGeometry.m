@@ -9,6 +9,12 @@
     // 基准来自稳定的 Feed cell，只抵消翻页位移，不继承评论内部宿主的缩放。
     return CGRectOffset(rect, current.origin.x - previous.origin.x, current.origin.y - previous.origin.y);
 }
++ (CGRect)stableFullscreenPlayerFrame:(CGRect)proposed inSuperviewBounds:(CGRect)bounds {
+    if (CGRectIsNull(bounds) || CGRectIsInfinite(bounds) || CGRectIsEmpty(bounds) ||
+        !isfinite(bounds.origin.x) || !isfinite(bounds.origin.y) ||
+        !isfinite(bounds.size.width) || !isfinite(bounds.size.height)) return proposed;
+    return bounds;
+}
 + (CGRect)aspectFit:(CGSize)media inRect:(CGRect)viewport {
     if (!isfinite(media.width) || !isfinite(media.height) || media.width <= 0 || media.height <= 0 ||
         CGRectIsEmpty(viewport) || CGRectIsNull(viewport)) return CGRectNull;
