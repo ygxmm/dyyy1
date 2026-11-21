@@ -16207,72 +16207,73 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
 
 - (void)layoutSubviews {
     %orig;
-    
-    // v426: 严格隔离小日常，防止 UIKit 死锁和爆栈
-    UIResponder *responder = self;
-    int guard = 0;
-    // v489: 加入最大循环限制，防止 Swift 混淆或响应链循环导致主线程死锁
-    while (responder && guard++ < 20) {
-        NSString *cls = NSStringFromClass([responder class]);
-        if ([cls containsString:@"Story"] || [cls containsString:@"Moment"]) {
-            return; // 如果是小日常，直接放弃修改，保持原生布局
+
+    if (self.subviews.count == 2) return;
+
+    // 只检查父级页面上下文；本类名含 Story，不能把 self 当作小日常页面标记。
+    BOOL isAuthorProfile = NO;
+    UIResponder *responder = self.nextResponder;
+    NSUInteger guard = 0;
+    while (responder && guard++ < 50) {
+        NSString *className = NSStringFromClass([responder class]);
+        if ([className containsString:@"Story"] || [className containsString:@"Moment"]) {
+            return;
+        }
+        if ([className containsString:@"UserHomeViewController"] ||
+            [className containsString:@"ProfileViewController"]) {
+            isAuthorProfile = YES;
         }
         responder = responder.nextResponder;
     }
-    
-    if ([self.subviews count] == 2) return;
-    
+    // 响应链超出上限或形成循环时，不对未知上下文修改布局。
+    if (responder) return;
+
     id enableEnterProfile = nil;
-    @try { enableEnterProfile = [self valueForKey:@"enableEnterProfile"]; } @catch (NSException *e) {}
+    @try {
+        enableEnterProfile = [self valueForKey:@"enableEnterProfile"];
+    } @catch (__unused NSException *exception) {
+        enableEnterProfile = nil;
+    }
     BOOL isHome = NO;
     uintptr_t raw = (uintptr_t)enableEnterProfile;
-    if (raw >= 0x100000000ULL && raw <= 0x0000FFFFFFFFFFFFULL) {
-        if ([enableEnterProfile isKindOfClass:[NSNumber class]]) {
-            isHome = [enableEnterProfile boolValue];
-        }
+    if (raw >= 0x100000000ULL && raw <= 0x0000FFFFFFFFFFFFULL &&
+        [enableEnterProfile isKindOfClass:[NSNumber class]]) {
+        isHome = [enableEnterProfile boolValue];
     }
-    
-    BOOL isAuthorProfile = NO;
-    responder = self;
-    guard = 0;
-    while ((responder = [responder nextResponder]) && guard++ < 50) {
-        NSString *cls = NSStringFromClass([responder class]);
-        if ([cls containsString:@"UserHomeViewController"] || [cls containsString:@"ProfileViewController"]) {
-            isAuthorProfile = YES;
-            break;
-        }
-    }
-    
+
+    // 与上游 DYYY 一样，只允许首页或作者主页进入自定义布局路径。
     if (!isHome && !isAuthorProfile) return;
-    
+
     for (UIView *subview in self.subviews) {
-        if ([subview isKindOfClass:[UIView class]]) {
-            UIView *nextResponder = (UIView *)subview.nextResponder;
-            if (isHome && [nextResponder isKindOfClass:%c(AWEPlayInteractionViewController)]) {
-                // 首页逻辑保持原样
-            }
-            else if (isAuthorProfile) {
-                BOOL isWorkImage = NO;
-                for (UIView *childView in subview.subviews) {
-                    if ([NSStringFromClass([childView class]) containsString:@"ImageView"] || [NSStringFromClass([childView class]) containsString:@"ThumbnailView"]) {
-                        isWorkImage = YES;
-                        break;
-                    }
-                }
-                if (isWorkImage) {
-                    static char kDYYYWorkImageAppliedYKey;
-                    NSNumber *appliedYNum = objc_getAssociatedObject(subview, &kDYYYWorkImageAppliedYKey);
-                    CGFloat currentY = subview.frame.origin.y;
-                    if (appliedYNum && fabs(currentY - appliedYNum.doubleValue) < 0.5) {
-                        continue;
-                    }
-                    CGRect frame = subview.frame;
-                    frame.origin.y += gCurrentTabBarHeight;
-                    subview.frame = frame;
-                    objc_setAssociatedObject(subview, &kDYYYWorkImageAppliedYKey, @(frame.origin.y), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                }
+        if (![subview isKindOfClass:[UIView class]]) continue;
+
+        UIResponder *subviewResponder = subview.nextResponder;
+        if (isHome && [subviewResponder isKindOfClass:%c(AWEPlayInteractionViewController)]) {
+            continue;
+        }
+        if (!isAuthorProfile) continue;
+
+        BOOL isWorkImage = NO;
+        for (UIView *childView in subview.subviews) {
+            NSString *childClassName = NSStringFromClass([childView class]);
+            if ([childClassName containsString:@"ImageView"] ||
+                [childClassName containsString:@"ThumbnailView"]) {
+                isWorkImage = YES;
+                break;
             }
         }
+        if (!isWorkImage) continue;
+
+        static char kDYYYWorkImageAppliedYKey;
+        NSNumber *appliedYNum = objc_getAssociatedObject(subview, &kDYYYWorkImageAppliedYKey);
+        CGFloat currentY = subview.frame.origin.y;
+        if (appliedYNum && fabs(currentY - appliedYNum.doubleValue) < 0.5) {
+            continue;
+        }
+        CGRect frame = subview.frame;
+        frame.origin.y += gCurrentTabBarHeight;
+        subview.frame = frame;
+        objc_setAssociatedObject(subview, &kDYYYWorkImageAppliedYKey, @(frame.origin.y), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 }
 
