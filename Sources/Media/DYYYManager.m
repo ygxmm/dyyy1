@@ -1,4 +1,5 @@
 #import "DYYYManager.h"
+#import "DYYYDownloadLifecycle.h"
 #import <CoreAudioTypes/CoreAudioTypes.h>
 #import <CoreMedia/CMMetadata.h>
 #import <ImageIO/ImageIO.h>
@@ -10,6 +11,10 @@
 #import "DYYYConstants.h"
 #import "DYYYToast.h"
 #import "DYYYUtils.h"
+
+static void DYYYDownloadOnMain(dispatch_block_t block) {
+    if ([NSThread isMainThread]) block(); else dispatch_async(dispatch_get_main_queue(), block);
+}
 
 static NSString *DYYYAuthorProfileURL(AWEUserModel *author) {
     if (!author) {
@@ -105,7 +110,9 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
           formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
         });
         NSDate *date = [NSDate dateWithTimeIntervalSince1970:createTime.doubleValue];
-        [fields addObject:[NSString stringWithFormat:@"发布时间：%@", [formatter stringFromDate:date]]];
+        @synchronized (formatter) {
+            [fields addObject:[NSString stringWithFormat:@"发布时间：%@", [formatter stringFromDate:date]]];
+        }
     }
 
     if (fields.count == 0) {
@@ -124,7 +131,7 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
 }
 
 /** 图集「保存全部」的落地：静图走批量图片，实况走批量实况，两者都有则依次跑。 */
-+ (void)saveGalleryImages:(NSArray<NSString *> *)imageURLs livePhotos:(NSArray<NSDictionary *> *)livePhotos;
++ (void)saveGalleryImages:(NSArray<NSString *> *)imageURLs livePhotos:(NSArray<NSDictionary *> *)livePhotos albumDescription:(NSString *)albumDescription;
 
 /** 把说明文字嵌进图片副本，返回临时文件；失败返回 nil。 */
 + (NSURL *)temporaryImageURLByEmbeddingDescription:(NSString *)albumDescription intoImageAtURL:(NSURL *)imageURL;
@@ -138,8 +145,18 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
 /** 替换视频资源中的原始创建日期，避免相册继续读取相同的容器时间。 */
 + (NSArray<AVMetadataItem *> *)metadataItemsBySettingCreationDate:(NSDate *)creationDate toItems:(NSArray<AVMetadataItem *> *)items;
 
-/** 取本次下载该带的说明文字。 */
-+ (NSString *)currentAlbumDescription;
++ (NSUInteger)downloadCancellationGeneration;
+- (void)cancelDownloadWithID:(NSString *)downloadID;
+- (void)deliverDownload:(NSString *)downloadID success:(BOOL)success fileURL:(NSURL *)fileURL;
+- (void)completeBatchDownload:(NSString *)downloadID success:(BOOL)success fileURL:(NSURL *)fileURL;
++ (void)downloadMediaWithProgress:(NSURL *)url mediaType:(MediaType)mediaType audio:(NSURL *)audioURL progress:(void (^)(float))progressBlock keepLifecycle:(BOOL)keepLifecycle completion:(void (^)(BOOL, NSURL *))completion;
++ (void)downloadMediaWithProgress:(NSURL *)url mediaType:(MediaType)mediaType audio:(NSURL *)audioURL progress:(void (^)(float))progressBlock keepLifecycle:(BOOL)keepLifecycle showProgress:(BOOL)showProgress ownerID:(NSString *)ownerID completion:(void (^)(BOOL, NSURL *))completion;
++ (void)downloadAudioAndMergeVideo:(NSURL *)videoURL audioURL:(NSURL *)audioURL ownerID:(NSString *)ownerID state:(NSMutableDictionary *)state completion:(void (^)(BOOL, NSURL *))completion;
++ (void)downloadAllImagesWithProgress:(NSMutableArray *)imageURLs albumDescription:(NSString *)albumDescription progress:(void (^)(NSInteger, NSInteger))progressBlock completion:(void (^)(NSInteger, NSInteger))completion;
++ (void)downloadAllLivePhotosWithProgress:(NSArray<NSDictionary *> *)livePhotos albumDescription:(NSString *)albumDescription progress:(void (^)(NSInteger, NSInteger))progressBlock completion:(void (^)(NSInteger, NSInteger))completion;
++ (void)downloadAllLivePhotosWithProgress:(NSArray<NSDictionary *> *)livePhotos albumDescription:(NSString *)albumDescription scopedCancellation:(BOOL)scopedCancellation progress:(void (^)(NSInteger, NSInteger))progressBlock completion:(void (^)(NSInteger, NSInteger))completion;
++ (void)downloadLivePhoto:(NSURL *)imageURL videoURL:(NSURL *)videoURL albumDescription:(NSString *)albumDescription completion:(void (^)(void))completion;
++ (void)downloadParsedVideos:(NSArray *)videos images:(NSArray *)images albumDescription:(NSString *)albumDescription;
 
 /** 存实况照片，并把说明文字写进配对的图片与视频。 */
 - (void)saveLivePhoto:(NSString *)imageSourcePath videoUrl:(NSString *)videoSourcePath albumDescription:(NSString *)albumDescription;
@@ -149,12 +166,13 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
                mediaType:(MediaType)mediaType
              originalURL:(NSURL *)originalURL
             temporaryURL:(NSURL *)temporaryURL
+               lifecycle:(NSMutableDictionary *)state
             reportResult:(void (^)(BOOL success))reportResult;
 
 @end
 
 @interface DYYYManager () <NSURLSessionDownloadDelegate>
-@property(nonatomic, strong) NSMutableDictionary<NSString *, NSURLSessionDownloadTask *> *downloadTasks;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, NSURLSessionTask *> *downloadTasks;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, DYYYToast *> *progressViews;
 @property(nonatomic, strong) NSOperationQueue *downloadQueue;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *taskProgressMap;
@@ -162,10 +180,12 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *mediaTypeMap;
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *filePathToDownloadID;
 
-// 相册说明文字：由长按面板等入口在弹出菜单时写入当前作品的信息，下载开始时取走一份，
-// 之后即使用户已经翻到别的作品，这次下载存进相册的说明也仍是它自己的。
-@property(nonatomic, copy) NSString *pendingAlbumDescription;
-@property(nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *albumDescriptionMap;  // 下载ID到说明文字的映射
+// 任务状态跨越网络、授权和保存阶段，不再借用单例说明上下文。
+@property(nonatomic, strong) NSMutableDictionary<NSString *, NSMutableDictionary *> *downloadStates;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, id> *progressBlocks;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *downloadOwnerMap;
+@property(nonatomic, assign) NSUInteger cancellationGeneration;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *albumDescriptionMap;
 
 // 批量下载相关属性
 @property(nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *downloadToBatchMap;                                                 // 下载ID到批量ID的映射
@@ -200,6 +220,9 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
         _mediaTypeMap = [NSMutableDictionary dictionary];
         _filePathToDownloadID = [NSMutableDictionary dictionary];
         _albumDescriptionMap = [NSMutableDictionary dictionary];
+        _downloadStates = [NSMutableDictionary dictionary];
+        _progressBlocks = [NSMutableDictionary dictionary];
+        _downloadOwnerMap = [NSMutableDictionary dictionary];
 
         // 初始化批量下载相关字典
         _downloadToBatchMap = [NSMutableDictionary dictionary];
@@ -213,6 +236,7 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
 }
 
 + (NSString *)albumDescriptionForAwemeModel:(AWEAwemeModel *)awemeModel {
+    if (![[NSUserDefaults standardUserDefaults] boolForKey:DYYY_ALBUM_MEDIA_DESCRIPTION_KEY]) return nil;
     if (!awemeModel) {
         return nil;
     }
@@ -223,151 +247,96 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
 }
 
 + (void)setAlbumDescriptionContextWithAwemeModel:(AWEAwemeModel *)awemeModel {
-    // 键不存在按关闭处理：默认不向相册写入作品说明，用户可在设置中主动开启。
-    id stored = [[NSUserDefaults standardUserDefaults] objectForKey:DYYY_ALBUM_MEDIA_DESCRIPTION_KEY];
-    BOOL enabled = stored ? [stored boolValue] : NO;
-    DYYYManager *manager = [DYYYManager shared];
-    NSString *authorProfileURL = DYYYAuthorProfileURL(awemeModel.author);
-    NSString *workURL = DYYYCompactAlbumURL(awemeModel.shareURL);
-
-    @synchronized(manager) {
-        manager.pendingAlbumDescription = enabled ? DYYYAlbumDescriptionForAwemeModel(awemeModel, authorProfileURL, workURL) : nil;
-    }
-}
-
-+ (NSString *)currentAlbumDescription {
-    DYYYManager *manager = [DYYYManager shared];
-    @synchronized(manager) {
-        return manager.pendingAlbumDescription;
-    }
+    // 仅兼容旧调用；说明必须由作品入口显式传入，禁止跨入口串源。
+    (void)awemeModel;
 }
 
 + (void)saveMedia:(NSURL *)mediaURL mediaType:(MediaType)mediaType completion:(void (^)(BOOL success))completion {
-    [self saveMedia:mediaURL mediaType:mediaType albumDescription:[self currentAlbumDescription] completion:completion];
+    [self saveMedia:mediaURL mediaType:mediaType albumDescription:nil completion:completion];
 }
 
 + (void)saveMedia:(NSURL *)mediaURL mediaType:(MediaType)mediaType albumDescription:(NSString *)albumDescription completion:(void (^)(BOOL success))completion {
-    if (mediaType == MediaTypeAudio) {
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-              completion(NO);
-            });
-        }
+    if (![NSThread isMainThread]) {
+        NSString *description = [albumDescription copy];
+        dispatch_async(dispatch_get_main_queue(), ^{ [self saveMedia:mediaURL mediaType:mediaType albumDescription:description completion:completion]; });
         return;
     }
-
+    DYYYManager *manager = [DYYYManager shared];
+    NSString *downloadID = [manager downloadIDForFileURL:mediaURL];
+    NSMutableDictionary *state = downloadID ? manager.downloadStates[downloadID] : nil;
+    BOOL isBatchDownload = downloadID && manager.downloadToBatchMap[downloadID] != nil;
+    NSMutableDictionary *resultState = DYYYDownloadCreateState();
+    void (^reportResult)(BOOL) = ^(BOOL success) {
+        DYYYDownloadOnMain(^{
+            if (!DYYYDownloadTakeCallback(resultState)) return;
+            BOOL result = success && DYYYDownloadStateIsActive(state);
+            if (!isBatchDownload && downloadID) [manager finalizeDownloadWithID:downloadID success:result fileURL:mediaURL];
+            if (completion) completion(result);
+        });
+    };
+    if (!mediaURL || mediaType == MediaTypeAudio) { reportResult(NO); return; }
+    albumDescription = [albumDescription copy];
     [PHPhotoLibrary requestAuthorization:^(PHAuthorizationStatus status) {
-      if (status != PHAuthorizationStatusAuthorized) {
-          dispatch_async(dispatch_get_main_queue(), ^{
-            [DYYYUtils showToast:@"请允许访问相册权限后重试"];
-            [[NSFileManager defaultManager] removeItemAtPath:mediaURL.path error:nil];
-            [[DYYYManager shared] finalizeDownloadWithFileURL:mediaURL success:NO];
-            if (completion) {
-                completion(NO);
-            }
-          });
-          return;
-      }
-
-      void (^reportResult)(BOOL) = ^(BOOL success) {
-          dispatch_async(dispatch_get_main_queue(), ^{
-            [[DYYYManager shared] finalizeDownloadWithFileURL:mediaURL success:success];
-            if (completion) {
-                completion(success);
-            }
-          });
-      };
-
-      if (mediaType == MediaTypeHeic) {
-          NSString *actualFormat = [DYYYUtils detectFileFormat:mediaURL];
-
-          if ([actualFormat isEqualToString:@"webp"]) {
-              [DYYYUtils convertWebpToGifSafely:mediaURL
-                                     completion:^(NSURL *gifURL, BOOL success) {
-                                  if (success && gifURL) {
-                                      [DYYYUtils saveGifToPhotoLibrary:gifURL
-                                                            completion:^(BOOL gifSuccess) {
-                                                         [[NSFileManager defaultManager] removeItemAtPath:mediaURL.path error:nil];
-                                                         reportResult(gifSuccess);
-                                                       }];
-                                  } else {
-                                      dispatch_async(dispatch_get_main_queue(), ^{
-                                        [DYYYUtils showToast:@"转换失败"];
-                                        [[NSFileManager defaultManager] removeItemAtPath:mediaURL.path error:nil];
-                                        reportResult(NO);
-                                      });
-                                  }
-                                }];
-              return;
-          }
-
-          if ([actualFormat isEqualToString:@"heic"] || [actualFormat isEqualToString:@"heif"]) {
-              [DYYYUtils convertHeicToGif:mediaURL
-                               completion:^(NSURL *gifURL, BOOL success) {
-                            if (success && gifURL) {
-                                [DYYYUtils saveGifToPhotoLibrary:gifURL
-                                                      completion:^(BOOL gifSuccess) {
-                                                   [[NSFileManager defaultManager] removeItemAtPath:mediaURL.path error:nil];
-                                                   reportResult(gifSuccess);
-                                                 }];
-                            } else {
-                                dispatch_async(dispatch_get_main_queue(), ^{
-                                  [DYYYUtils showToast:@"转换失败"];
-                                  [[NSFileManager defaultManager] removeItemAtPath:mediaURL.path error:nil];
-                                  reportResult(NO);
-                                });
-                            }
-                          }];
-              return;
-          }
-
-          if ([actualFormat isEqualToString:@"gif"]) {
-              [DYYYUtils saveGifToPhotoLibrary:mediaURL
-                                    completion:^(BOOL gifSuccess) {
-                                 reportResult(gifSuccess);
-                               }];
-              return;
-          }
-
-          [[PHPhotoLibrary sharedPhotoLibrary]
-              performChanges:^{
-                UIImage *image = [UIImage imageWithContentsOfFile:mediaURL.path];
-                if (image) {
-                    [PHAssetChangeRequest creationRequestForAssetFromImage:image];
+        if (!DYYYDownloadStateIsActive(state) || status != PHAuthorizationStatusAuthorized) {
+            [[NSFileManager defaultManager] removeItemAtURL:mediaURL error:nil];
+            DYYYDownloadOnMain(^{
+                if (DYYYDownloadStateIsActive(state)) [DYYYUtils showToast:@"请允许访问相册权限后重试"];
+                reportResult(NO);
+            });
+            return;
+        }
+        if (mediaType == MediaTypeHeic) {
+            NSString *format = [DYYYUtils detectFileFormat:mediaURL];
+            // 转换只改变编码；进入相册事务前仍须检查本次任务状态。
+            void (^saveGIF)(NSURL *, BOOL) = ^(NSURL *gifURL, BOOL converted) {
+                if (!converted || !gifURL || !DYYYDownloadStateIsActive(state)) {
+                    if (gifURL) [[NSFileManager defaultManager] removeItemAtURL:gifURL error:nil];
+                    [[NSFileManager defaultManager] removeItemAtURL:mediaURL error:nil];
+                    reportResult(NO);
+                    return;
                 }
-              }
-              completionHandler:^(BOOL success, NSError *_Nullable error) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                  if (!success) {
-                      [DYYYUtils showToast:@"保存失败"];
-                  }
-                  [[NSFileManager defaultManager] removeItemAtPath:mediaURL.path error:nil];
-                  reportResult(success);
-                });
-              }];
-          return;
-      }
-
-      if (albumDescription.length == 0) {
-          [self createAssetAtURL:mediaURL mediaType:mediaType originalURL:mediaURL temporaryURL:nil reportResult:reportResult];
-          return;
-      }
-
-      // 相册里能显示的说明只能来自文件自身的元数据，PhotoKit 没有建完资产再补说明的接口，
-      // 所以先写一份带说明的副本，用副本建资产。写不成就用原件，宁可没说明也要存进相册。
-      if (mediaType == MediaTypeVideo) {
-          [self writeDescription:albumDescription
-                    toVideoAtURL:mediaURL
-                      completion:^(NSURL *decoratedURL) {
-                        NSURL *assetURL = decoratedURL ?: mediaURL;
-                        [self createAssetAtURL:assetURL mediaType:mediaType originalURL:mediaURL temporaryURL:decoratedURL reportResult:reportResult];
-                      }];
-          return;
-      }
-
-      NSURL *decoratedURL = [self temporaryImageURLByEmbeddingDescription:albumDescription intoImageAtURL:mediaURL];
-      NSURL *assetURL = decoratedURL ?: mediaURL;
-      [self createAssetAtURL:assetURL mediaType:mediaType originalURL:mediaURL temporaryURL:decoratedURL reportResult:reportResult];
+                __block BOOL resourceAdded = NO;
+                [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+                    NSData *gifData = [NSData dataWithContentsOfURL:gifURL];
+                    if (!gifData) return;
+                    DYYYDownloadPerformIfActive(state, ^{
+                        PHAssetCreationRequest *request = [PHAssetCreationRequest creationRequestForAsset];
+                        PHAssetResourceCreationOptions *options = [[PHAssetResourceCreationOptions alloc] init];
+                        options.uniformTypeIdentifier = @"com.compuserve.gif";
+                        [request addResourceWithType:PHAssetResourceTypePhoto data:gifData options:options];
+                        resourceAdded = YES;
+                    });
+                } completionHandler:^(BOOL success, NSError *error) {
+                    [[NSFileManager defaultManager] removeItemAtURL:gifURL error:nil];
+                    [[NSFileManager defaultManager] removeItemAtURL:mediaURL error:nil];
+                    if (!success && DYYYDownloadStateIsActive(state)) DYYYDownloadOnMain(^{ [DYYYUtils showToast:@"保存失败"]; });
+                    reportResult(success && resourceAdded);
+                }];
+            };
+            if ([format isEqualToString:@"webp"]) { [DYYYUtils convertWebpToGifSafely:mediaURL completion:saveGIF]; return; }
+            if ([format isEqualToString:@"heic"] || [format isEqualToString:@"heif"]) { [DYYYUtils convertHeicToGif:mediaURL completion:saveGIF]; return; }
+            if ([format isEqualToString:@"gif"]) { saveGIF(mediaURL, YES); return; }
+            if (!DYYYDownloadStateIsActive(state)) { [[NSFileManager defaultManager] removeItemAtURL:mediaURL error:nil]; reportResult(NO); return; }
+            __block BOOL imageAdded = NO;
+            [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+                UIImage *image = [UIImage imageWithContentsOfFile:mediaURL.path];
+                if (image) imageAdded = DYYYDownloadPerformIfActive(state, ^{ [PHAssetChangeRequest creationRequestForAssetFromImage:image]; });
+            } completionHandler:^(BOOL success, NSError *error) {
+                [[NSFileManager defaultManager] removeItemAtURL:mediaURL error:nil];
+                reportResult(success && imageAdded);
+            }];
+            return;
+        }
+        if (!albumDescription.length) {
+            [self createAssetAtURL:mediaURL mediaType:mediaType originalURL:mediaURL temporaryURL:nil lifecycle:state reportResult:reportResult];
+        } else if (mediaType == MediaTypeVideo) {
+            [self writeDescription:albumDescription toVideoAtURL:mediaURL completion:^(NSURL *decoratedURL) {
+                [self createAssetAtURL:decoratedURL ?: mediaURL mediaType:mediaType originalURL:mediaURL temporaryURL:decoratedURL lifecycle:state reportResult:reportResult];
+            }];
+        } else {
+            NSURL *decoratedURL = [self temporaryImageURLByEmbeddingDescription:albumDescription intoImageAtURL:mediaURL];
+            [self createAssetAtURL:decoratedURL ?: mediaURL mediaType:mediaType originalURL:mediaURL temporaryURL:decoratedURL lifecycle:state reportResult:reportResult];
+        }
     }];
 }
 
@@ -375,26 +344,36 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
                mediaType:(MediaType)mediaType
              originalURL:(NSURL *)originalURL
             temporaryURL:(NSURL *)temporaryURL
+               lifecycle:(NSMutableDictionary *)state
             reportResult:(void (^)(BOOL success))reportResult {
+    if (!DYYYDownloadStateIsActive(state)) {
+        if (temporaryURL) [[NSFileManager defaultManager] removeItemAtURL:temporaryURL error:nil];
+        [[NSFileManager defaultManager] removeItemAtURL:originalURL error:nil];
+        reportResult(NO);
+        return;
+    }
     [[PHPhotoLibrary sharedPhotoLibrary]
         performChanges:^{
-          // 按文件原样入库，文件里嵌好的说明才能留住；从 UIImage 建资产会重新编码并丢掉元数据。
-          PHAssetCreationRequest *request = [PHAssetCreationRequest creationRequestForAsset];
-          PHAssetResourceType resourceType = (mediaType == MediaTypeVideo) ? PHAssetResourceTypeVideo : PHAssetResourceTypePhoto;
-          [request addResourceWithType:resourceType fileURL:assetURL options:nil];
+          // 创建请求与取消采用原子交接；已经创建的 PhotoKit 请求无法撤回。
+          DYYYDownloadPerformIfActive(state, ^{
+              // 按文件原样入库，保留说明元数据。
+              PHAssetCreationRequest *request = [PHAssetCreationRequest creationRequestForAsset];
+              PHAssetResourceType resourceType = (mediaType == MediaTypeVideo) ? PHAssetResourceTypeVideo : PHAssetResourceTypePhoto;
+              [request addResourceWithType:resourceType fileURL:assetURL options:nil];
+          });
         }
         completionHandler:^(BOOL success, NSError *_Nullable error) {
-          if (!success && mediaType != MediaTypeVideo) {
+          if (!success && mediaType != MediaTypeVideo && DYYYDownloadStateIsActive(state)) {
               // 少数图片的实际编码与扩展名不符，按文件入库会被 PhotoKit 拒；退回解码后再存。
               UIImage *image = [UIImage imageWithContentsOfFile:assetURL.path];
               if (image) {
                   [[PHPhotoLibrary sharedPhotoLibrary]
                       performChanges:^{
-                        [PHAssetChangeRequest creationRequestForAssetFromImage:image];
+                        DYYYDownloadPerformIfActive(state, ^{ [PHAssetChangeRequest creationRequestForAssetFromImage:image]; });
                       }
                       completionHandler:^(BOOL retrySuccess, NSError *_Nullable retryError) {
                         dispatch_async(dispatch_get_main_queue(), ^{
-                          if (!retrySuccess) {
+                          if (!retrySuccess && DYYYDownloadStateIsActive(state)) {
                               [DYYYUtils showToast:@"保存失败"];
                           }
                           if (temporaryURL) {
@@ -409,7 +388,7 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
           }
 
           dispatch_async(dispatch_get_main_queue(), ^{
-            if (!success) {
+            if (!success && DYYYDownloadStateIsActive(state)) {
                 [DYYYUtils showToast:@"保存失败"];
             }
             if (temporaryURL) {
@@ -562,261 +541,50 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
 }
 
 + (void)downloadLivePhoto:(NSURL *)imageURL videoURL:(NSURL *)videoURL completion:(void (^)(void))completion {
-    // 下载一开始就取走说明文字，理由同 downloadMedia:
-    NSString *albumDescription = [self currentAlbumDescription];
-
-    // 获取共享实例，确保FileLinks字典存在
-    DYYYManager *manager = [DYYYManager shared];
-    if (!manager.fileLinks) {
-        manager.fileLinks = [NSMutableDictionary dictionary];
-    }
-
-    // 为图片和视频URL创建唯一的键
-    NSString *uniqueKey = [NSString stringWithFormat:@"%@_%@", imageURL.absoluteString, videoURL.absoluteString];
-
-    // 检查是否已经存在此下载任务
-    NSDictionary *existingPaths = manager.fileLinks[uniqueKey];
-    if (existingPaths) {
-        NSString *imagePath = existingPaths[@"image"];
-        NSString *videoPath = existingPaths[@"video"];
-
-        // 使用异步检查以避免主线程阻塞
-        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-          BOOL imageExists = [[NSFileManager defaultManager] fileExistsAtPath:imagePath];
-          BOOL videoExists = [[NSFileManager defaultManager] fileExistsAtPath:videoPath];
-
-          dispatch_async(dispatch_get_main_queue(), ^{
-            if (imageExists && videoExists) {
-                [[DYYYManager shared] saveLivePhoto:imagePath videoUrl:videoPath albumDescription:albumDescription];
-                if (completion) {
-                    completion();
-                }
-                return;
-            } else {
-                // 文件不完整，需要重新下载
-                [self startDownloadLivePhotoProcess:imageURL videoURL:videoURL uniqueKey:uniqueKey albumDescription:albumDescription completion:completion];
-            }
-          });
-        });
-    } else {
-        // 没有缓存，直接开始下载
-        [self startDownloadLivePhotoProcess:imageURL videoURL:videoURL uniqueKey:uniqueKey albumDescription:albumDescription completion:completion];
-    }
+    [self downloadLivePhoto:imageURL videoURL:videoURL albumDescription:nil completion:completion];
 }
 
-+ (void)startDownloadLivePhotoProcess:(NSURL *)imageURL
-                             videoURL:(NSURL *)videoURL
-                            uniqueKey:(NSString *)uniqueKey
-                     albumDescription:(NSString *)albumDescription
-                           completion:(void (^)(void))completion {
-    // 创建临时目录
-    NSString *livePhotoPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"LivePhoto"];
-
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    if (![fileManager fileExistsAtPath:livePhotoPath]) {
-        [fileManager createDirectoryAtPath:livePhotoPath withIntermediateDirectories:YES attributes:nil error:nil];
-    }
-
-    // 生成唯一标识符，防止多次调用时文件冲突
-    NSString *uniqueID = [NSUUID UUID].UUIDString;
-    NSString *imagePath = [livePhotoPath stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.heic", uniqueID]];
-    NSString *videoPath = [livePhotoPath stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.mp4", uniqueID]];
-
-    // 存储文件路径，以便下次下载相同的URL时可以复用
-    DYYYManager *manager = [DYYYManager shared];
-    [manager.fileLinks setObject:@{@"image" : imagePath, @"video" : videoPath} forKey:uniqueKey];
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-      // 创建进度视图
-      CGRect screenBounds = [UIScreen mainScreen].bounds;
-      DYYYToast *progressView = [[DYYYToast alloc] initWithFrame:screenBounds];
-      [progressView show];
-
-      // 优化会话配置
-      NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
-      configuration.timeoutIntervalForRequest = 60.0;  // 增加超时时间
-      configuration.timeoutIntervalForResource = 60.0;
-      configuration.HTTPMaximumConnectionsPerHost = 10;                             // 增加并发连接数
-      configuration.requestCachePolicy = NSURLRequestReloadIgnoringLocalCacheData;  // 强制从网络重新下载
-
-      // 使用共享委托的session以节省资源
-      NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration delegate:[DYYYManager shared] delegateQueue:[NSOperationQueue mainQueue]];
-
-      dispatch_group_t group = dispatch_group_create();
-      __block BOOL imageDownloaded = NO;
-      __block BOOL videoDownloaded = NO;
-      __block float imageProgress = 0.0;
-      __block float videoProgress = 0.0;
-
-      // 设置单独的下载观察者ID用于进度跟踪
-      NSString *imageDownloadID = [NSString stringWithFormat:@"image_%@", uniqueID];
-      NSString *videoDownloadID = [NSString stringWithFormat:@"video_%@", uniqueID];
-
-      // 更新合并进度的定时器
-      __weak DYYYToast *weakProgressView = progressView;
-      __block NSTimer *progressTimer = [NSTimer scheduledTimerWithTimeInterval:0.1
-                                                                       repeats:YES
-                                                                         block:^(NSTimer *_Nonnull timer) {
-                                                                           DYYYToast *strongProgressView = weakProgressView;
-                                                                           if (!strongProgressView) {
-                                                                               [timer invalidate];
-                                                                               progressTimer = nil;
-                                                                               return;
-                                                                           }
-
-                                                                           float totalProgress = (imageProgress + videoProgress) / 2.0;
-                                                                           [strongProgressView setProgress:totalProgress];
-
-                                                                           // 更新进度文字
-                                                                           if (imageDownloaded && !videoDownloaded) {
-                                                                           } else if (!imageDownloaded && videoDownloaded) {
-                                                                           } else if (imageDownloaded && videoDownloaded) {
-                                                                               [timer invalidate];  // 全部完成时停止定时器
-                                                                               progressTimer = nil;
-                                                                           }
-                                                                        }];
-
-      // 下载图片
-      dispatch_group_enter(group);
-      NSURLRequest *imageRequest = [NSURLRequest requestWithURL:imageURL];
-      NSURLSessionDataTask *imageTask = [session dataTaskWithRequest:imageRequest
-                                                   completionHandler:^(NSData *_Nullable data, NSURLResponse *_Nullable response, NSError *_Nullable error) {
-                                                     if (!error && data) {
-                                                         // 直接写入文件，避免临时文件移动操作
-                                                         if ([data writeToFile:imagePath atomically:YES]) {
-                                                             imageDownloaded = YES;
-                                                             imageProgress = 1.0;
-                                                         }
-                                                     }
-                                                     dispatch_group_leave(group);
-                                                   }];
-
-      // 设置图片下载进度观察
-      if ([imageTask respondsToSelector:@selector(taskIdentifier)]) {
-          [[manager taskProgressMap] setObject:@(0.0) forKey:imageDownloadID];
-
-          // 使用系统API观察进度 (iOS 11+)
-          if (@available(iOS 11.0, *)) {
-              [imageTask.progress addObserver:manager forKeyPath:@"fractionCompleted" options:NSKeyValueObservingOptionNew context:(__bridge void *)(imageDownloadID)];
-          }
-      }
-
-      // 下载视频
-      dispatch_group_enter(group);
-      NSURLRequest *videoRequest = [NSURLRequest requestWithURL:videoURL];
-      NSURLSessionDataTask *videoTask = [session dataTaskWithRequest:videoRequest
-                                                   completionHandler:^(NSData *_Nullable data, NSURLResponse *_Nullable response, NSError *_Nullable error) {
-                                                     if (!error && data) {
-                                                         // 直接写入文件，避免临时文件移动操作
-                                                         if ([data writeToFile:videoPath atomically:YES]) {
-                                                             videoDownloaded = YES;
-                                                             videoProgress = 1.0;
-                                                         }
-                                                     }
-                                                     dispatch_group_leave(group);
-                                                   }];
-
-      // 设置视频下载进度观察
-      if ([videoTask respondsToSelector:@selector(taskIdentifier)]) {
-          [[manager taskProgressMap] setObject:@(0.0) forKey:videoDownloadID];
-
-          // 使用系统API观察进度 (iOS 11+)
-          if (@available(iOS 11.0, *)) {
-              [videoTask.progress addObserver:manager forKeyPath:@"fractionCompleted" options:NSKeyValueObservingOptionNew context:(__bridge void *)(videoDownloadID)];
-          }
-      }
-
-      // 启动下载任务
-      [imageTask resume];
-      [videoTask resume];
-
-      // 当两个下载都完成后，保存实况照片
-      dispatch_group_notify(group, dispatch_get_main_queue(), ^{
-        // 停止进度定时器
-        if (progressTimer) {
-            [progressTimer invalidate];
-            progressTimer = nil;
-        }
-
-        // 移除进度观察
-        if (@available(iOS 11.0, *)) {
-            if ([imageTask respondsToSelector:@selector(progress)]) {
-                [imageTask.progress removeObserver:manager forKeyPath:@"fractionCompleted"];
-            }
-            if ([videoTask respondsToSelector:@selector(progress)]) {
-                [videoTask.progress removeObserver:manager forKeyPath:@"fractionCompleted"];
-            }
-        }
-
-        // 检查文件是否真的存在
-        BOOL imageExists = [[NSFileManager defaultManager] fileExistsAtPath:imagePath];
-        BOOL videoExists = [[NSFileManager defaultManager] fileExistsAtPath:videoPath];
-
-        BOOL downloadSucceeded = imageExists && videoExists;
-        progressView.allowSuccessAnimation = downloadSucceeded;
-        [progressView dismiss];
-
-        if (downloadSucceeded) {
-            @try {
-                // 添加iOS版本检查
-                if (@available(iOS 15.0, *)) {
-                    [[DYYYManager shared] saveLivePhoto:imagePath videoUrl:videoPath albumDescription:albumDescription];
-                }
-            } @catch (NSException *exception) {
-                // 删除失败的文件
-                [[NSFileManager defaultManager] removeItemAtPath:imagePath error:nil];
-                [[NSFileManager defaultManager] removeItemAtPath:videoPath error:nil];
-                [manager.fileLinks removeObjectForKey:uniqueKey];
-                [DYYYUtils showToast:@"保存实况照片失败"];
-            }
-        } else {
-            // 清理不完整的文件
-            if (imageExists)
-                [[NSFileManager defaultManager] removeItemAtPath:imagePath error:nil];
-            if (videoExists)
-                [[NSFileManager defaultManager] removeItemAtPath:videoPath error:nil];
-            [manager.fileLinks removeObjectForKey:uniqueKey];
-            [DYYYUtils showToast:@"下载实况照片失败"];
-        }
-
-        if (completion) {
-            completion();
-        }
-      });
-    });
-}
-
-// 需要添加KVO回调方法来处理下载进度
-- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary<NSKeyValueChangeKey, id> *)change context:(void *)context {
-    if ([keyPath isEqualToString:@"fractionCompleted"] && [object isKindOfClass:[NSProgress class]]) {
-        NSString *downloadID = (__bridge NSString *)context;
-        if (downloadID) {
-            NSProgress *progress = (NSProgress *)object;
-            float fractionCompleted = progress.fractionCompleted;
-            [self.taskProgressMap setObject:@(fractionCompleted) forKey:downloadID];
-        }
-    } else {
-        [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
-    }
++ (void)downloadLivePhoto:(NSURL *)imageURL videoURL:(NSURL *)videoURL albumDescription:(NSString *)albumDescription completion:(void (^)(void))completion {
+    if (!imageURL || !videoURL) { if (completion) completion(); return; }
+    [self downloadAllLivePhotosWithProgress:@[@{@"imageURL":imageURL.absoluteString, @"videoURL":videoURL.absoluteString}]
+                            albumDescription:[albumDescription copy] scopedCancellation:YES progress:nil
+                                  completion:^(NSInteger successCount, NSInteger totalCount) { if (completion) completion(); }];
 }
 
 + (void)downloadMedia:(NSURL *)url mediaType:(MediaType)mediaType audio:(NSURL *)audioURL completion:(void (^)(BOOL success))completion {
-    // 下载一开始就取走说明文字：等下载完再取，用户可能已经翻到别的作品了。
-    NSString *albumDescription = [self currentAlbumDescription];
+    [self downloadMedia:url mediaType:mediaType audio:audioURL albumDescription:nil completion:completion];
+}
+
++ (void)downloadMedia:(NSURL *)url mediaType:(MediaType)mediaType audio:(NSURL *)audioURL albumDescription:(NSString *)albumDescription completion:(void (^)(BOOL success))completion {
+    albumDescription = [albumDescription copy];
+    NSMutableDictionary *notificationState = DYYYDownloadCreateState();
     [self downloadMediaWithProgress:url
                           mediaType:mediaType
                               audio:audioURL
                            progress:nil
+                       keepLifecycle:YES
                          completion:^(BOOL success, NSURL *fileURL) {
                            void (^notifyCompletion)(BOOL) = ^(BOOL result) {
-                               if (completion) {
-                                   completion(result);
-                               }
+                               if (DYYYDownloadTakeCallback(notificationState) && completion) completion(result);
                            };
 
                            if (success) {
+                               DYYYManager *manager = [DYYYManager shared];
+                               NSString *downloadID = [manager downloadIDForFileURL:fileURL];
+                               NSMutableDictionary *state = downloadID ? manager.downloadStates[downloadID] : nil;
+                               if (!state) { [[NSFileManager defaultManager] removeItemAtURL:fileURL error:nil]; notifyCompletion(NO); return; }
+                               state[@"cancelCompletion"] = [^{ notifyCompletion(NO); } copy];
+                               if (!DYYYDownloadStateIsActive(state)) { notifyCompletion(NO); return; }
                                if (mediaType == MediaTypeAudio) {
-                                   dispatch_async(dispatch_get_main_queue(), ^{
+                                   DYYYDownloadOnMain(^{
+                                     if (!DYYYDownloadStateIsActive(state)) { [[NSFileManager defaultManager] removeItemAtURL:fileURL error:nil]; notifyCompletion(NO); return; }
+                                     UIViewController *rootVC = [UIApplication sharedApplication].keyWindow.rootViewController;
+                                     if (!rootVC) {
+                                         [[DYYYManager shared] finalizeDownloadWithFileURL:fileURL success:NO];
+                                         [[NSFileManager defaultManager] removeItemAtURL:fileURL error:nil];
+                                         notifyCompletion(NO);
+                                         return;
+                                     }
                                      [[DYYYManager shared] finalizeDownloadWithFileURL:fileURL success:YES];
                                      UIActivityViewController *activityVC = [[UIActivityViewController alloc] initWithActivityItems:@[ fileURL ] applicationActivities:nil];
 
@@ -825,16 +593,23 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
                                          [[NSFileManager defaultManager] removeItemAtURL:fileURL error:nil];
                                        });
                                      }];
-                                     UIViewController *rootVC = [UIApplication sharedApplication].keyWindow.rootViewController;
                                      [rootVC presentViewController:activityVC animated:YES completion:nil];
                                      notifyCompletion(YES);
                                    });
                                } else {
                                    if (mediaType == MediaTypeVideo && audioURL) {
                                        if (![DYYYUtils videoHasAudio:fileURL]) {
-                                           [DYYYUtils downloadAudioAndMergeWithVideo:fileURL
+                                           [self downloadAudioAndMergeVideo:fileURL
                                                                             audioURL:audioURL
+                                                                             ownerID:downloadID
+                                                                               state:state
                                                                           completion:^(BOOL mergeSuccess, NSURL *mergedURL) {
+                                                                       if (!DYYYDownloadStateIsActive(state)) {
+                                                                           [[NSFileManager defaultManager] removeItemAtURL:fileURL error:nil];
+                                                                           if (mergedURL) [[NSFileManager defaultManager] removeItemAtURL:mergedURL error:nil];
+                                                                           notifyCompletion(NO);
+                                                                           return;
+                                                                       }
                                                                        if (mergeSuccess) {
                                                                            [[DYYYManager shared] replaceFileURL:fileURL withFileURL:mergedURL];
                                                                            [[NSFileManager defaultManager] removeItemAtURL:fileURL error:nil];
@@ -877,21 +652,40 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
                             audio:(NSURL *)audioURL
                          progress:(void (^)(float progress))progressBlock
                        completion:(void (^)(BOOL success, NSURL *fileURL))completion {
-    // 创建自定义进度条界面
-    dispatch_async(dispatch_get_main_queue(), ^{
+    [self downloadMediaWithProgress:url mediaType:mediaType audio:audioURL progress:progressBlock keepLifecycle:NO completion:completion];
+}
+
++ (void)downloadMediaWithProgress:(NSURL *)url mediaType:(MediaType)mediaType audio:(NSURL *)audioURL progress:(void (^)(float))progressBlock keepLifecycle:(BOOL)keepLifecycle completion:(void (^)(BOOL, NSURL *))completion {
+    [self downloadMediaWithProgress:url mediaType:mediaType audio:audioURL progress:progressBlock keepLifecycle:keepLifecycle showProgress:YES ownerID:nil completion:completion];
+}
+
++ (void)downloadMediaWithProgress:(NSURL *)url mediaType:(MediaType)mediaType audio:(NSURL *)audioURL progress:(void (^)(float))progressBlock keepLifecycle:(BOOL)keepLifecycle showProgress:(BOOL)showProgress ownerID:(NSString *)ownerID completion:(void (^)(BOOL, NSURL *))completion {
+    NSUInteger generation = [self downloadCancellationGeneration];
+    DYYYDownloadOnMain(^{
+      DYYYManager *manager = [DYYYManager shared];
+      if (generation != [self downloadCancellationGeneration] || (ownerID && !DYYYDownloadStateIsActive(manager.downloadStates[ownerID])) || (ownerID && !manager.downloadStates[ownerID])) {
+          if (completion) completion(NO, nil);
+          return;
+      }
       // 创建进度视图
       CGRect screenBounds = [UIScreen mainScreen].bounds;
-      DYYYToast *progressView = [[DYYYToast alloc] initWithFrame:screenBounds];
+      DYYYToast *progressView = showProgress ? [[DYYYToast alloc] initWithFrame:screenBounds] : nil;
 
       // 生成下载ID并保存进度视图
       NSString *downloadID = [NSUUID UUID].UUIDString;
-      [[DYYYManager shared].progressViews setObject:progressView forKey:downloadID];
+      if (progressView) manager.progressViews[downloadID] = progressView;
 
       [progressView show];
+      manager.downloadStates[downloadID] = DYYYDownloadCreateState();
+      manager.downloadStates[downloadID][@"keepLifecycle"] = @(keepLifecycle);
+      if (progressBlock) manager.progressBlocks[downloadID] = [progressBlock copy];
+      progressView.cancelBlock = ^{ [[DYYYManager shared] cancelDownloadWithID:downloadID]; };
 
       // 保存回调
       [[DYYYManager shared] setCompletionBlock:completion forDownloadID:downloadID];
       [[DYYYManager shared] setMediaType:mediaType forDownloadID:downloadID];
+
+      if (!url) { [manager deliverDownload:downloadID success:NO fileURL:nil]; return; }
 
       // 配置下载会话 - 使用带委托的会话以获取进度更新
       NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
@@ -902,6 +696,7 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
       downloadTask.taskDescription = downloadID;
 
       // 存储下载任务
+      manager.downloadOwnerMap[downloadID] = ownerID ?: downloadID;
       [[DYYYManager shared].downloadTasks setObject:downloadTask forKey:downloadID];
       [[DYYYManager shared].taskProgressMap setObject:@0.0 forKey:downloadID];  // 初始化进度为0
 
@@ -910,44 +705,68 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
     });
 }
 
-// 取消所有下载
+// 任务注册及取消都串行到主队列，避免取消发生在任务尚未登记的空窗中。
++ (NSUInteger)downloadCancellationGeneration {
+    DYYYManager *manager = [DYYYManager shared];
+    @synchronized (manager) { return manager.cancellationGeneration; }
+}
+
+- (void)cancelDownloadWithID:(NSString *)downloadID {
+    if (!downloadID.length) return;
+    DYYYDownloadOnMain(^{
+        NSMutableDictionary *state = self.downloadStates[downloadID];
+        if (!state) return;
+        BOOL requested = DYYYDownloadCancelState(state);
+        NSString *batchID = self.downloadToBatchMap[downloadID];
+        DYYYToast *view = self.progressViews[batchID ?: downloadID];
+        view.isCancelled = YES;
+        view.allowSuccessAnimation = NO;
+        [view dismiss];
+        NSMutableArray<NSURLSessionTask *> *tasks = [NSMutableArray array];
+        for (NSString *taskID in DYYYDownloadTaskIDsForOwner(downloadID, self.downloadOwnerMap)) {
+            DYYYDownloadCancelState(self.downloadStates[taskID]);
+            NSURLSessionTask *task = self.downloadTasks[taskID];
+            if (task) [tasks addObject:task];
+        }
+        if (self.downloadTasks[downloadID] && ![tasks containsObject:self.downloadTasks[downloadID]]) [tasks addObject:self.downloadTasks[downloadID]];
+        DYYYDownloadCancelTasks(tasks);
+        void (^notify)(void) = state[@"cancelCompletion"];
+        if (requested && notify) notify();
+        // 网络已交接给合并或保存时，仍立即回报取消；后续回调持有原状态并只做清理。
+        if ([state[@"keepLifecycle"] boolValue] && !self.downloadTasks[downloadID]) {
+            NSString *path = nil;
+            @synchronized (self.filePathToDownloadID) { path = [self.filePathToDownloadID allKeysForObject:downloadID].firstObject; }
+            [self finalizeDownloadWithID:downloadID success:NO fileURL:path ? [NSURL fileURLWithPath:path] : nil];
+        }
+    });
+}
+
 + (void)cancelAllDownloads {
-    NSArray *downloadIDs = [[DYYYManager shared].downloadTasks allKeys];
+    void (^cancel)(void) = ^{
+        DYYYManager *manager = [DYYYManager shared];
+        @synchronized (manager) { manager.cancellationGeneration++; }
+        for (NSString *downloadID in manager.downloadStates.allKeys) [manager cancelDownloadWithID:downloadID];
+    };
+    if ([NSThread isMainThread]) cancel(); else dispatch_sync(dispatch_get_main_queue(), cancel);
+}
 
-    for (NSString *downloadID in downloadIDs) {
-        NSURLSessionDownloadTask *task = [[DYYYManager shared].downloadTasks objectForKey:downloadID];
-        if (task) {
-            [task cancel];
++ (void)downloadAudioAndMergeVideo:(NSURL *)videoURL audioURL:(NSURL *)audioURL ownerID:(NSString *)ownerID state:(NSMutableDictionary *)state completion:(void (^)(BOOL, NSURL *))completion {
+    [self downloadMediaWithProgress:audioURL mediaType:MediaTypeAudio audio:nil progress:nil keepLifecycle:NO showProgress:NO ownerID:ownerID completion:^(BOOL success, NSURL *audioFile) {
+        if (!success || !DYYYDownloadStateIsActive(state)) {
+            if (audioFile) [[NSFileManager defaultManager] removeItemAtURL:audioFile error:nil];
+            if (completion) completion(NO, nil);
+            return;
         }
-
-        DYYYToast *progressView = [[DYYYManager shared].progressViews objectForKey:downloadID];
-        if (progressView) {
-            progressView.isCancelled = YES;
-            [progressView dismiss];
-        }
-    }
-
-    NSString *livePhotoPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"LivePhotoBatch"];
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    if ([fileManager fileExistsAtPath:livePhotoPath]) {
-        NSError *error = nil;
-        [fileManager removeItemAtPath:livePhotoPath error:&error];
-        if (error) {
-            NSLog(@"清理实况照片临时目录失败: %@", error.localizedDescription);
-        }
-    }
-
-    NSString *generalLivePhotoPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"LivePhoto"];
-    if ([fileManager fileExistsAtPath:generalLivePhotoPath]) {
-        NSError *error = nil;
-        [fileManager removeItemAtPath:generalLivePhotoPath error:&error];
-        if (error) {
-            NSLog(@"清理LivePhoto临时目录失败: %@", error.localizedDescription);
-        }
-    }
-
-    [[DYYYManager shared].downloadTasks removeAllObjects];
-    [[DYYYManager shared].progressViews removeAllObjects];
+        [DYYYUtils mergeVideo:videoURL withAudio:audioFile completion:^(BOOL merged, NSURL *mergedURL) {
+            [[NSFileManager defaultManager] removeItemAtURL:audioFile error:nil];
+            if (!merged) [[NSFileManager defaultManager] removeItemAtPath:[DYYYUtils cachePathForFilename:[@"merged_" stringByAppendingString:videoURL.lastPathComponent]] error:nil];
+            if (!DYYYDownloadStateIsActive(state)) {
+                if (mergedURL) [[NSFileManager defaultManager] removeItemAtURL:mergedURL error:nil];
+                merged = NO;
+            }
+            if (completion) completion(merged, merged ? mergedURL : nil);
+        }];
+    }];
 }
 
 + (void)downloadAllImages:(NSMutableArray *)imageURLs {
@@ -964,6 +783,11 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
 + (void)downloadAllImagesWithProgress:(NSMutableArray *)imageURLs
                              progress:(void (^)(NSInteger current, NSInteger total))progressBlock
                            completion:(void (^)(NSInteger successCount, NSInteger totalCount))completion {
+    [self downloadAllImagesWithProgress:imageURLs albumDescription:nil progress:progressBlock completion:completion];
+}
+
++ (void)downloadAllImagesWithProgress:(NSMutableArray *)imageURLs albumDescription:(NSString *)albumDescription progress:(void (^)(NSInteger current, NSInteger total))progressBlock completion:(void (^)(NSInteger successCount, NSInteger totalCount))completion {
+    imageURLs = [imageURLs mutableCopy];
     if (imageURLs.count == 0) {
         if (completion) {
             completion(0, 0);
@@ -971,9 +795,11 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
         return;
     }
 
-    NSString *batchAlbumDescription = [self currentAlbumDescription];
-
-    dispatch_async(dispatch_get_main_queue(), ^{
+    NSString *batchAlbumDescription = [albumDescription copy];
+    NSUInteger generation = [self downloadCancellationGeneration];
+    DYYYDownloadOnMain(^{
+      if (generation != [self downloadCancellationGeneration]) { if (completion) completion(0, imageURLs.count); return; }
+      DYYYManager *manager = [DYYYManager shared];
       CGRect screenBounds = [UIScreen mainScreen].bounds;
       DYYYToast *progressView = [[DYYYToast alloc] initWithFrame:screenBounds];
       NSString *batchID = [NSUUID UUID].UUIDString;
@@ -981,23 +807,19 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
 
       [progressView show];
 
-      __block NSInteger completedCount = 0;
-      __block NSInteger successCount = 0;
       NSInteger totalCount = imageURLs.count;
 
       progressView.cancelBlock = ^{
         [self cancelAllDownloads];
-        if (completion) {
-            completion(successCount, totalCount);
-        }
       };
 
       // 存储批量下载的相关信息
       [[DYYYManager shared] setBatchInfo:batchID totalCount:totalCount progressBlock:progressBlock completionBlock:completion];
 
       // 为每个URL创建下载任务
-      for (NSString *urlString in imageURLs) {
-          NSURL *url = [NSURL URLWithString:urlString];
+      for (id urlString in imageURLs) {
+          if (generation != [self downloadCancellationGeneration]) { [manager incrementCompletedAndUpdateProgressForBatch:batchID success:NO]; continue; }
+          NSURL *url = [urlString isKindOfClass:[NSString class]] ? [NSURL URLWithString:urlString] : nil;
           if (!url) {
               [[DYYYManager shared] incrementCompletedAndUpdateProgressForBatch:batchID success:NO];
               continue;
@@ -1006,11 +828,14 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
           // 创建单个下载任务ID
           NSString *downloadID = [NSUUID UUID].UUIDString;
           [[DYYYManager shared] associateDownload:downloadID withBatchID:batchID];
+          [DYYYManager shared].downloadStates[downloadID] = DYYYDownloadCreateState();
           NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
           NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration delegate:[DYYYManager shared] delegateQueue:[NSOperationQueue mainQueue]];
 
           // 创建下载任务 - 使用代理方法
           NSURLSessionDownloadTask *downloadTask = [session downloadTaskWithURL:url];
+          downloadTask.taskDescription = downloadID;
+          manager.downloadOwnerMap[downloadID] = downloadID;
           [[DYYYManager shared].downloadTasks setObject:downloadTask forKey:downloadID];
           [[DYYYManager shared].taskProgressMap setObject:@0.0 forKey:downloadID];
           [[DYYYManager shared] setMediaType:MediaTypeImage forDownloadID:downloadID];
@@ -1048,6 +873,7 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
 // 批量下载完成计数并更新进度
 - (void)incrementCompletedAndUpdateProgressForBatch:(NSString *)batchID success:(BOOL)success {
     @synchronized(self) {
+        if (!self.batchTotalCountMap[batchID]) return;
         NSNumber *completedCountNum = self.batchCompletedCountMap[batchID];
         NSInteger completedCount = completedCountNum ? [completedCountNum integerValue] + 1 : 1;
         [self.batchCompletedCountMap setObject:@(completedCount) forKey:batchID];
@@ -1062,7 +888,7 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
         NSInteger totalCount = totalCountNum ? [totalCountNum integerValue] : 0;
 
         DYYYToast *progressView = self.progressViews[batchID];
-        if (progressView) {
+        if (progressView && !progressView.isCancelled) {
             float progress = totalCount > 0 ? (float)completedCount / totalCount : 0;
             [progressView setProgress:progress];
         }
@@ -1076,12 +902,10 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
             NSInteger successCount = [self.batchSuccessCountMap[batchID] integerValue];
 
             void (^completionBlock)(NSInteger successCount, NSInteger totalCount) = self.batchCompletionBlocks[batchID];
-            if (completionBlock) {
-                completionBlock(successCount, totalCount);
-            }
+            [self.batchCompletionBlocks removeObjectForKey:batchID];
 
             if (progressView) {
-                progressView.allowSuccessAnimation = (successCount == totalCount);
+                progressView.allowSuccessAnimation = !progressView.isCancelled && (successCount == totalCount);
                 [progressView dismiss];
             }
             [self.progressViews removeObjectForKey:batchID];
@@ -1098,6 +922,7 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
             for (NSString *downloadID in downloadIDs) {
                 [self.downloadToBatchMap removeObjectForKey:downloadID];
             }
+            if (completionBlock) completionBlock(successCount, totalCount);
         }
     }
 }
@@ -1174,249 +999,115 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
 
 - (void)finalizeDownloadWithFileURL:(NSURL *)fileURL success:(BOOL)success {
     NSString *downloadID = [self downloadIDForFileURL:fileURL];
-    if (downloadID.length == 0) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-          if (!success) {
-              [DYYYUtils showToast:@"保存失败"];
-          }
-        });
-        return;
-    }
+    if (downloadID.length == 0) return;
     [self finalizeDownloadWithID:downloadID success:success fileURL:fileURL];
 }
 
-- (void)finalizeDownloadWithID:(NSString *)downloadID success:(BOOL)success fileURL:(NSURL *_Nullable)fileURL {
-    if (downloadID.length == 0) {
+- (void)finalizeDownloadWithID:(NSString *)downloadID success:(BOOL)success fileURL:(NSURL *)fileURL {
+    if (!downloadID.length) return;
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{ [self finalizeDownloadWithID:downloadID success:success fileURL:fileURL]; });
         return;
     }
-
+    NSMutableDictionary *state = self.downloadStates[downloadID];
+    BOOL cancelled = state && !DYYYDownloadStateIsActive(state);
+    if (state && !DYYYDownloadFinishState(state)) return;
+    DYYYToast *view = self.progressViews[downloadID];
+    view.allowSuccessAnimation = success && !cancelled;
+    if (success && !cancelled) [view setProgress:1.0f];
+    [view dismiss];
     [self removeMappingsForDownloadID:downloadID];
+    [self.progressViews removeObjectForKey:downloadID];
+    [self.taskProgressMap removeObjectForKey:downloadID];
+    [self.progressBlocks removeObjectForKey:downloadID];
+    [self.completionBlocks removeObjectForKey:downloadID];
+    [self.mediaTypeMap removeObjectForKey:downloadID];
+    [self.albumDescriptionMap removeObjectForKey:downloadID];
+    [self.downloadTasks removeObjectForKey:downloadID];
+    [self.downloadOwnerMap removeObjectForKey:downloadID];
+    [self.downloadToBatchMap removeObjectForKey:downloadID];
+    [self.downloadStates removeObjectForKey:downloadID];
+    if (cancelled && fileURL) [[NSFileManager defaultManager] removeItemAtURL:fileURL error:nil];
+}
 
-    dispatch_async(dispatch_get_main_queue(), ^{
-      DYYYToast *progressView = self.progressViews[downloadID];
-      if (progressView) {
-          progressView.allowSuccessAnimation = success;
-          if (success) {
-              [progressView setProgress:1.0f];
-          }
-          [progressView dismiss];
-          [self.progressViews removeObjectForKey:downloadID];
-      }
-
-      [self.taskProgressMap removeObjectForKey:downloadID];
-      [self.completionBlocks removeObjectForKey:downloadID];
-      [self.mediaTypeMap removeObjectForKey:downloadID];
-      [self.downloadTasks removeObjectForKey:downloadID];
-      [self.downloadToBatchMap removeObjectForKey:downloadID];
-    });
-
-    if (fileURL) {
-        NSString *filePath = fileURL.path;
-        if (filePath.length > 0) {
-            @synchronized(self.filePathToDownloadID) {
-                [self.filePathToDownloadID removeObjectForKey:filePath];
-            }
-        }
+// 网络回调只消费一次，保存完成后才关闭需要继续保存的任务生命周期。
+- (void)deliverDownload:(NSString *)downloadID success:(BOOL)success fileURL:(NSURL *)fileURL {
+    NSMutableDictionary *state = self.downloadStates[downloadID];
+    if (!state || !DYYYDownloadTakeCallback(state)) return;
+    success = success && DYYYDownloadStateIsActive(state);
+    void (^callback)(BOOL, NSURL *) = self.completionBlocks[downloadID];
+    [self.completionBlocks removeObjectForKey:downloadID];
+    if (!success || ![state[@"keepLifecycle"] boolValue] || !callback) {
+        [self finalizeDownloadWithID:downloadID success:success fileURL:fileURL];
     }
+    if (!success && fileURL) [[NSFileManager defaultManager] removeItemAtURL:fileURL error:nil];
+    if (callback) callback(success, success ? fileURL : nil);
+    else if (success && fileURL) [[NSFileManager defaultManager] removeItemAtURL:fileURL error:nil];
+}
+
+- (void)completeBatchDownload:(NSString *)downloadID success:(BOOL)success fileURL:(NSURL *)fileURL {
+    NSMutableDictionary *state = self.downloadStates[downloadID];
+    if (!state || !DYYYDownloadTakeCallback(state)) return;
+    NSString *batchID = self.downloadToBatchMap[downloadID];
+    success = success && DYYYDownloadStateIsActive(state);
+    [self finalizeDownloadWithID:downloadID success:success fileURL:fileURL];
+    if (batchID) [self incrementCompletedAndUpdateProgressForBatch:batchID success:success];
 }
 
 #pragma mark - NSURLSessionDownloadDelegate
 
-- (void)URLSession:(NSURLSession *)session
-                 downloadTask:(NSURLSessionDownloadTask *)downloadTask
-                 didWriteData:(int64_t)bytesWritten
-            totalBytesWritten:(int64_t)totalBytesWritten
-    totalBytesExpectedToWrite:(int64_t)totalBytesExpectedToWrite {
-    // 确保不会除以0
-    if (totalBytesExpectedToWrite <= 0) {
-        return;
-    }
-
-    // 计算进度
+- (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)task didWriteData:(int64_t)bytesWritten totalBytesWritten:(int64_t)totalBytesWritten totalBytesExpectedToWrite:(int64_t)totalBytesExpectedToWrite {
+    NSString *downloadID = task.taskDescription;
+    if (!downloadID || !self.downloadStates[downloadID] || totalBytesExpectedToWrite <= 0 || !DYYYDownloadStateIsActive(self.downloadStates[downloadID])) return;
     float progress = (float)totalBytesWritten / totalBytesExpectedToWrite;
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-      NSString *downloadIDForTask = nil;
-
-      for (NSString *key in self.downloadTasks.allKeys) {
-          NSURLSessionDownloadTask *task = self.downloadTasks[key];
-          if (task == downloadTask) {
-              downloadIDForTask = key;
-              break;
-          }
-      }
-
-      // 如果找到对应的进度视图，更新进度
-      if (downloadIDForTask) {
-          [self.taskProgressMap setObject:@(progress) forKey:downloadIDForTask];
-
-          DYYYToast *progressView = self.progressViews[downloadIDForTask];
-          if (progressView) {
-              if (!progressView.isCancelled) {
-                  [progressView setProgress:progress];
-              }
-          }
-      }
-    });
+    self.taskProgressMap[downloadID] = @(progress);
+    [self.progressViews[downloadID] setProgress:progress];
+    void (^callback)(float) = self.progressBlocks[downloadID];
+    if (callback) callback(progress);
 }
 
-// 下载完成的代理方法
-- (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location {
-    // 找到对应的下载ID
-    NSString *downloadIDForTask = nil;
-    for (NSString *key in self.downloadTasks.allKeys) {
-        NSURLSessionDownloadTask *task = self.downloadTasks[key];
-        if (task == downloadTask) {
-            downloadIDForTask = key;
-            break;
-        }
+- (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)task didFinishDownloadingToURL:(NSURL *)location {
+    NSString *downloadID = task.taskDescription;
+    if (!downloadID.length) return;
+    NSMutableDictionary *state = self.downloadStates[downloadID];
+    if (!state) return;
+    BOOL batch = self.downloadToBatchMap[downloadID] != nil;
+    MediaType mediaType = [self.mediaTypeMap[downloadID] integerValue];
+    NSString *extension = @"jpg";
+    switch (mediaType) {
+        case MediaTypeVideo: extension = @"mp4"; break;
+        case MediaTypeAudio: extension = @"mp3"; break;
+        case MediaTypeHeic: extension = @"heic"; break;
+        default: break;
     }
-
-    if (!downloadIDForTask) {
-        return;
-    }
-
-    // 检查是否属于批量下载
-    NSString *batchID = self.downloadToBatchMap[downloadIDForTask];
-    BOOL isBatchDownload = (batchID != nil);
-
-    // 获取该下载任务的mediaType
-    NSNumber *mediaTypeNumber = self.mediaTypeMap[downloadIDForTask];
-    MediaType mediaType = MediaTypeImage;  // 默认为图片
-    if (mediaTypeNumber) {
-        mediaType = (MediaType)[mediaTypeNumber integerValue];
-    }
-
-    // 处理下载的文件
-    NSString *fileName = [downloadTask.originalRequest.URL lastPathComponent];
-
-    if (!fileName.pathExtension.length) {
-        switch (mediaType) {
-            case MediaTypeVideo:
-                fileName = [fileName stringByAppendingPathExtension:@"mp4"];
-                break;
-            case MediaTypeImage:
-                fileName = [fileName stringByAppendingPathExtension:@"jpg"];
-                break;
-            case MediaTypeAudio:
-                fileName = [fileName stringByAppendingPathExtension:@"mp3"];
-                break;
-            case MediaTypeHeic:
-                fileName = [fileName stringByAppendingPathExtension:@"heic"];
-                break;
-        }
-    }
-
-    NSURL *tempDir = [NSURL fileURLWithPath:NSTemporaryDirectory()];
-    NSURL *destinationURL = [tempDir URLByAppendingPathComponent:fileName];
-
-    NSError *moveError;
-    if ([[NSFileManager defaultManager] fileExistsAtPath:destinationURL.path]) {
-        [[NSFileManager defaultManager] removeItemAtURL:destinationURL error:nil];
-    }
-
-    [[NSFileManager defaultManager] moveItemAtURL:location toURL:destinationURL error:&moveError];
-
-    if (isBatchDownload) {
-        if (!moveError) {
-            NSString *batchAlbumDescription = self.albumDescriptionMap[downloadIDForTask];
-            [DYYYManager saveMedia:destinationURL
-                         mediaType:mediaType
-                  albumDescription:batchAlbumDescription
-                        completion:^(BOOL success) {
-                          [[DYYYManager shared] incrementCompletedAndUpdateProgressForBatch:batchID success:success];
-                        }];
-        } else {
-            [[DYYYManager shared] incrementCompletedAndUpdateProgressForBatch:batchID success:NO];
-        }
-
-        [self.downloadTasks removeObjectForKey:downloadIDForTask];
-        [self.taskProgressMap removeObjectForKey:downloadIDForTask];
-        [self.mediaTypeMap removeObjectForKey:downloadIDForTask];
-        [self.albumDescriptionMap removeObjectForKey:downloadIDForTask];
+    NSURL *destination = DYYYDownloadTemporaryURL([NSURL fileURLWithPath:NSTemporaryDirectory()], task.originalRequest.URL, extension);
+    NSError *error = nil;
+    BOOL success = DYYYDownloadStateIsActive(state) && [[NSFileManager defaultManager] moveItemAtURL:location toURL:destination error:&error];
+    if (success) [self associateFileURL:destination withDownloadID:downloadID];
+    else [[NSFileManager defaultManager] removeItemAtURL:destination error:nil];
+    [self.downloadTasks removeObjectForKey:downloadID];
+    if (batch) {
+        if (!success) { [self completeBatchDownload:downloadID success:NO fileURL:nil]; return; }
+        [DYYYManager saveMedia:destination mediaType:mediaType albumDescription:self.albumDescriptionMap[downloadID] completion:^(BOOL saved) {
+            [self completeBatchDownload:downloadID success:saved fileURL:destination];
+        }];
     } else {
-        void (^completionBlock)(BOOL success, NSURL *fileURL) = self.completionBlocks[downloadIDForTask];
-
-        if (!moveError) {
-            [self associateFileURL:destinationURL withDownloadID:downloadIDForTask];
-            [self.downloadTasks removeObjectForKey:downloadIDForTask];
-            [self.taskProgressMap setObject:@1.0f forKey:downloadIDForTask];
-
-            if (completionBlock) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                  completionBlock(YES, destinationURL);
-                });
-            } else {
-                [[DYYYManager shared] finalizeDownloadWithFileURL:destinationURL success:YES];
-            }
-        } else {
-            [self.downloadTasks removeObjectForKey:downloadIDForTask];
-            if (completionBlock) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                  completionBlock(NO, nil);
-                });
-            }
-            [self finalizeDownloadWithID:downloadIDForTask success:NO fileURL:nil];
-        }
+        [self deliverDownload:downloadID success:success fileURL:success ? destination : nil];
     }
 }
 
 - (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
-    if (!error) {
-        return;  // 成功完成的情况已在didFinishDownloadingToURL处理
-    }
-
-    // 处理错误情况
-    NSString *downloadIDForTask = nil;
-    for (NSString *key in self.downloadTasks.allKeys) {
-        NSURLSessionTask *existingTask = self.downloadTasks[key];
-        if (existingTask == task) {
-            downloadIDForTask = key;
-            break;
-        }
-    }
-
-    if (!downloadIDForTask) {
-        return;
-    }
-
-    // 检查是否属于批量下载
-    NSString *batchID = self.downloadToBatchMap[downloadIDForTask];
-    BOOL isBatchDownload = (batchID != nil);
-
-    if (isBatchDownload) {
-        // 批量下载错误处理
-        [[DYYYManager shared] incrementCompletedAndUpdateProgressForBatch:batchID success:NO];
-
-        // 清理下载任务
-        [self.downloadTasks removeObjectForKey:downloadIDForTask];
-        [self.taskProgressMap removeObjectForKey:downloadIDForTask];
-        [self.mediaTypeMap removeObjectForKey:downloadIDForTask];
-        [self.albumDescriptionMap removeObjectForKey:downloadIDForTask];
-        [self.downloadToBatchMap removeObjectForKey:downloadIDForTask];
-    } else {
-        // 单个下载错误处理
-        void (^completionBlock)(BOOL success, NSURL *fileURL) = self.completionBlocks[downloadIDForTask];
-
-        if (error.code != NSURLErrorCancelled) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-              [DYYYUtils showToast:@"下载失败"];
-            });
-        }
-
-        if (completionBlock) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-              completionBlock(NO, nil);
-            });
-        }
-
-        [self finalizeDownloadWithID:downloadIDForTask success:NO fileURL:nil];
-    }
+    [session finishTasksAndInvalidate];
+    NSString *downloadID = task.taskDescription;
+    if (!error || !downloadID || !self.downloadStates[downloadID]) return;
+    if (error.code != NSURLErrorCancelled && self.progressViews[downloadID] && DYYYDownloadStateIsActive(self.downloadStates[downloadID])) [DYYYUtils showToast:@"下载失败"];
+    if (self.downloadToBatchMap[downloadID]) [self completeBatchDownload:downloadID success:NO fileURL:nil];
+    else [self deliverDownload:downloadID success:NO fileURL:nil];
 }
 
 // MARK: 以下都是创建保存实况的调用方法
 - (void)saveLivePhoto:(NSString *)imageSourcePath videoUrl:(NSString *)videoSourcePath {
-    [self saveLivePhoto:imageSourcePath videoUrl:videoSourcePath albumDescription:[DYYYManager currentAlbumDescription]];
+    [self saveLivePhoto:imageSourcePath videoUrl:videoSourcePath albumDescription:nil];
 }
 
 - (void)saveLivePhoto:(NSString *)imageSourcePath videoUrl:(NSString *)videoSourcePath albumDescription:(NSString *)albumDescription {
@@ -1787,6 +1478,15 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
 + (void)downloadAllLivePhotosWithProgress:(NSArray<NSDictionary *> *)livePhotos
                                  progress:(void (^)(NSInteger current, NSInteger total))progressBlock
                                completion:(void (^)(NSInteger successCount, NSInteger totalCount))completion {
+    [self downloadAllLivePhotosWithProgress:livePhotos albumDescription:nil progress:progressBlock completion:completion];
+}
+
++ (void)downloadAllLivePhotosWithProgress:(NSArray<NSDictionary *> *)livePhotos albumDescription:(NSString *)albumDescription progress:(void (^)(NSInteger current, NSInteger total))progressBlock completion:(void (^)(NSInteger successCount, NSInteger totalCount))completion {
+    [self downloadAllLivePhotosWithProgress:livePhotos albumDescription:albumDescription scopedCancellation:NO progress:progressBlock completion:completion];
+}
+
++ (void)downloadAllLivePhotosWithProgress:(NSArray<NSDictionary *> *)livePhotos albumDescription:(NSString *)albumDescription scopedCancellation:(BOOL)scopedCancellation progress:(void (^)(NSInteger current, NSInteger total))progressBlock completion:(void (^)(NSInteger successCount, NSInteger totalCount))completion {
+    livePhotos = [livePhotos copy];
     if (livePhotos.count == 0) {
         if (completion) {
             completion(0, 0);
@@ -1794,7 +1494,7 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
         return;
     }
 
-    NSString *albumDescription = [self currentAlbumDescription];
+    albumDescription = [albumDescription copy];
 
     // 检查iOS版本是否支持实况照片
     BOOL supportsLivePhoto = NO;
@@ -1812,53 +1512,79 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
         return;
     }
 
+    NSUInteger generation = [self downloadCancellationGeneration];
     // 创建进度显示UI
-    dispatch_async(dispatch_get_main_queue(), ^{
+    DYYYDownloadOnMain(^{
+      if (generation != [self downloadCancellationGeneration]) { if (completion) completion(0, livePhotos.count); return; }
       CGRect screenBounds = [UIScreen mainScreen].bounds;
       DYYYToast *progressView = [[DYYYToast alloc] initWithFrame:screenBounds];
       [progressView show];
+      DYYYManager *manager = [DYYYManager shared];
+      NSString *batchID = NSUUID.UUID.UUIDString;
+      NSMutableDictionary *state = DYYYDownloadCreateState();
+      manager.downloadStates[batchID] = state;
+      manager.progressViews[batchID] = progressView;
+      void (^finish)(NSInteger, NSInteger) = ^(NSInteger successCount, NSInteger totalCount) {
+          DYYYDownloadOnMain(^{
+              BOOL active = DYYYDownloadStateIsActive(state);
+              if (!DYYYDownloadFinishState(state)) return;
+              progressView.allowSuccessAnimation = active && successCount > 0 && successCount == totalCount;
+              [progressView dismiss];
+
+              [manager.downloadStates removeObjectForKey:batchID];
+              [manager.progressViews removeObjectForKey:batchID];
+              if (completion) completion(active ? successCount : 0, totalCount);
+          });
+      };
 
       progressView.cancelBlock = ^{
-        [self cancelAllDownloads];
-        if (completion) {
-            completion(0, livePhotos.count);
-        }
+        if (scopedCancellation) [manager cancelDownloadWithID:batchID]; else [self cancelAllDownloads];
       };
 
       NSMutableArray<NSDictionary *> *downloadedFiles = [NSMutableArray arrayWithCapacity:livePhotos.count];
       for (int i = 0; i < livePhotos.count; i++) {
-          [downloadedFiles addObject:@{@"imageURL" : livePhotos[i][@"imageURL"], @"videoURL" : livePhotos[i][@"videoURL"], @"imagePath" : [NSNull null], @"videoPath" : [NSNull null]}];
+          NSDictionary *pair = [livePhotos[i] isKindOfClass:[NSDictionary class]] ? livePhotos[i] : @{};
+          NSString *image = [pair[@"imageURL"] isKindOfClass:[NSString class]] ? pair[@"imageURL"] : @"";
+          NSString *video = [pair[@"videoURL"] isKindOfClass:[NSString class]] ? pair[@"videoURL"] : @"";
+          [downloadedFiles addObject:@{@"imageURL":image, @"videoURL":video, @"imagePath":NSNull.null, @"videoPath":NSNull.null}];
       }
 
       // 进度计算 - 为三个阶段分配权重
       NSInteger totalSteps = livePhotos.count * 10;  // 每个实况照片总共10步(4+4+2)
       __block NSInteger completedSteps = 0;
-      __block NSInteger phase = 0;  // 0:下载图片阶段，1:下载视频阶段，2:合成阶段
 
       // 创建临时目录
-      NSString *livePhotoPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"LivePhotoBatch"];
+      NSString *livePhotoPath = [[NSTemporaryDirectory() stringByAppendingPathComponent:@"LivePhotoBatch"] stringByAppendingPathComponent:batchID];
       NSFileManager *fileManager = [NSFileManager defaultManager];
       [fileManager createDirectoryAtPath:livePhotoPath withIntermediateDirectories:YES attributes:nil error:nil];
 
       // 更新进度的block
       void (^updateProgress)(NSString *) = ^(NSString *statusText) {
-        float progress = (float)completedSteps / totalSteps;
+        NSInteger current = 0;
+        @synchronized (state) { current = completedSteps; }
+        float progress = (float)current / totalSteps;
 
         dispatch_async(dispatch_get_main_queue(), ^{
+          if (!DYYYDownloadStateIsActive(state)) return;
           [progressView setProgress:progress];
           if (progressBlock) {
-              progressBlock(completedSteps, totalSteps);
+              progressBlock(current, totalSteps);
           }
         });
       };
 
       // 下载完成后的处理
       void (^finishProcess)(void) = ^{
+        if (!DYYYDownloadStateIsActive(state)) {
+            [fileManager removeItemAtPath:livePhotoPath error:nil];
+            finish(0, livePhotos.count);
+            return;
+        }
         __block NSInteger successCount = 0;
 
         // 请求相册权限
         [PHPhotoLibrary requestAuthorization:^(PHAuthorizationStatus status) {
-          if (status == PHAuthorizationStatusAuthorized) {
+          if (status == PHAuthorizationStatusAuthorized && DYYYDownloadStateIsActive(state)) {
               dispatch_queue_t processQueue = dispatch_queue_create("com.dyyy.livephoto.process", DISPATCH_QUEUE_SERIAL);
               dispatch_group_t saveGroup = dispatch_group_create();
 
@@ -1875,16 +1601,13 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
               if (validFileCount == 0) {
                   dispatch_async(dispatch_get_main_queue(), ^{
                     progressView.allowSuccessAnimation = NO;
-                    [progressView dismiss];
+
                     [fileManager removeItemAtPath:livePhotoPath error:nil];
-                    if (completion) {
-                        completion(0, livePhotos.count);
-                    }
+                    finish(0, livePhotos.count);
                   });
                   return;
               }
 
-              float progressPerItem = (float)(livePhotos.count * 2) / totalSteps;
               __block NSInteger processedCount = 0;
               NSDate *batchCreationDate = [NSDate date];
               NSTimeInterval creationDateOffset = 0;
@@ -1900,6 +1623,7 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
                       dispatch_group_enter(saveGroup);
 
                       dispatch_async(processQueue, ^{
+                        if (!DYYYDownloadStateIsActive(state)) { dispatch_group_leave(saveGroup); return; }
                         // 生成唯一标识符
                         NSString *identifier = [NSUUID UUID].UUIDString;
 
@@ -1918,6 +1642,9 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
                         NSString *videoName = [videoPath lastPathComponent];
                         NSString *videoFile = [[DYYYManager shared] filePathFromTmp:videoName];
 
+                        NSString *metadataPhotoFile = photoFile;
+                        NSString *metadataVideoFile = videoFile;
+
                         // 使用本地变量而非全局共享变量
                         [[DYYYManager shared] addMetadataToVideoWithLocalVars:[NSURL fileURLWithPath:videoPath]
                                                                    outputFile:videoFile
@@ -1929,30 +1656,31 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
                                                                         queue:localQueue
                                                                         group:localGroup
                                                                      complete:^(BOOL success, NSString *photoFile, NSString *videoFile, NSError *error) {
-                                                                       if (success) {
+                                                                       if (success && DYYYDownloadStateIsActive(state)) {
                                                                            NSURL *photo = [NSURL fileURLWithPath:photoFile];
                                                                            NSURL *video = [NSURL fileURLWithPath:videoFile];
 
                                                                            [[PHPhotoLibrary sharedPhotoLibrary]
                                                                                performChanges:^{
-                                                                                 PHAssetCreationRequest *request = [PHAssetCreationRequest creationRequestForAsset];
-                                                                                 request.creationDate = assetCreationDate;
-                                                                                 [request addResourceWithType:PHAssetResourceTypePhoto fileURL:photo options:nil];
-                                                                                 [request addResourceWithType:PHAssetResourceTypePairedVideo fileURL:video options:nil];
+                                                                                 DYYYDownloadPerformIfActive(state, ^{
+                                                                                     PHAssetCreationRequest *request = [PHAssetCreationRequest creationRequestForAsset];
+                                                                                     request.creationDate = assetCreationDate;
+                                                                                     [request addResourceWithType:PHAssetResourceTypePhoto fileURL:photo options:nil];
+                                                                                     [request addResourceWithType:PHAssetResourceTypePairedVideo fileURL:video options:nil];
+                                                                                 });
                                                                                }
                                                                                completionHandler:^(BOOL success, NSError *_Nullable error) {
-                                                                                 if (success) {
-                                                                                     successCount++;
+                                                                                 if (success && DYYYDownloadStateIsActive(state)) {
+                                                                                     @synchronized (state) { successCount++; }
                                                                                  }
 
-                                                                                 NSArray *filesToDelete = @[ imagePath, videoPath, photoFile, videoFile ];
+                                                                                 NSArray *filesToDelete = @[ imagePath, videoPath, metadataPhotoFile, metadataVideoFile ];
                                                                                  for (NSString *path in filesToDelete) {
                                                                                      [fileManager removeItemAtPath:path error:nil];
                                                                                  }
 
                                                                                  // 增加进度步数
-                                                                                 processedCount++;
-                                                                                 completedSteps += 2;  // 每完成一个合成任务增加2步
+                                                                                 @synchronized (state) { processedCount++; completedSteps += 2; }  // 每完成一个合成任务增加2步
                                                                                  updateProgress([NSString stringWithFormat:@"已合成 %ld/%ld", (long)processedCount, (long)validFileCount]);
 
                                                                                  dispatch_group_leave(saveGroup);
@@ -1960,14 +1688,11 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
                                                                        } else {
                                                                            [fileManager removeItemAtPath:imagePath error:nil];
                                                                            [fileManager removeItemAtPath:videoPath error:nil];
-                                                                           if (photoFile)
-                                                                               [fileManager removeItemAtPath:photoFile error:nil];
-                                                                           if (videoFile)
-                                                                               [fileManager removeItemAtPath:videoFile error:nil];
+                                                                           [fileManager removeItemAtPath:metadataPhotoFile error:nil];
+                                                                           [fileManager removeItemAtPath:metadataVideoFile error:nil];
 
                                                                            // 增加进度步数（即使失败也增加）
-                                                                           processedCount++;
-                                                                           completedSteps += 2;
+                                                                           @synchronized (state) { processedCount++; completedSteps += 2; }
                                                                            updateProgress([NSString stringWithFormat:@"已合成 %ld/%ld", (long)processedCount, (long)validFileCount]);
 
                                                                            dispatch_group_leave(saveGroup);
@@ -1978,27 +1703,23 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
               }
 
               dispatch_group_notify(saveGroup, dispatch_get_main_queue(), ^{
-                progressView.allowSuccessAnimation = (successCount > 0 && successCount == validFileCount);
-                [progressView dismiss];
+                progressView.allowSuccessAnimation = DYYYDownloadStateIsActive(state) && (successCount > 0 && successCount == validFileCount);
+
 
                 [fileManager removeItemAtPath:livePhotoPath error:nil];
 
-                if (completion) {
-                    completion(successCount, livePhotos.count);
-                }
+                finish(successCount, livePhotos.count);
               });
           } else {
               // 没有相册权限
               dispatch_async(dispatch_get_main_queue(), ^{
                 progressView.allowSuccessAnimation = NO;
-                [progressView dismiss];
-                [DYYYUtils showToast:@"没有相册权限，无法保存实况照片"];
+
+                if (DYYYDownloadStateIsActive(state)) [DYYYUtils showToast:@"没有相册权限，无法保存实况照片"];
 
                 [fileManager removeItemAtPath:livePhotoPath error:nil];
 
-                if (completion) {
-                    completion(0, livePhotos.count);
-                }
+                finish(0, livePhotos.count);
               });
           }
         }];
@@ -2027,11 +1748,12 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
           // 配置下载会话
           NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
           configuration.timeoutIntervalForRequest = 60.0;
-          NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration];
+          NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration delegate:nil delegateQueue:[NSOperationQueue mainQueue]];
 
+          NSString *taskID = NSUUID.UUID.UUIDString;
           NSURLSessionDataTask *imageTask = [session dataTaskWithURL:imageURL
                                                    completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-                                                     if (!error && data) {
+                                                     if (!error && data && DYYYDownloadStateIsActive(state)) {
                                                          if ([data writeToFile:imagePath atomically:YES]) {
                                                              NSMutableDictionary *updatedInfo = [downloadedFiles[i] mutableCopy];
                                                              updatedInfo[@"imagePath"] = imagePath;
@@ -2039,17 +1761,22 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
                                                          }
                                                      }
 
+                                                     [manager.downloadTasks removeObjectForKey:taskID];
+                                                     [manager.downloadOwnerMap removeObjectForKey:taskID];
+                                                     [session finishTasksAndInvalidate];
                                                      completedSteps += 4;  // 图片下载占4步
                                                      updateProgress([NSString stringWithFormat:@"已下载图片 %ld/%ld", (long)(i + 1), (long)livePhotos.count]);
                                                      dispatch_group_leave(imageDownloadGroup);
                                                    }];
 
+          manager.downloadOwnerMap[taskID] = batchID;
+          manager.downloadTasks[taskID] = imageTask;
           [imageTask resume];
       }
 
       // 所有图片下载完成后，开始下载视频
       dispatch_group_notify(imageDownloadGroup, dispatch_get_main_queue(), ^{
-        phase = 1;  // 进入视频下载阶段
+        if (!DYYYDownloadStateIsActive(state)) { [fileManager removeItemAtPath:livePhotoPath error:nil]; finish(0, livePhotos.count); return; }
         updateProgress(@"正在下载视频...");
 
         dispatch_group_t videoDownloadGroup = dispatch_group_create();
@@ -2081,11 +1808,12 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
             // 配置下载会话
             NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
             configuration.timeoutIntervalForRequest = 60.0;
-            NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration];
+            NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration delegate:nil delegateQueue:[NSOperationQueue mainQueue]];
 
+            NSString *taskID = NSUUID.UUID.UUIDString;
             NSURLSessionDataTask *videoTask = [session dataTaskWithURL:videoURL
                                                      completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-                                                       if (!error && data) {
+                                                       if (!error && data && DYYYDownloadStateIsActive(state)) {
                                                            if ([data writeToFile:videoPath atomically:YES]) {
                                                                NSMutableDictionary *updatedInfo = [downloadedFiles[i] mutableCopy];
                                                                updatedInfo[@"videoPath"] = videoPath;
@@ -2093,17 +1821,22 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
                                                            }
                                                        }
 
-                                                       completedSteps += 4;  // 视频下载占4步
+                                                       [manager.downloadTasks removeObjectForKey:taskID];
+                                                     [manager.downloadOwnerMap removeObjectForKey:taskID];
+                                                     [session finishTasksAndInvalidate];
+                                                     completedSteps += 4;  // 视频下载占4步
                                                        updateProgress([NSString stringWithFormat:@"已下载视频 %ld/%ld", (long)(i + 1), (long)livePhotos.count]);
                                                        dispatch_group_leave(videoDownloadGroup);
                                                      }];
 
+            manager.downloadOwnerMap[taskID] = batchID;
+            manager.downloadTasks[taskID] = videoTask;
             [videoTask resume];
         }
 
         // 所有视频下载完成后，开始合成实况照片
         dispatch_group_notify(videoDownloadGroup, dispatch_get_main_queue(), ^{
-          phase = 2;  // 进入合成阶段
+          if (!DYYYDownloadStateIsActive(state)) { [fileManager removeItemAtPath:livePhotoPath error:nil]; finish(0, livePhotos.count); return; }
           finishProcess();
         });
       });
@@ -2233,8 +1966,11 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
 }
 
 + (void)parseAndDownloadVideoWithShareLink:(NSString *)shareLink apiKey:(NSString *)apiKey {
-    // 解析要等一次网络往返，先把说明文字取下来跟着这次解析走。
-    NSString *albumDescription = [self currentAlbumDescription];
+    [self parseAndDownloadVideoWithShareLink:shareLink apiKey:apiKey albumDescription:nil];
+}
+
++ (void)parseAndDownloadVideoWithShareLink:(NSString *)shareLink apiKey:(NSString *)apiKey albumDescription:(NSString *)albumDescription {
+    albumDescription = [albumDescription copy];
     if (shareLink.length == 0 || apiKey.length == 0) {
         [DYYYUtils showToast:@"分享链接或API密钥无效"];
         return;
@@ -2281,7 +2017,7 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
     [dataTask resume];
 }
 
-+ (void)saveGalleryImages:(NSArray<NSString *> *)imageURLs livePhotos:(NSArray<NSDictionary *> *)livePhotos {
++ (void)saveGalleryImages:(NSArray<NSString *> *)imageURLs livePhotos:(NSArray<NSDictionary *> *)livePhotos albumDescription:(NSString *)albumDescription {
     BOOL hasImages = imageURLs.count > 0;
     BOOL hasLivePhotos = livePhotos.count > 0;
 
@@ -2290,34 +2026,43 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
     }
 
     if (!hasLivePhotos) {
-        [self downloadAllImages:[imageURLs mutableCopy]];
+        [self downloadAllImagesWithProgress:[imageURLs mutableCopy] albumDescription:albumDescription progress:nil completion:nil];
         return;
     }
 
     if (!hasImages) {
-        [self downloadAllLivePhotos:livePhotos];
+        [self downloadAllLivePhotosWithProgress:livePhotos albumDescription:albumDescription progress:nil completion:nil];
         return;
     }
 
     // 两类都有时先跑静图、完成后再跑实况。两批各自会起一个进度浮层，同时展示会叠在一起，
     // 这里等前一批的收起动画走完再启动后一批。
+    NSUInteger generation = [self downloadCancellationGeneration];
     [self downloadAllImagesWithProgress:[imageURLs mutableCopy]
+                       albumDescription:albumDescription
                                progress:nil
                              completion:^(NSInteger successCount, NSInteger totalCount) {
+                               if (generation != [self downloadCancellationGeneration]) return;
                                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                                 [self downloadAllLivePhotos:livePhotos];
+                                 if (generation != [self downloadCancellationGeneration]) return;
+                                 [self downloadAllLivePhotosWithProgress:livePhotos albumDescription:albumDescription progress:nil completion:nil];
                                });
                              }];
 }
 
-+ (void)handleVideoData:(NSDictionary *)dataDict albumDescription:(NSString *)albumDescription {
-    // 弹窗是模态的，展示期间用户翻不动作品，所以在这里把说明文字挂回去，
-    // 各行 handler 触发下载时取到的就是这次解析对应的那条。
-    DYYYManager *manager = [DYYYManager shared];
-    @synchronized(manager) {
-        manager.pendingAlbumDescription = albumDescription;
-    }
++ (void)batchDownloadResources:(NSArray *)videos images:(NSArray *)images {
+    [self downloadParsedVideos:videos images:images albumDescription:nil];
+}
 
++ (void)downloadParsedVideos:(NSArray *)videos images:(NSArray *)images albumDescription:(NSString *)albumDescription {
+    for (id value in videos) {
+        NSString *url = [value isKindOfClass:NSString.class] ? value : ([value isKindOfClass:NSDictionary.class] ? value[@"url"] : nil);
+        if (url.length) [self downloadMedia:[NSURL URLWithString:url] mediaType:MediaTypeVideo audio:nil albumDescription:albumDescription completion:nil];
+    }
+    if (images.count) [self downloadAllImagesWithProgress:[images mutableCopy] albumDescription:albumDescription progress:nil completion:nil];
+}
+
++ (void)handleVideoData:(NSDictionary *)dataDict albumDescription:(NSString *)albumDescription {
     // 首先检查videos和images数组
     NSArray *videoList = dataDict[@"video_list"];
     NSArray *videos = dataDict[@"videos"];
@@ -2408,13 +2153,13 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
                 itemWithTitle:level
                       handler:^{
                         if (pairedImageURL.length > 0) {
-                            [self downloadLivePhoto:[NSURL URLWithString:pairedImageURL] videoURL:[NSURL URLWithString:url] completion:nil];
+                            [self downloadLivePhoto:[NSURL URLWithString:pairedImageURL] videoURL:[NSURL URLWithString:url] albumDescription:albumDescription completion:nil];
                             return;
                         }
 
                         // 配不到静图的实况行退化成存 mp4；图片行存 .jpg；画质行与改动前一致
                         NSURL *optionalAudioURL = (allowAudioMerge && musicURL.length > 0) ? [NSURL URLWithString:musicURL] : nil;
-                        [self downloadMedia:[NSURL URLWithString:url] mediaType:rowMediaType audio:optionalAudioURL completion:nil];
+                        [self downloadMedia:[NSURL URLWithString:url] mediaType:rowMediaType audio:optionalAudioURL albumDescription:albumDescription completion:nil];
                       }];
             [items addObject:item];
         }
@@ -2445,7 +2190,7 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
 
             DYYYMediaChooserItem *saveAllItem = [DYYYMediaChooserItem itemWithTitle:saveAllTitle
                                                                            handler:^{
-                                                                             [self saveGalleryImages:staticImages livePhotos:livePhotoPairs];
+                                                                             [self saveGalleryImages:staticImages livePhotos:livePhotoPairs albumDescription:albumDescription];
                                                                            }];
             [items addObject:saveAllItem];
         }
@@ -2490,7 +2235,7 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
                 NSURL *imageDownloadUrl = [NSURL URLWithString:allImages[0]];
                 [self downloadMedia:imageDownloadUrl
                           mediaType:MediaTypeImage
-                              audio:nil
+                              audio:nil albumDescription:albumDescription
                          completion:^(BOOL success) {
                            if (!success) {
                                [DYYYUtils showToast:@"图片下载失败"];
@@ -2498,7 +2243,7 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
                          }];
             } else {
                 // 多张图片批量下载
-                [self downloadAllImages:allImages];
+                [self downloadAllImagesWithProgress:allImages albumDescription:albumDescription progress:nil completion:nil];
             }
             return;
         }
@@ -2512,14 +2257,14 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
             itemWithTitle:@"下载视频"
                   handler:^{
                     NSURL *optionalAudioURL = (musicURL.length > 0) ? [NSURL URLWithString:musicURL] : nil;
-                    [self downloadMedia:[NSURL URLWithString:singleVideoURL] mediaType:MediaTypeVideo audio:optionalAudioURL completion:nil];
+                    [self downloadMedia:[NSURL URLWithString:singleVideoURL] mediaType:MediaTypeVideo audio:optionalAudioURL albumDescription:albumDescription completion:nil];
                   }];
         [items addObject:videoItem];
 
         if (coverURL && coverURL.length > 0) {
             DYYYMediaChooserItem *coverItem = [DYYYMediaChooserItem itemWithTitle:@"下载封面图"
                                                                          handler:^{
-                                                                           [self downloadMedia:[NSURL URLWithString:coverURL] mediaType:MediaTypeImage audio:nil completion:nil];
+                                                                           [self downloadMedia:[NSURL URLWithString:coverURL] mediaType:MediaTypeImage audio:nil albumDescription:albumDescription completion:nil];
                                                                          }];
             [items addObject:coverItem];
         }
@@ -2527,7 +2272,7 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
         if (musicURL && musicURL.length > 0) {
             DYYYMediaChooserItem *musicItem = [DYYYMediaChooserItem itemWithTitle:@"下载背景音乐"
                                                                          handler:^{
-                                                                           [self downloadMedia:[NSURL URLWithString:musicURL] mediaType:MediaTypeAudio audio:nil completion:nil];
+                                                                           [self downloadMedia:[NSURL URLWithString:musicURL] mediaType:MediaTypeAudio audio:nil albumDescription:albumDescription completion:nil];
                                                                          }];
             [items addObject:musicItem];
         }
@@ -2550,7 +2295,7 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
                         if (singleVideoURL.length > 0) {
                             singleVideoArray = [NSMutableArray arrayWithObject:@{@"url" : singleVideoURL}];
                         }
-                        [self batchDownloadResources:singleVideoArray images:allImages];
+                        [self downloadParsedVideos:singleVideoArray images:allImages albumDescription:albumDescription];
                       }];
             [items addObject:batchItem];
         }
@@ -2569,7 +2314,7 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
         }
         [self downloadMedia:videoDownloadUrl
                   mediaType:MediaTypeVideo
-                      audio:optionalAudioURL
+                      audio:optionalAudioURL albumDescription:albumDescription
                  completion:^(BOOL success) {
                    if (!success) {
                    }
@@ -2588,7 +2333,7 @@ static NSString *DYYYAlbumDescriptionForAwemeModel(AWEAwemeModel *awemeModel, NS
     }
 
     if (allImages.count > 0 || hasVideos) {
-        [self batchDownloadResources:videos images:allImages];
+        [self downloadParsedVideos:videos images:allImages albumDescription:albumDescription];
     } else {
         [DYYYUtils showToast:@"没有找到可下载的资源"];
     }

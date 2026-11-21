@@ -11979,15 +11979,9 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 
         if (!shouldFilterHDR) {
             for (id bitrateModel in video.bitrateModels) {
-                @try {
-                    NSNumber *hdrType = [bitrateModel valueForKey:@"hdrType"];
-                    NSNumber *hdrBit = [bitrateModel valueForKey:@"hdrBit"];
-                    if ((hdrType && [hdrType integerValue] > 0) ||
-                        (!hdrType && hdrBit && [hdrBit integerValue] >= 10)) {
-                        shouldFilterHDR = YES;
-                        break;
-                    }
-                } @catch (__unused NSException *exception) {
+                if (DYYYPlaybackTierHasHDRMetadata(bitrateModel)) {
+                    shouldFilterHDR = YES;
+                    break;
                 }
             }
         }
@@ -12138,7 +12132,7 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
         }
         if (!shouldFilter && filterConfig.filterHDR &&
             ![self dyyy_shouldExcludeFromGlobalHDRFilter] &&
-            [self dyyy_containsHDRMetadataInObject:arg1 depth:0]) {
+            DYYYAwemeRawVideoHasHDRMetadata(arg1)) {
             shouldFilter = YES;
         }
         if (shouldFilter) {
@@ -12178,44 +12172,6 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
            [referString containsString:@"share"] ||
            [referString hasPrefix:@"im_"] ||
            [referString containsString:@"_im_"];
-}
-
-%new
-- (BOOL)dyyy_containsHDRMetadataInObject:(id)object depth:(NSUInteger)depth {
-    if (!object || depth > 8) {
-        return NO;
-    }
-
-    if ([object isKindOfClass:[NSDictionary class]]) {
-        NSDictionary *dictionary = (NSDictionary *)object;
-        for (id rawKey in dictionary) {
-            id value = dictionary[rawKey];
-            NSString *key = [[rawKey description] lowercaseString];
-            NSInteger numericValue = [value respondsToSelector:@selector(integerValue)] ? [value integerValue] : 0;
-
-            if (([key isEqualToString:@"is_source_hdr"] || [key isEqualToString:@"has_filter_hdr"]) && numericValue > 0) {
-                return YES;
-            }
-            if ([key isEqualToString:@"hdr_type"] && numericValue > 0) {
-                return YES;
-            }
-            if ([key isEqualToString:@"hdr_bit"] && numericValue >= 10) {
-                return YES;
-            }
-            if (([value isKindOfClass:[NSDictionary class]] || [value isKindOfClass:[NSArray class]]) &&
-                [self dyyy_containsHDRMetadataInObject:value depth:depth + 1]) {
-                return YES;
-            }
-        }
-    } else if ([object isKindOfClass:[NSArray class]]) {
-        for (id value in (NSArray *)object) {
-            if ([self dyyy_containsHDRMetadataInObject:value depth:depth + 1]) {
-                return YES;
-            }
-        }
-    }
-
-    return NO;
 }
 
 %new
@@ -15253,7 +15209,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         AWEAwemeModel *awemeModel = nil;
 
         awemeModel = [self performSelector:@selector(awemeModel)];
-        [DYYYManager setAlbumDescriptionContextWithAwemeModel:awemeModel];
+        NSString *albumDescription = [DYYYManager albumDescriptionForAwemeModel:awemeModel];
 
         AWEMusicModel *musicModel = awemeModel.music;
 
@@ -15326,7 +15282,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
                                                                                                         handler:^{
                                                                                                           if (musicModel && musicModel.playURL && musicModel.playURL.originURLList.count > 0) {
                                                                                                               NSURL *url = [NSURL URLWithString:musicModel.playURL.originURLList.firstObject];
-                                                                                                              [DYYYManager downloadMedia:url mediaType:MediaTypeAudio audio:nil completion:nil];
+                                                                                                              [DYYYManager downloadMedia:url mediaType:MediaTypeAudio audio:nil albumDescription:albumDescription completion:nil];
                                                                                                           }
                                                                                                         }];
             [actions addObject:downloadAudioAction];
@@ -15346,7 +15302,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
                                                                                                             }
 
                                                                                                             // 使用封装的方法进行解析下载
-                                                                                                            [DYYYManager parseAndDownloadVideoWithShareLink:shareLink apiKey:apiKey];
+                                                                                                            [DYYYManager parseAndDownloadVideoWithShareLink:shareLink apiKey:apiKey albumDescription:albumDescription];
                                                                                                           }];
                 [actions addObject:apiDownloadAction];
             }
@@ -17123,39 +17079,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 
 }
 
-
-// ===== 隐藏"暂时没有更多了"底部占位（只对详情页，主页不动） =====
-%ctor {
-
-    Class cls = objc_getClass("AWEFeedRefreshFooter");
-    if (!cls) return;
-    Method m = class_getInstanceMethod(cls, @selector(layoutSubviews));
-    if (!m) return;
-    IMP origImp = method_getImplementation(m);
-    IMP newImp = imp_implementationWithBlock(^(id self, SEL _cmd) {
-        ((void (*)(id, SEL))origImp)(self, _cmd);
-        // 只在详情页 table 里隐藏 footer；主页 feed 保持原生，让 loadMore 生效
-        BOOL isDetail = NO;
-        UIResponder *r = [self nextResponder];
-        int d = 0;
-        while (r && d++ < 12) {
-            Class c = [r class];
-            NSString *name = NSStringFromClass(c);
-            if ([name isEqualToString:@"AWEAwemeDetailTableViewController"] ||
-                [name isEqualToString:@"AWEAwemeDetailCellViewController"] ||
-                [name isEqualToString:@"AWEAwemeDetailTableView"]) {
-                isDetail = YES;
-                break;
-            }
-            r = [r nextResponder];
-        }
-        if (isDetail) {
-            [self setHidden:YES];
-        }
-    method_setImplementation(m, newImp);
-
-    });
-}
 
 // 写沙盒日志（动态路径，不写死）
 // ============================================================

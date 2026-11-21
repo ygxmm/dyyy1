@@ -21,6 +21,13 @@
 /** 加载本地ABTest配置文件 */
 + (void)loadLocalABTestConfig;
 
+/** 串行校验并原子导入本地配置，完成前释放安全作用域；仅成功才发布状态和通知。 */
++ (void)importLocalABTestConfigFromURL:(NSURL * _Nullable)url
+                          completion:(void (^ _Nullable)(BOOL success, NSError * _Nullable error))completion;
+
+/** 串行删除配置，成功或明确不存在才清除状态；完成回调和成功通知均在主线程。 */
++ (void)deleteLocalABTestConfigWithCompletion:(void (^ _Nullable)(BOOL success, NSError * _Nullable error))completion;
+
 /** 应用本地ABTest配置数据 (负责根据模式处理并应用到 Manager) */
 + (void)applyFixedABTestData;
 

@@ -49,6 +49,7 @@ DYYY_FILES = DYYY.xm \
 	DYYYLongPressPanel.xm \
 	Sources/Features/DYYYFloatSpeedButton.m \
 	Sources/Settings/DYYYSettingsHelper.m \
+	Sources/Settings/DYYYSettingsBackupValidation.m \
 	Sources/Settings/DYYYPickerDelegates.m \
 	Sources/Settings/DYYYSettingViewController.m \
 	Sources/UI/DYYYKeyboardAvoidanceCoordinator.m \
@@ -69,6 +70,7 @@ DYYY_FILES = DYYY.xm \
 	Sources/Media/DYYYMediaSourceSelection.m \
 	Sources/Media/DYYYVideoQualityPolicy.m \
 	Sources/Core/DYYYUtils.m \
+	Sources/Core/DYYYABConfigValidation.m \
 	Sources/Features/DYYYLoginBypassManager.m \
 	Sources/Features/DYYYLoginRepairHooks.m \
 	Sources/Features/DYYYPrivacyRecordUploadGuard.m \

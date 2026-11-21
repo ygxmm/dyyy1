@@ -2,6 +2,7 @@
 #import "DYYYLikeLivePhotoBuilder.h"
 #import "DYYYLikeAnimatedImage.h"
 #import "DYYYAlbumImageDescription.h"
+#import "DYYYDownloadLifecycle.h"
 #import "DYYYMediaSourceSelection.h"
 #import "DYYYConstants.h"
 #import "DYYYManager.h"
@@ -123,24 +124,34 @@ static NSURL *DYYYLikeSavePrepareImage(NSURL *rawURL, BOOL *convertedAnimation, 
     return output;
 }
 
-static void DYYYLikeSaveMediaFiles(NSURL *fileURL, NSURL *pairedVideoURL, NSDate *creationDate, void (^completion)(NSError *)) {
+static void DYYYLikeSaveMediaFiles(NSURL *fileURL, NSURL *pairedVideoURL, NSDate *creationDate,
+                                  NSMutableDictionary *state, void (^completion)(NSError *)) {
     if (pairedVideoURL && ![PHAssetCreationRequest supportsAssetResourceTypes:
             @[@(PHAssetResourceTypePhoto), @(PHAssetResourceTypePairedVideo)]]) {
         completion(DYYYLikeSaveError(@"当前系统不支持实况入库"));
         return;
     }
-    // One transaction per page. Never retry a rejected Live Photo as a still.
+    // 每页只提交一次；取消先取得闸门时不创建资产，已交给 PhotoKit 的事务无法撤回。
     [PHPhotoLibrary.sharedPhotoLibrary performChanges:^{
-        PHAssetCreationRequest *request = [PHAssetCreationRequest creationRequestForAsset];
-        if (creationDate) request.creationDate = creationDate;
-        [request addResourceWithType:PHAssetResourceTypePhoto fileURL:fileURL options:nil];
-        if (pairedVideoURL) {
-            [request addResourceWithType:PHAssetResourceTypePairedVideo fileURL:pairedVideoURL options:nil];
-        }
+        DYYYDownloadPerformIfActive(state, ^{
+            PHAssetCreationRequest *request = [PHAssetCreationRequest creationRequestForAsset];
+            if (creationDate) request.creationDate = creationDate;
+            [request addResourceWithType:PHAssetResourceTypePhoto fileURL:fileURL options:nil];
+            if (pairedVideoURL) {
+                [request addResourceWithType:PHAssetResourceTypePairedVideo fileURL:pairedVideoURL options:nil];
+            }
+        });
     } completionHandler:^(BOOL success, NSError *error) {
-        NSError *failure = success ? nil : DYYYLikeSaveError(error ?
-            [NSString stringWithFormat:@"相册入库失败（%@ %ld）", error.domain, (long)error.code] : @"相册入库失败");
-        dispatch_async(dispatch_get_main_queue(), ^{ completion(failure); });
+        dispatch_async(dispatch_get_main_queue(), ^{
+            // PhotoKit 可能把未创建资产的空事务报作成功，取消后不能把该页计为成功。
+            if (!DYYYDownloadStateIsActive(state)) {
+                completion(DYYYLikeSaveError(@"已取消保存"));
+                return;
+            }
+            NSError *failure = success ? nil : DYYYLikeSaveError(error ?
+                [NSString stringWithFormat:@"相册入库失败（%@ %ld）", error.domain, (long)error.code] : @"相册入库失败");
+            completion(failure);
+        });
     }];
 }
 
@@ -149,6 +160,7 @@ static void DYYYLikeSaveMediaFiles(NSURL *fileURL, NSURL *pairedVideoURL, NSDate
 @property(nonatomic, copy) NSArray<NSDate *> *albumDates;
 @property(nonatomic, copy) NSString *albumDescription;
 @property(nonatomic, strong) NSMutableSet<NSURL *> *temporaryURLs;
+@property(nonatomic, strong) NSMutableDictionary *lifecycleState;
 @property(nonatomic, strong) NSURLSession *session;
 @property(nonatomic, strong) NSURLSessionDownloadTask *task;
 @property(nonatomic, strong) DYYYToast *progressView;
@@ -184,6 +196,7 @@ static DYYYLikeGallerySaveJob *gDYYYLikeSaveActiveGallery;
     if (!self.items.count) return;
     gDYYYLikeSaveActiveGallery = self;
     self.temporaryURLs = [NSMutableSet set];
+    self.lifecycleState = DYYYDownloadCreateState();
     self.failedPages = [NSMutableArray array];
     [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelAddOnly handler:^(PHAuthorizationStatus status) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -207,9 +220,10 @@ static DYYYLikeGallerySaveJob *gDYYYLikeSaveActiveGallery;
             __weak typeof(self) weakSelf = self;
             self.progressView.cancelBlock = ^{
                 typeof(self) job = weakSelf;
+                if (!DYYYDownloadCancelState(job.lifecycleState)) return;
                 job.cancelled = YES;
                 [job.task cancel];
-                // Outstanding processing owns its files until its next callback.
+                // 正在处理的文件留给回调清理。
             };
             [self.progressView show];
             [self saveNext];
@@ -238,6 +252,7 @@ static DYYYLikeGallerySaveJob *gDYYYLikeSaveActiveGallery;
 - (void)finish {
     if (self.finished) return;
     self.finished = YES;
+    DYYYDownloadFinishState(self.lifecycleState);
     [self cleanupPage];
     [self.session finishTasksAndInvalidate];
     self.session = nil;
@@ -381,7 +396,7 @@ static DYYYLikeGallerySaveJob *gDYYYLikeSaveActiveGallery;
     if (self.cancelled) { [self finish]; return; }
     NSDate *creationDate = self.albumDates[self.index];
     if (![self.items[self.index][@"live"] boolValue]) {
-        DYYYLikeSaveMediaFiles(imageURL, nil, creationDate, ^(NSError *error) {
+        DYYYLikeSaveMediaFiles(imageURL, nil, creationDate, self.lifecycleState, ^(NSError *error) {
             [self completeItem:error.localizedDescription];
         });
         return;
@@ -404,7 +419,7 @@ static DYYYLikeGallerySaveJob *gDYYYLikeSaveActiveGallery;
         }
         // The builder validates the pair; PhotoKit, not the preview renderer,
         // is the final authority on whether both resources were committed.
-        DYYYLikeSaveMediaFiles(photo, video, creationDate, ^(NSError *saveError) {
+        DYYYLikeSaveMediaFiles(photo, video, creationDate, self.lifecycleState, ^(NSError *saveError) {
             [self completeItem:saveError.localizedDescription];
         });
     });
@@ -493,15 +508,26 @@ static NSURL *DYYYLikeSaveMusicURL(AWEAwemeModel *model) {
     return DYYYMediaSourceURLs(DYYYLikeSaveObject(music, @"playURL")).firstObject;
 }
 
-static void DYYYLikeSaveVideoResource(AWEAwemeModel *model, NSURL *videoURL, NSURL *audioURL) {
+static NSString *DYYYLikeSaveDescriptionForModel(AWEAwemeModel *model) {
+    return [NSUserDefaults.standardUserDefaults boolForKey:DYYY_ALBUM_MEDIA_DESCRIPTION_KEY] ?
+        [DYYYManager albumDescriptionForAwemeModel:model] : nil;
+}
+
+static void DYYYLikeSaveVideoResource(NSURL *videoURL, NSURL *audioURL, NSString *albumDescription) {
     if (!videoURL) {
         [DYYYUtils showToast:@"没有可用的无水印视频源"];
         return;
     }
-    // The existing video writer imports the file as-is; optional audio and
-    // album description use AVAssetExportPresetPassthrough.
-    [DYYYManager setAlbumDescriptionContextWithAwemeModel:model];
-    [DYYYManager downloadMedia:videoURL mediaType:MediaTypeVideo audio:audioURL completion:nil];
+    // 说明跟随本次资源快照传入，不再污染头像、表情等无关保存入口。
+    [DYYYManager downloadMedia:videoURL mediaType:MediaTypeVideo audio:audioURL
+             albumDescription:albumDescription completion:nil];
+}
+
+static NSArray<NSDictionary *> *DYYYLikeSaveStandaloneLiveItems(id model) {
+    if (!DYYYLikeSaveObject(model, @"animatedImageVideoInfo")) return @[];
+    id video = DYYYLikeSaveObject(model, @"video");
+    // 新版视频型实况与图集页使用同一任务格式，封面与动态资源始终来自同一作品。
+    return @[DYYYLikeSaveItem(DYYYMediaSourceCoverURLs(video), DYYYMediaSourceLiveVideoURLs(video), YES, 1)];
 }
 
 static NSArray<NSDictionary *> *DYYYLikeSaveCoverItems(id video) {
@@ -511,8 +537,9 @@ static NSArray<NSDictionary *> *DYYYLikeSaveCoverItems(id video) {
 
 void DYYYSaveMenuMedia(AWEAwemeModel *model, DYYYMenuMediaSaveAction action) {
     id video = DYYYLikeSaveObject(model, @"video");
+    NSString *description = DYYYLikeSaveDescriptionForModel(model);
     if (action == DYYYMenuMediaSaveVideo) {
-        DYYYLikeSaveVideoResource(model, DYYYMediaSourceHighestVideoURLs(video).firstObject, DYYYLikeSaveMusicURL(model));
+        DYYYLikeSaveVideoResource(DYYYMediaSourceHighestVideoURLs(video).firstObject, DYYYLikeSaveMusicURL(model), description);
         return;
     }
     NSArray<NSDictionary *> *items = @[];
@@ -523,11 +550,9 @@ void DYYYSaveMenuMedia(AWEAwemeModel *model, DYYYMenuMediaSaveAction action) {
         if (action == DYYYMenuMediaSaveCurrent && items.count) {
             items = @[items[DYYYLikeSaveCurrentIndex(model, items.count)]];
         }
-    } else if (action == DYYYMenuMediaSaveCurrent && DYYYLikeSaveObject(model, @"animatedImageVideoInfo")) {
-        items = @[DYYYLikeSaveItem(DYYYMediaSourceCoverURLs(video), DYYYMediaSourceLiveVideoURLs(video), YES, 1)];
+    } else if (action == DYYYMenuMediaSaveCurrent) {
+        items = DYYYLikeSaveStandaloneLiveItems(model);
     }
-    NSString *description = [NSUserDefaults.standardUserDefaults boolForKey:DYYY_ALBUM_MEDIA_DESCRIPTION_KEY] ?
-        [DYYYManager albumDescriptionForAwemeModel:model] : nil;
     DYYYLikeStartGallerySave(items, description);
 }
 
@@ -572,13 +597,18 @@ static NSArray<UIMenuElement *> *DYYYLikeSaveMenuItems(UIButton *button) {
         }
         return items;
     }
+    NSArray<NSDictionary *> *standaloneLive = DYYYLikeSaveStandaloneLiveItems(model);
+    if (standaloneLive.count) {
+        [items addObject:DYYYLikeSaveImagesAction(@"保存无水印实况", @"DYYYLikeSave.LivePhoto", standaloneLive)];
+    }
     id video = DYYYLikeSaveObject(model, @"video");
     NSURL *videoURL = DYYYMediaSourceHighestVideoURLs(video).firstObject;
     if (videoURL) {
         NSURL *audioURL = DYYYLikeSaveMusicURL(model);
+        NSString *description = DYYYLikeSaveDescriptionForModel(model);
         UIAction *saveVideo = [UIAction actionWithTitle:@"保存原画质视频" image:DYYYLikeSaveSymbol(@"square.and.arrow.down")
             identifier:@"DYYYLikeSave.Video" handler:^(__kindof UIAction *selectedAction) {
-                DYYYLikeSaveVideoResource(model, videoURL, audioURL);
+                DYYYLikeSaveVideoResource(videoURL, audioURL, description);
             }];
         [items addObject:saveVideo];
     }

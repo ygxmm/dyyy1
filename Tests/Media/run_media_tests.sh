@@ -11,8 +11,14 @@ for file in \
   "$TESTS/DYYYLikeMediaTests.m" \
   "$TESTS/DYYYMediaSourceSelectionTests.m" \
   "$TESTS/DYYYVideoQualityPolicyTests.m" \
+  "$TESTS/DYYYSettingsBackupValidationTests.m" \
+  "$TESTS/DYYYABConfigValidationTests.m" \
+  "$TESTS/DYYYDownloadLifecycleTests.m" \
+  "$TESTS/DYYYHDRMetadataTests.m" \
   "$ROOT/Sources/Media/DYYYVideoQualityPolicy.h" \
   "$ROOT/Sources/Media/DYYYVideoQualityPolicy.m" \
+  "$ROOT/Sources/Core/DYYYABConfigValidation.m" \
+  "$ROOT/Sources/Settings/DYYYSettingsBackupValidation.m" \
   "$ROOT/Sources/Media/DYYYMediaSourceSelection.h" \
   "$ROOT/Sources/Media/DYYYMediaSourceSelection.m" \
   "$FEATURES/DYYYLikeLivePhotoBuilder.h" \
@@ -28,6 +34,7 @@ for file in \
 done
 
 python3 "$TESTS/check_video_quality_integration.py"
+python3 "$TESTS/check_maintenance_integration.py"
 
 if ! command -v xcrun >/dev/null 2>&1; then
   echo "FAIL xcrun is required; run this test on macOS (e.g. GitHub Actions macos-latest)." >&2
@@ -38,10 +45,19 @@ set -x
 xcrun --sdk macosx clang \
   -fobjc-arc -fblocks -O1 -g \
   -I"$FEATURES" \
+  -I"$ROOT/Sources/Core" \
+  -I"$ROOT/Sources/Media" \
+  -I"$ROOT/Sources/Settings" \
   "$TESTS/DYYYLikeMediaTests.m" \
   "$TESTS/DYYYMediaSourceSelectionTests.m" \
   "$TESTS/DYYYVideoQualityPolicyTests.m" \
+  "$TESTS/DYYYSettingsBackupValidationTests.m" \
+  "$TESTS/DYYYABConfigValidationTests.m" \
+  "$TESTS/DYYYDownloadLifecycleTests.m" \
+  "$TESTS/DYYYHDRMetadataTests.m" \
   "$ROOT/Sources/Media/DYYYVideoQualityPolicy.m" \
+  "$ROOT/Sources/Core/DYYYABConfigValidation.m" \
+  "$ROOT/Sources/Settings/DYYYSettingsBackupValidation.m" \
   "$ROOT/Sources/Media/DYYYMediaSourceSelection.m" \
   "$FEATURES/DYYYLikeLivePhotoBuilder.m" \
   "$FEATURES/DYYYLikeAnimatedImage.m" \

@@ -56,14 +56,38 @@ static NSInteger DYYYPlaybackTierResolution(id tier) {
     return 0;
 }
 
-static NSInteger DYYYPlaybackTierHDRType(id tier) {
-    id tag = DYYYPlaybackTierValue(tier, @"hdrType");
-    // Only positive native HDR metadata is evidence, not a gear name or 10 bit alone.
+static NSInteger DYYYHDRMetadataType(id tag) {
+    // 仅接受完整的原生数值标记；10 位深、档位名称和任意嵌套字段都不能单独证明 HDR。
     if ([tag isKindOfClass:NSNumber.class]) return [tag integerValue];
     if (![tag isKindOfClass:NSString.class]) return 0;
     NSScanner *scanner = [NSScanner scannerWithString:tag];
     NSInteger type = 0;
     return [scanner scanInteger:&type] && scanner.isAtEnd ? type : 0;
+}
+
+static NSInteger DYYYPlaybackTierHDRType(id tier) {
+    return DYYYHDRMetadataType(DYYYPlaybackTierValue(tier, @"hdrType"));
+}
+
+BOOL DYYYPlaybackTierHasHDRMetadata(id tier) {
+    return DYYYPlaybackTierHDRType(tier) > 0;
+}
+
+BOOL DYYYAwemeRawVideoHasHDRMetadata(id rawAweme) {
+    if (![rawAweme isKindOfClass:NSDictionary.class]) return NO;
+    id video = rawAweme[@"video"];
+    if (![video isKindOfClass:NSDictionary.class]) return NO;
+    if (DYYYHDRMetadataType(video[@"is_source_hdr"]) > 0 ||
+        DYYYHDRMetadataType(video[@"has_filter_hdr"]) > 0) return YES;
+    id tiers = video[@"bit_rate"];
+    if (![tiers isKindOfClass:NSArray.class]) return NO;
+    // 只读当前作品视频的码流元数据，不扫描图片、相关推荐、广告或编辑信息。
+    for (id tier in tiers) {
+        if (![tier isKindOfClass:NSDictionary.class]) continue;
+        if (DYYYHDRMetadataType(tier[@"HDR_type"]) > 0 ||
+            DYYYHDRMetadataType(tier[@"hdr_type"]) > 0) return YES;
+    }
+    return NO;
 }
 
 static BOOL DYYYPlaybackTierHasUsableSource(id tier) {

@@ -27,6 +27,7 @@
 #import "DYYYNativeAutoPlay.h"
 #import "DYYYLikeLongPressSave.h"
 #import "DYYYSettingsHelper.h"
+#import "Sources/Settings/DYYYSettingsBackupValidation.h"
 #import "DYYYUtils.h"
 
 @class DYYYIconOptionsDialogView;
@@ -41,6 +42,30 @@ void *kViewModelKey = &kViewModelKey;
 #ifdef __cplusplus
 }
 #endif
+
+// 旧 HDR/尺寸的精确归一化由 Foundation 提交 helper 完成，派生键同事务回滚。
+// 图标与偏好提交全部成功后再调用原生服务，失败回滚不留下原生连播副作用。
+static BOOL DYYYCommitValidatedBackup(NSDictionary *settings, NSDictionary<NSString *, NSData *> *icons, BOOL *nativeApplied, NSError **error) {
+    if (nativeApplied) *nativeApplied = YES;
+    @try {
+        NSString *documents = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+        NSString *domain = NSBundle.mainBundle.bundleIdentifier;
+        if (!documents.length || !domain.length) return NO;
+        NSSet *keysToRemove = settings[DYYY_ENABLE_AUTO_PLAY_KEY] ? [NSSet setWithObject:@"DYYYisEnableAutoPlay"] : [NSSet set];
+        if (!DYYYCommitSettingsBackup(settings, icons, keysToRemove,
+            NSUserDefaults.standardUserDefaults, domain, [NSURL fileURLWithPath:documents isDirectory:YES], error)) return NO;
+    } @catch (__unused NSException *exception) {
+        if (error) *error = [NSError errorWithDomain:DYYYSettingsBackupValidationErrorDomain code:3 userInfo:@{NSLocalizedDescriptionKey: @"恢复失败，提交前发生异常"}];
+        return NO;
+    }
+    if (settings[DYYY_ENABLE_AUTO_PLAY_KEY]) {
+        BOOL applied = NO;
+        @try { applied = DYYYAutoPlaySetEnabled([settings[DYYY_ENABLE_AUTO_PLAY_KEY] boolValue]); }
+        @catch (__unused NSException *exception) { applied = NO; }
+        if (nativeApplied) *nativeApplied = applied;
+    }
+    return YES;
+}
 
 static id dyyyRemoteConfigChangedToken = nil;
 static char kDYYYWeatherViewGestureInstalledKey;
@@ -4806,66 +4831,15 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
 
                   DYYYBackupPickerDelegate *pickerDelegate = [[DYYYBackupPickerDelegate alloc] init];
                   pickerDelegate.completionBlock = ^(NSURL *url) {
-                    // Delegate 回调通常在主线程，但文件操作和 Hook 调用应在后台
-                    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-                      __weak AWESettingItemModel *weakSaveItem = saveABTestConfigFileItemRef;
-
-                      NSURL *sourceURL = url; // 用户选择的源文件 URL
-
-                      NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-                      NSString *documentsDirectory = [paths firstObject];
-                      NSString *dyyyFolderPath = [documentsDirectory stringByAppendingPathComponent:@"DYYY"];
-                      NSURL *destinationURL = [NSURL fileURLWithPath:[dyyyFolderPath stringByAppendingPathComponent:@"abtest_data_fixed.json"]];
-
-                      NSFileManager *fileManager = [NSFileManager defaultManager];
-                      NSError *error = nil;
-                      BOOL success = NO;
-                      NSString *message = nil;
-
-                      if (![fileManager fileExistsAtPath:dyyyFolderPath]) {
-                          [fileManager createDirectoryAtPath:dyyyFolderPath withIntermediateDirectories:YES attributes:nil error:&error];
-                          if (error) {
-                              message = [NSString stringWithFormat:@"创建目录失败: %@", error.localizedDescription];
-                          }
+                    // 本地和远程共用串行提交路径，先验证，再写文件并发布状态。
+                    [DYYYABTestHook importLocalABTestConfigFromURL:url completion:^(BOOL success, NSError *error) {
+                      [DYYYUtils showToast:success ? @"配置已导入，部分设置需重启应用后生效" :
+                          [NSString stringWithFormat:@"导入失败: %@", error.localizedDescription ?: @"配置无效"]];
+                      if (success) {
+                          refreshSaveABTestConfigFileItem();
+                          refreshConfigConflictState();
                       }
-
-                      if (!message) {
-                          // 在同一个目录下创建一个临时文件 URL 以确保原子性
-                          NSString *tempFileName = [NSUUID UUID].UUIDString;
-                          NSURL *temporaryURL = [NSURL fileURLWithPath:[dyyyFolderPath stringByAppendingPathComponent:tempFileName]];
-
-                          if ([fileManager copyItemAtURL:sourceURL toURL:temporaryURL error:&error]) {
-                              if ([fileManager replaceItemAtURL:destinationURL withItemAtURL:temporaryURL backupItemName:nil options:0 resultingItemURL:nil error:&error]) {
-                                  [DYYYABTestHook cleanLocalABTestData];
-                                  [DYYYABTestHook loadLocalABTestConfig];
-                                  [DYYYABTestHook applyFixedABTestData];
-                                  [[NSUserDefaults standardUserDefaults] setBool:NO forKey:DYYY_REMOTE_CONFIG_FLAG_KEY];
-                                  [[NSNotificationCenter defaultCenter] postNotificationName:DYYY_REMOTE_CONFIG_CHANGED_NOTIFICATION object:nil];
-                                  success = YES;
-                                  message = @"配置已导入，部分设置需重启应用后生效";
-                              } else {
-                                  [fileManager removeItemAtURL:temporaryURL error:nil];
-                                  message = [NSString stringWithFormat:@"导入失败 (替换文件失败): %@", error.localizedDescription];
-                              }
-                          } else {
-                              message = [NSString stringWithFormat:@"导入失败 (复制到临时文件失败): %@", error.localizedDescription];
-                          }
-                      }
-                      // 回到主线程显示 Toast 和更新 UI
-                      dispatch_async(dispatch_get_main_queue(), ^{
-                        __strong AWESettingItemModel *strongSaveItemAgain = weakSaveItem;
-
-                        // 无论成功与否，都显示 Toast 告知用户结果
-                        NSString *message = success ? @"配置已导入，部分设置需重启应用后生效" : [NSString stringWithFormat:@"导入失败: %@", error.localizedDescription];
-                        [DYYYUtils showToast:message];
-
-                        // 仅在导入成功且 item 仍然存在时更新 UI
-                        if (success && strongSaveItemAgain) {
-                            refreshSaveABTestConfigFileItem();
-                            refreshConfigConflictState();
-                        }
-                      });
-                    });
+                    }];
                   };
 
                   static char kPickerDelegateKey;
@@ -4880,33 +4854,16 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
           } else if ([item.identifier isEqualToString:@"DeleteABTestConfigFile"]) {
               deleteConfigItemRef = item;
               item.cellTappedBlock = ^{
-                if (!item.isEnable)
-                    return;
-                NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-                NSString *documentsDirectory = [paths firstObject];
-                NSString *dyyyFolderPath = [documentsDirectory stringByAppendingPathComponent:@"DYYY"];
-                NSString *configPath = [dyyyFolderPath stringByAppendingPathComponent:@"abtest_data_fixed.json"];
-
-                if ([[NSFileManager defaultManager] fileExistsAtPath:configPath]) {
-                    NSError *error = nil;
-                    BOOL success = [[NSFileManager defaultManager] removeItemAtPath:configPath error:&error];
-
-                    NSString *message = success ? @"本地配置已删除成功" : [NSString stringWithFormat:@"删除失败: %@", error.localizedDescription];
-                    [DYYYUtils showToast:message];
-
-                    if (success) {
-                        [DYYYABTestHook cleanLocalABTestData];
-                        [[NSUserDefaults standardUserDefaults] setBool:NO forKey:DYYY_REMOTE_CONFIG_FLAG_KEY];
-                        [[NSNotificationCenter defaultCenter] postNotificationName:DYYY_REMOTE_CONFIG_CHANGED_NOTIFICATION object:nil];
-                        // 删除成功后修改 SaveABTestConfigFile item 的状态
-                        saveABTestConfigFileItemRef.detail = @"(文件已删除)";
-                        saveABTestConfigFileItemRef.isEnable = NO;
-                        [saveABTestConfigFileItemRef refreshCell];
-                        refreshConfigConflictState();
-                    }
-                } else {
-                    [DYYYUtils showToast:@"本地配置不存在"];
-                }
+                if (!item.isEnable) return;
+                // 删除也在同一队列失效在途更新，防止删除后的旧响应把配置恢复。
+                [DYYYABTestHook deleteLocalABTestConfigWithCompletion:^(BOOL success, NSError *error) {
+                  [DYYYUtils showToast:success ? @"本地配置已删除成功" :
+                      [NSString stringWithFormat:@"删除失败: %@", error.localizedDescription ?: @"未知错误"]];
+                  if (success) {
+                      refreshSaveABTestConfigFileItem();
+                      refreshConfigConflictState();
+                  }
+                }];
               };
           }
 
@@ -5652,34 +5609,29 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
     backupItem.colorStyle = 0;
     backupItem.isEnable = YES;
     backupItem.cellTappedBlock = ^{
+      @autoreleasepool {
+      @try {
       // 获取所有以DYYY开头的NSUserDefaults键值
       NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
       NSDictionary *allDefaults = [defaults dictionaryRepresentation];
       NSMutableDictionary *dyyySettings = [NSMutableDictionary dictionary];
 
       for (NSString *key in allDefaults.allKeys) {
-          if ([key hasPrefix:@"DYYY"]) {
+          if ([key hasPrefix:@"DYYY"] && ![key isEqualToString:@"DYYYIconsBase64"]) {
               dyyySettings[key] = [defaults objectForKey:key];
           }
       }
 
       // 查找并添加图标文件
       NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-      NSString *dyyyFolderPath = [documentsPath stringByAppendingPathComponent:@"DYYY"];
-      NSArray *iconFileNames = @[ @"like_before.png", @"like_after.png", @"comment.png", @"unfavorite.png", @"favorite.png", @"share.png", @"tab_plus.png", @"qingping.gif" ];
-      NSMutableDictionary *iconBase64Dict = [NSMutableDictionary dictionary];
-
-      for (NSString *iconFileName in iconFileNames) {
-          NSString *iconPath = [dyyyFolderPath stringByAppendingPathComponent:iconFileName];
-          if ([[NSFileManager defaultManager] fileExistsAtPath:iconPath]) {
-              // 读取图片数据并转换为Base64
-              NSData *imageData = [NSData dataWithContentsOfFile:iconPath];
-              if (imageData) {
-                  NSString *base64String = [imageData base64EncodedStringWithOptions:0];
-                  iconBase64Dict[iconFileName] = base64String;
-              }
-          }
+      NSError *iconError = nil;
+      NSDictionary *rawIcons = DYYYReadSettingsBackupIcons([NSURL fileURLWithPath:documentsPath isDirectory:YES], &iconError);
+      if (!rawIcons) {
+          [DYYYUtils showToast:iconError.localizedDescription ?: @"备份失败：图标无法安全读取"];
+          return;
       }
+      NSMutableDictionary *iconBase64Dict = [NSMutableDictionary dictionary];
+      for (NSString *name in rawIcons) iconBase64Dict[name] = [rawIcons[name] base64EncodedStringWithOptions:0];
 
       // 将图标Base64数据添加到备份设置中
       if (iconBase64Dict.count > 0) {
@@ -5687,11 +5639,12 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
       }
 
       // 转换为JSON数据
-      NSError *error;
+      NSError *error = nil;
       id jsonObject = DYYYJSONSafeObject(dyyySettings);
       NSData *sortedJsonData = [NSJSONSerialization dataWithJSONObject:jsonObject options:NSJSONWritingPrettyPrinted | NSJSONWritingSortedKeys error:&error];
-      if (error) {
-          [DYYYUtils showToast:@"备份失败：无法序列化设置数据"];
+      // 导出沿用旧 JSON 结构，但不能生成恢复入口将拒绝的半有效备份。
+      if (!sortedJsonData || !DYYYValidateSettingsBackupData(sortedJsonData, &error)) {
+          [DYYYUtils showToast:error.localizedDescription ?: @"备份失败：无法序列化设置数据"];
           return;
       }
 
@@ -5720,6 +5673,10 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
       objc_setAssociatedObject(documentPicker, &kDYYYBackupPickerDelegateKey, pickerDelegate, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
       UIViewController *topVC = topView();
       [topVC presentViewController:documentPicker animated:YES completion:nil];
+      } @catch (__unused NSException *exception) {
+          [DYYYUtils showToast:@"备份失败：读取或序列化设置异常"];
+      }
+      }
     };
     [backupItems addObject:backupItem];
 
@@ -5748,61 +5705,33 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
         }
 
         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-          NSData *jsonData = [NSData dataWithContentsOfURL:url];
-          if (!jsonData) {
-              dispatch_async(dispatch_get_main_queue(), ^{
-                [DYYYUtils showToast:@"无法读取备份文件"];
-              });
+          @autoreleasepool {
+          @try {
+          // 完整先验期间不创建图标目录、不写入偏好，坏项目不能被跳过后部分导入。
+          NSError *validationError = nil;
+          NSData *jsonData = DYYYReadSettingsBackupData(url, &validationError);
+          DYYYValidatedSettingsBackup *backup = jsonData ? DYYYValidateSettingsBackupData(jsonData, &validationError) : nil;
+          if (!backup) {
+              NSString *message = validationError.localizedDescription ?: @"备份文件格式错误";
+              dispatch_async(dispatch_get_main_queue(), ^{ [DYYYUtils showToast:message]; });
               return;
           }
-
-          NSError *jsonError;
-          NSDictionary *dyyySettings = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:&jsonError];
-          if (jsonError || ![dyyySettings isKindOfClass:[NSDictionary class]]) {
-              dispatch_async(dispatch_get_main_queue(), ^{
-                [DYYYUtils showToast:@"备份文件格式错误"];
-              });
-              return;
-          }
-
-          NSDictionary *iconBase64Dict = dyyySettings[@"DYYYIconsBase64"];
-          if (iconBase64Dict && [iconBase64Dict isKindOfClass:[NSDictionary class]]) {
-              NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-              NSString *dyyyFolderPath = [documentsPath stringByAppendingPathComponent:@"DYYY"];
-              NSFileManager *fileManager = [NSFileManager defaultManager];
-              if (![fileManager fileExistsAtPath:dyyyFolderPath]) {
-                  [fileManager createDirectoryAtPath:dyyyFolderPath withIntermediateDirectories:YES attributes:nil error:nil];
-              }
-
-              for (NSString *iconFileName in iconBase64Dict) {
-                  NSString *base64String = iconBase64Dict[iconFileName];
-                  if (![base64String isKindOfClass:[NSString class]]) {
-                      continue;
-                  }
-                  NSData *imageData = [[NSData alloc] initWithBase64EncodedString:base64String options:0];
-                  if (imageData) {
-                      NSString *iconPath = [dyyyFolderPath stringByAppendingPathComponent:iconFileName];
-                      [imageData writeToFile:iconPath atomically:YES];
-                  }
-              }
-
-              NSMutableDictionary *cleanSettings = [dyyySettings mutableCopy];
-              [cleanSettings removeObjectForKey:@"DYYYIconsBase64"];
-              dyyySettings = cleanSettings;
-          }
-
-          dyyySettings = DYYYAutoPlayNormalizeBackup(dyyySettings);
-          NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-          id autoPlayValue = dyyySettings[DYYY_ENABLE_AUTO_PLAY_KEY];
-          for (NSString *key in dyyySettings) {
-              if (![key isEqualToString:DYYY_ENABLE_AUTO_PLAY_KEY]) [defaults setObject:dyyySettings[key] forKey:key];
-          }
-
+          NSDictionary *settings = DYYYAutoPlayNormalizeBackup(backup.settings);
+          // 统一在主队列提交，避免两个恢复操作交错，也保留原生连播的主线程应用。
           dispatch_async(dispatch_get_main_queue(), ^{
-            BOOL applied = !autoPlayValue || DYYYAutoPlaySetEnabled([autoPlayValue boolValue]);
+            BOOL applied = YES;
+            NSError *writeError = nil;
+            if (!DYYYCommitValidatedBackup(settings, backup.icons, &applied, &writeError)) {
+                [DYYYUtils showToast:writeError.localizedDescription ?: @"恢复失败：无法保存设置或图标"];
+                return;
+            }
             [DYYYUtils showToast:applied ? @"设置已恢复，请重启应用以应用所有更改" : @"设置已保存，抖音原生连播暂未应用"];
             [restoreItem refreshCell];
           });
+          } @catch (__unused NSException *exception) {
+              dispatch_async(dispatch_get_main_queue(), ^{ [DYYYUtils showToast:@"恢复失败：验证或归一化异常，未提交备份"]; });
+          }
+          }
         });
       };
 

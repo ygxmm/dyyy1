@@ -192,9 +192,6 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
 // Modern风格长按面板（新版UI）
 %hook AWEModernLongPressPanelTableViewController
 - (NSArray *)dataArray {
-    // 面板一弹出就记下当前作品，面板里的保存项落到相册时才带得上说明文字。
-    [DYYYManager setAlbumDescriptionContextWithAwemeModel:self.awemeModel];
-
     // 检查是否开启精简模式
     BOOL simplifyPanel = DYYYGetBool(@"DYYYSimplifyLongPressPanel");
 
@@ -408,7 +405,8 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
               return;
           }
           // 使用封装的方法进行解析下载
-          [DYYYManager parseAndDownloadVideoWithShareLink:shareLink apiKey:apiKey];
+          [DYYYManager parseAndDownloadVideoWithShareLink:shareLink apiKey:apiKey
+                                       albumDescription:[DYYYManager albumDescriptionForAwemeModel:self.awemeModel]];
           AWELongPressPanelManager *panelManager = [%c(AWELongPressPanelManager) shareInstance];
           [panelManager dismissWithAnimation:YES completion:nil];
         };
@@ -442,7 +440,8 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
           AWEMusicModel *musicModel = awemeModel.music;
           if (musicModel && musicModel.playURL && musicModel.playURL.originURLList.count > 0) {
               NSURL *url = [NSURL URLWithString:musicModel.playURL.originURLList.firstObject];
-              [DYYYManager downloadMedia:url mediaType:MediaTypeAudio audio:nil completion:nil];
+              [DYYYManager downloadMedia:url mediaType:MediaTypeAudio audio:nil
+                       albumDescription:[DYYYManager albumDescriptionForAwemeModel:awemeModel] completion:nil];
           }
           AWELongPressPanelManager *panelManager = [%c(AWELongPressPanelManager) shareInstance];
           [panelManager dismissWithAnimation:YES completion:nil];
@@ -733,9 +732,6 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
 // 经典风格长按面板
 %hook AWELongPressPanelTableViewController
 - (NSArray *)dataArray {
-    // 面板一弹出就记下当前作品，面板里的保存项落到相册时才带得上说明文字。
-    [DYYYManager setAlbumDescriptionContextWithAwemeModel:self.awemeModel];
-
     NSArray *originalArray = %orig;
     if (!originalArray) {
         originalArray = @[];
@@ -954,7 +950,8 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
               return;
           }
           // 使用封装的方法进行解析下载
-          [DYYYManager parseAndDownloadVideoWithShareLink:shareLink apiKey:apiKey];
+          [DYYYManager parseAndDownloadVideoWithShareLink:shareLink apiKey:apiKey
+                                       albumDescription:[DYYYManager albumDescriptionForAwemeModel:self.awemeModel]];
           AWELongPressPanelManager *panelManager = [%c(AWELongPressPanelManager) shareInstance];
           [panelManager dismissWithAnimation:YES completion:nil];
         };
@@ -988,7 +985,8 @@ static void DYYYLongPressPresentFilterKeywordPanel(NSString *descText, NSString 
           AWEMusicModel *musicModel = awemeModel.music;
           if (musicModel && musicModel.playURL && musicModel.playURL.originURLList.count > 0) {
               NSURL *url = [NSURL URLWithString:musicModel.playURL.originURLList.firstObject];
-              [DYYYManager downloadMedia:url mediaType:MediaTypeAudio audio:nil completion:nil];
+              [DYYYManager downloadMedia:url mediaType:MediaTypeAudio audio:nil
+                       albumDescription:[DYYYManager albumDescriptionForAwemeModel:awemeModel] completion:nil];
           }
           AWELongPressPanelManager *panelManager = [%c(AWELongPressPanelManager) shareInstance];
           [panelManager dismissWithAnimation:YES completion:nil];

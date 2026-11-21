@@ -12,6 +12,10 @@ typedef NS_ENUM(uint32_t, DYYYPlaybackQualityMode) {
 FOUNDATION_EXPORT NSString *DYYYNormalizedPlaybackQualityPolicy(id _Nullable preference);
 FOUNDATION_EXPORT DYYYPlaybackQualityMode DYYYPlaybackQualityModeForSettings(BOOL enabled, id _Nullable preference);
 
+// 过滤与选流共用 HDR 标记判据；原始字典仅检查当前作品的 video 结构。
+FOUNDATION_EXPORT BOOL DYYYPlaybackTierHasHDRMetadata(id _Nullable tier);
+FOUNDATION_EXPORT BOOL DYYYAwemeRawVideoHasHDRMetadata(id _Nullable rawAweme);
+
 // Usable issued sources only; bitrate first, real dimensions break equal rates.
 FOUNDATION_EXPORT id _Nullable DYYYSelectHighestPlaybackTier(NSArray * _Nullable tiers);
 FOUNDATION_EXPORT id _Nullable DYYYSelectHDRPlaybackTier(NSArray * _Nullable tiers);

@@ -19,14 +19,10 @@
 #pragma mark - UI相关方法
 
 #pragma mark - 相册说明文字
-/**
- * 记录当前作品，之后保存到相册的媒体会带上作者、作者 ID、主页 URL、作品文案、作品 URL 和发布时间说明。
- * 主页和作品 URL 只保留精简网页地址的协议、域名和路径，不写入分享查询参数。
- * 在弹出下载菜单前调用即可；传 nil 表示本次保存不写说明。
- */
+/** 兼容旧调用，不再保存跨入口的说明；作品入口应把说明传给下载或解析重载。 */
 + (void)setAlbumDescriptionContextWithAwemeModel:(AWEAwemeModel *)awemeModel;
 
-/** 按当前作品生成说明文字，取不到任何字段时返回 nil。 */
+/** 按当前作品生成说明文字；说明开关关闭或取不到字段时返回 nil。 */
 + (NSString *)albumDescriptionForAwemeModel:(AWEAwemeModel *)awemeModel;
 
 #pragma mark - 媒体保存方法
@@ -40,10 +36,17 @@
 - (void)saveLivePhoto:(NSString *)imageSourcePath videoUrl:(NSString *)videoSourcePath;
 
 #pragma mark - 媒体下载方法
-/** 下载媒体文件 */
+/** 下载媒体文件（默认不写作品说明）。 */
 + (void)downloadMedia:(NSURL *)url mediaType:(MediaType)mediaType audio:(NSURL *)audioURL completion:(void (^)(BOOL success))completion;
 
-/** 带进度的媒体下载 */
+/** 下载并保存媒体，使用入口传入的作品说明快照。 */
++ (void)downloadMedia:(NSURL *)url
+            mediaType:(MediaType)mediaType
+                audio:(NSURL *)audioURL
+     albumDescription:(NSString *)albumDescription
+           completion:(void (^)(BOOL success))completion;
+
+/** 带进度的媒体下载；成功时临时文件由回调接管，取消时回调 NO、nil。 */
 + (void)downloadMediaWithProgress:(NSURL *)url
                         mediaType:(MediaType)mediaType
                             audio:(NSURL *)audioURL
@@ -90,8 +93,11 @@
 + (void)cancelAllDownloads;
 
 #pragma mark - 视频处理方法
-/** 解析分享链接并下载视频 */
+/** 解析分享链接并下载视频（默认不写作品说明）。 */
 + (void)parseAndDownloadVideoWithShareLink:(NSString *)shareLink apiKey:(NSString *)apiKey;
+
+/** 解析及后续菜单动作共用入口传入的作品说明快照。 */
++ (void)parseAndDownloadVideoWithShareLink:(NSString *)shareLink apiKey:(NSString *)apiKey albumDescription:(NSString *)albumDescription;
 
 /** 批量下载视频和图片资源 */
 + (void)batchDownloadResources:(NSArray *)videos images:(NSArray *)images;

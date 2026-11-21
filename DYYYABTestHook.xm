@@ -1,19 +1,21 @@
 #import "DYYYABTestHook.h"
 #import "DYYYConstants.h"
+#import "DYYYABConfigValidation.h"
 #import "DYYYUtils.h"
 #import <objc/runtime.h>
 
 static BOOL s_abTestBlockEnabled = NO;
 static BOOL s_isApplyingFixedData = NO;
 static NSDictionary *s_localABTestData = nil;
-static NSString *s_fileMode = nil;
+static DYYYABConfigMode s_fileMode = DYYYABConfigModeUnspecified;
 
 // 默认远程配置地址常量
 static NSString *const kDefaultRemoteConfigURL = DYYY_DEFAULT_ABTEST_URL;
 static NSString *const kDYYYTabBarHeightKey = @"DYYYTabBarHeight";
 static NSString *const kDYYYABTestTabBarHeightConfigKey = @"hp_tab_bar_custom_height_config";
 
-static dispatch_once_t s_loadOnceToken;
+static BOOL s_localConfigLoaded = NO;
+static NSUInteger s_remoteRequestGeneration = 0;
 static dispatch_queue_t s_abTestHookQueue;
 static dispatch_once_t s_queueOnceToken;
 static void *s_queueSpecificKey = &s_queueSpecificKey;
@@ -22,7 +24,7 @@ static dispatch_queue_t DYYYABTestQueue() {
     dispatch_once(&s_queueOnceToken, ^{
       if (!s_abTestHookQueue) {
           s_abTestHookQueue = dispatch_queue_create("com.dyyy.abtesthook.queue", DISPATCH_QUEUE_SERIAL);
-          // Mark the queue with specific key for reentrancy checks
+          // 标记串行队列，避免队列内同步调用造成死锁
           dispatch_queue_set_specific(s_abTestHookQueue, s_queueSpecificKey, (void *)1, NULL);
       }
     });
@@ -36,6 +38,31 @@ static void DYYYQueueSync(dispatch_block_t block) {
     } else {
         dispatch_sync(queue, block);
     }
+}
+
+// 队列内直接执行，避免提交后的应用动作排到另一份配置之后。
+static void DYYYQueueAsync(dispatch_block_t block) {
+    if (dispatch_get_specific(s_queueSpecificKey)) block();
+    else dispatch_async(DYYYABTestQueue(), block);
+}
+
+static NSString *DYYYABConfigFilePath(void) {
+    NSString *documents = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    return [[documents stringByAppendingPathComponent:@"DYYY"] stringByAppendingPathComponent:@"abtest_data_fixed.json"];
+}
+
+static void DYYYABConfigShowResult(BOOL notify, NSString *message) {
+    if (!notify) return;
+    dispatch_async(dispatch_get_main_queue(), ^{ [DYYYUtils showToast:message]; });
+}
+
+static void DYYYABConfigFinishLocalOperation(BOOL success, NSError *error, void (^completion)(BOOL, NSError *)) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if (success) {
+          [[NSNotificationCenter defaultCenter] postNotificationName:DYYY_REMOTE_CONFIG_CHANGED_NOTIFICATION object:nil];
+      }
+      if (completion) completion(success, error);
+    });
 }
 
 static NSNumber *DYYYResolveTabBarHeightFromSettings(void) {
@@ -116,8 +143,11 @@ static void DYYYApplyTabBarHeightToCurrentABTestDataIfNeeded(void) {
     }
 
     s_isApplyingFixedData = YES;
-    [manager setAbTestData:patchedData];
-    s_isApplyingFixedData = NO;
+    @try {
+        [manager setAbTestData:patchedData];
+    } @finally {
+        s_isApplyingFixedData = NO;
+    }
     NSLog(@"[DYYY] 已通过 ABTest 注入底栏高度: %@", contentHeight);
 }
 
@@ -125,41 +155,28 @@ static void DYYYApplyTabBarHeightToCurrentABTestDataIfNeeded(void) {
 
 /** 依据 DYYYABTestModeString 判断模式：YES 覆写，NO 替换。 */
 + (BOOL)isPatchMode {
-    NSString *savedMode = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYABTestModeString"];
-    if (savedMode) {
-        if ([savedMode isEqualToString:DYYY_REMOTE_MODE_STRING] || [[savedMode lowercaseString] isEqualToString:@"remote"]) {
-            if (s_fileMode) {
-                return ![[s_fileMode lowercaseString] isEqualToString:@"DYYY_MODE_REPLACE"];
-            }
-            return YES;
-        }
-        if ([savedMode isEqualToString:@"替换模式：忽略原配置，使用新数据"] || [[savedMode lowercaseString] isEqualToString:@"DYYY_MODE_REPLACE"]) {
-            return NO;
-        }
-        return YES;
-    }
-    if (s_fileMode) {
-        return ![[s_fileMode lowercaseString] isEqualToString:@"DYYY_MODE_REPLACE"];
-    }
-    return YES;
+    __block BOOL patch = YES;
+    DYYYQueueSync(^{
+      id saved = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYABTestModeString"];
+      DYYYABConfigMode mode = DYYYABConfigModeForPreference(saved);
+      // 非法设置保持旧有覆写回退；未设置或远程模式才服从文件模式。
+      patch = (saved && mode == DYYYABConfigModeUnspecified) ? YES : DYYYABConfigUsesPatchMode(mode, s_fileMode);
+    });
+    return patch;
 }
 
 /** 本地文件是否已加载。 */
 + (BOOL)isLocalConfigLoaded {
     __block BOOL loaded = NO;
     DYYYQueueSync(^{
-      loaded = (s_localABTestData != nil);
+      loaded = s_localConfigLoaded;
     });
     return loaded;
 }
 
 /** 当前是否处于远程模式。 */
 + (BOOL)isRemoteMode {
-    NSString *savedMode = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYABTestModeString"];
-    if (savedMode) {
-        return [savedMode isEqualToString:DYYY_REMOTE_MODE_STRING] || [[savedMode lowercaseString] isEqualToString:@"remote"];
-    }
-    return NO;
+    return DYYYABConfigModeForPreference([[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYABTestModeString"]) == DYYYABConfigModeRemote;
 }
 
 /** 禁止下发配置是否开启。 */
@@ -173,77 +190,82 @@ static void DYYYApplyTabBarHeightToCurrentABTestDataIfNeeded(void) {
 
 /** 设置禁止下发配置开关。 */
 + (void)setABTestBlockEnabled:(BOOL)enabled {
-    dispatch_async(DYYYABTestQueue(), ^{
+    DYYYQueueAsync(^{
       s_abTestBlockEnabled = enabled;
     });
 }
 
-/** 清除本地 ABTest 数据并重置 once 令牌，供 loadLocalABTestConfig 重新加载。 */
+/** 清除内存配置，并使清除前启动的远程请求失效。 */
 + (void)cleanLocalABTestData {
-    dispatch_async(DYYYABTestQueue(), ^{
+    DYYYQueueAsync(^{
+      ++s_remoteRequestGeneration;
       s_localABTestData = nil;
-      s_loadOnceToken = 0;
+      s_fileMode = DYYYABConfigModeUnspecified;
+      s_localConfigLoaded = NO;
       NSLog(@"[DYYY] 本地ABTest配置已清除");
     });
 }
 
-/** 加载本地 ABTest 配置文件（dispatch_once 仅加载一次），不负责应用。 */
+/** 仅成功读取有效配置后标记已加载，失败允许后续重试。 */
 + (void)loadLocalABTestConfig {
-    dispatch_async(DYYYABTestQueue(), ^{
-      dispatch_once(&s_loadOnceToken, ^{
-        // 获取存储路径
-        NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-        NSString *documentsDirectory = [paths firstObject];
-        NSString *dyyyFolderPath = [documentsDirectory stringByAppendingPathComponent:@"DYYY"];
-        NSString *jsonFilePath = [dyyyFolderPath stringByAppendingPathComponent:@"abtest_data_fixed.json"];
+    DYYYQueueAsync(^{
+      if (s_localConfigLoaded) return;
+      NSError *error = nil;
+      NSData *jsonData = DYYYABConfigReadLocalFileURL([NSURL fileURLWithPath:DYYYABConfigFilePath()], &error);
+      DYYYABConfigMode mode = DYYYABConfigModeUnspecified;
+      NSDictionary *data = DYYYABConfigParseJSON(jsonData, &mode, &error);
+      if (!data) {
+          NSLog(@"[DYYY] ABTest本地配置读取或校验失败: %@", error.localizedDescription);
+          return;
+      }
+      s_localABTestData = data;
+      s_fileMode = mode;
+      s_localConfigLoaded = YES;
+      NSLog(@"[DYYY] ABTest本地配置已从文件加载成功");
+    });
+}
 
-        // 确保目录存在
-        NSFileManager *fileManager = [NSFileManager defaultManager];
-        if (![fileManager fileExistsAtPath:dyyyFolderPath]) {
-            NSError *error = nil;
-            [fileManager createDirectoryAtPath:dyyyFolderPath withIntermediateDirectories:YES attributes:nil error:&error];
-            if (error) {
-                NSLog(@"[DYYY] 创建DYYY目录失败: %@", error.localizedDescription);
-            }
-        }
+/** 导入和远程提交共用队列及持久化校验，失败不触碰旧状态。 */
++ (void)importLocalABTestConfigFromURL:(NSURL *)url completion:(void (^)(BOOL, NSError *))completion {
+    DYYYQueueAsync(^{
+      ++s_remoteRequestGeneration;
+      NSError *error = nil;
+      NSData *jsonData = DYYYABConfigReadLocalFileURL(url, &error);
+      NSDictionary *config = nil;
+      DYYYABConfigMode mode = DYYYABConfigModeUnspecified;
+      if (!jsonData || !DYYYABConfigPersistJSON(jsonData, DYYYABConfigFilePath(), &config, &mode, NULL, &error)) {
+          DYYYABConfigFinishLocalOperation(NO, error, completion);
+          return;
+      }
+      s_localABTestData = config;
+      s_fileMode = mode;
+      s_localConfigLoaded = YES;
+      [[NSUserDefaults standardUserDefaults] setBool:NO forKey:DYYY_REMOTE_CONFIG_FLAG_KEY];
+      [self applyFixedABTestData];
+      DYYYABConfigFinishLocalOperation(YES, nil, completion);
+    });
+}
 
-        // 读取本地配置文件
-        NSError *error = nil;
-        NSData *jsonData = [NSData dataWithContentsOfFile:jsonFilePath options:0 error:&error];
-
-        if (jsonData) {
-            NSDictionary *loadedData = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:&error];
-            if (loadedData && !error) {
-                id modeValue = loadedData[@"mode"];
-                s_fileMode = nil;
-                if ([modeValue isKindOfClass:[NSString class]]) {
-                    s_fileMode = [modeValue lowercaseString];
-                }
-                NSDictionary *actualData = loadedData[@"data"];
-                if (!actualData) {
-                    NSMutableDictionary *tmp = [loadedData mutableCopy];
-                    [tmp removeObjectForKey:@"mode"];
-                    actualData = [tmp copy];
-                }
-                s_localABTestData = [actualData copy];
-                NSLog(@"[DYYY] ABTest本地配置已从文件加载成功");
-                return;
-            } else {
-                NSLog(@"[DYYY] ABTest本地配置解析失败: %@", error.localizedDescription);
-            }
-        } else {
-            NSLog(@"[DYYY] ABTest本地配置文件不存在或无法读取");
-        }
-
-        // 加载失败时的处理
-        s_localABTestData = nil;
-      });
+/** 删除与导入、网络提交互斥，只有磁盘已删除才清除内存和远程标记。 */
++ (void)deleteLocalABTestConfigWithCompletion:(void (^)(BOOL, NSError *))completion {
+    DYYYQueueAsync(^{
+      ++s_remoteRequestGeneration;
+      NSError *error = nil;
+      if (!DYYYABConfigDeleteFile(DYYYABConfigFilePath(), &error)) {
+          DYYYABConfigFinishLocalOperation(NO, error, completion);
+          return;
+      }
+      s_localABTestData = nil;
+      s_fileMode = DYYYABConfigModeUnspecified;
+      s_localConfigLoaded = NO;
+      [[NSUserDefaults standardUserDefaults] setBool:NO forKey:DYYY_REMOTE_CONFIG_FLAG_KEY];
+      DYYYABConfigFinishLocalOperation(YES, nil, completion);
     });
 }
 
 /** 按当前模式把本地 ABTest 数据应用到 Manager，内部含应用条件判断。 */
 + (void)applyFixedABTestData {
-    dispatch_async(DYYYABTestQueue(), ^{
+    DYYYQueueAsync(^{
       if (!s_abTestBlockEnabled || !s_localABTestData) {
           NSLog(@"[DYYY] 不满足应用本地配置的条件 (禁止下发=%@, 数据是否为空=%@)", s_abTestBlockEnabled ? @"开启" : @"关闭", s_localABTestData ? @"否" : @"是");
           s_isApplyingFixedData = NO; // 确保标志关闭
@@ -262,7 +284,9 @@ static void DYYYApplyTabBarHeightToCurrentABTestDataIfNeeded(void) {
 
       if (usingPatchMode) {
           // 覆写模式：本地配置合并现有配置
-          NSMutableDictionary *mergedData = [NSMutableDictionary dictionaryWithDictionary:[manager abTestData] ?: @{}];
+          id currentData = [manager abTestData];
+          if (currentData && ![currentData isKindOfClass:[NSDictionary class]]) return;
+          NSMutableDictionary *mergedData = [NSMutableDictionary dictionaryWithDictionary:currentData ?: @{}];
           [mergedData addEntriesFromDictionary:s_localABTestData];
           dataToApply = [mergedData copy];
       } else {
@@ -275,15 +299,13 @@ static void DYYYApplyTabBarHeightToCurrentABTestDataIfNeeded(void) {
           dataToApply = DYYYInjectTabBarHeightConfig(dataToApply ?: @{}, contentHeight);
       }
 
-      // 设置状态标志，表明接下来对 setAbTestData: 的调用是来自我们 Hook 的应用逻辑
+      // 仅本次本地应用临时放行，原生抛出异常也必须恢复拦截状态。
       s_isApplyingFixedData = YES;
-
-      // 应用数据到 Manager
-      // 这里的调用发生在队列上，Hook 内部的检查也会在队列上同步进行，是安全的。
-      [manager setAbTestData:dataToApply];
-
-      // 重置状态标志
-      s_isApplyingFixedData = NO;
+      @try {
+          [manager setAbTestData:dataToApply];
+      } @finally {
+          s_isApplyingFixedData = NO;
+      }
 
       NSLog(@"[DYYY] ABTest本地配置已应用");
     });
@@ -295,78 +317,55 @@ static void DYYYApplyTabBarHeightToCurrentABTestDataIfNeeded(void) {
     return manager ? [manager abTestData] : nil;
 }
 
-/** 从网络检查并下载最新配置 */
+/** 网络回调统一回到串行队列，最后发起的请求才有提交资格。 */
 + (void)checkForRemoteConfigUpdate:(BOOL)notify {
-    dispatch_async(DYYYABTestQueue(), ^{
-      NSString *urlString = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYRemoteConfigURL"];
-      if (urlString.length == 0) {
-          urlString = kDefaultRemoteConfigURL;
-      }
-      NSURLComponents *components = [NSURLComponents componentsWithString:urlString];
-      NSString *scheme = components.scheme.lowercaseString;
-      BOOL invalidURL = NO;
-      if (!components || components.host.length == 0 || !scheme || ![scheme isEqualToString:@"https"]) {
-          invalidURL = YES;
-      }
-      NSURL *url = components.URL;
-      if (invalidURL || !url) {
-          if (notify) {
-              dispatch_async(dispatch_get_main_queue(), ^{
-                [DYYYUtils showToast:@"配置地址无效"];
-              });
-          }
+    DYYYQueueAsync(^{
+      NSUInteger generation = ++s_remoteRequestGeneration;
+      id value = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYRemoteConfigURL"];
+      if (!value || ([value isKindOfClass:[NSString class]] && [value length] == 0)) value = kDefaultRemoteConfigURL;
+      NSURL *url = DYYYABConfigHTTPSURL(value);
+      if (!url) {
+          DYYYABConfigShowResult(notify, @"配置地址无效");
           return;
       }
       NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithURL:url
-                                                               completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-                                                                 BOOL updated = NO;
-                                                                 NSError *validationError = nil;
-                                                                 if (data && !error) {
-                                                                     id jsonObject = [NSJSONSerialization JSONObjectWithData:data options:0 error:&validationError];
-                                                                     if (validationError || ![jsonObject isKindOfClass:[NSDictionary class]]) {
-                                                                         if (!validationError) {
-                                                                             validationError = [NSError errorWithDomain:@"com.dyyy.remoteconfig" code:-1 userInfo:@{NSLocalizedDescriptionKey : @"配置格式错误"}];
-                                                                         }
-                                                                     } else {
-                                                                         NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-                                                                         NSString *documentsDirectory = [paths firstObject];
-                                                                         NSString *dyyyFolderPath = [documentsDirectory stringByAppendingPathComponent:@"DYYY"];
-                                                                         NSString *jsonFilePath = [dyyyFolderPath stringByAppendingPathComponent:@"abtest_data_fixed.json"];
-                                                                         [[NSFileManager defaultManager] createDirectoryAtPath:dyyyFolderPath withIntermediateDirectories:YES attributes:nil error:nil];
-                                                                         NSData *existingData = [NSData dataWithContentsOfFile:jsonFilePath];
-                                                                         if (!existingData || ![existingData isEqualToData:data]) {
-                                                                             [data writeToFile:jsonFilePath atomically:YES];
-                                                                             updated = YES;
-                                                                         }
-                                                                         if ([DYYYABTestHook isRemoteMode]) {
-                                                                             [[NSUserDefaults standardUserDefaults] setBool:YES forKey:DYYY_REMOTE_CONFIG_FLAG_KEY];
-                                                                             [[NSNotificationCenter defaultCenter] postNotificationName:DYYY_REMOTE_CONFIG_CHANGED_NOTIFICATION object:nil];
-                                                                         }
-                                                                     }
-                                                                 }
-                                                                 dispatch_async(dispatch_get_main_queue(), ^{
-                                                                   if (error || !data) {
-                                                                       if (notify) {
-                                                                           [DYYYUtils showToast:@"配置更新失败"];
-                                                                       }
-                                                                   } else if (validationError) {
-                                                                       if (notify) {
-                                                                           [DYYYUtils showToast:@"配置解析失败"];
-                                                                       }
-                                                                   } else if (updated) {
-                                                                       if (notify) {
-                                                                           [DYYYUtils showToast:@"配置已更新"];
-                                                                       }
-                                                                       [DYYYABTestHook cleanLocalABTestData];
-                                                                       [DYYYABTestHook loadLocalABTestConfig];
-                                                                       [DYYYABTestHook applyFixedABTestData];
-                                                                   } else {
-                                                                       if (notify) {
-                                                                           [DYYYUtils showToast:@"已是最新配置"];
-                                                                       }
-                                                                   }
-                                                                 });
-                                                               }];
+          completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        DYYYQueueAsync(^{
+          if (generation != s_remoteRequestGeneration) return;
+          if (error || !DYYYABConfigAcceptsResponse(response) || !data || !DYYYABConfigCanAppendBytes(0, data.length)) {
+              DYYYABConfigShowResult(notify, @"配置更新失败");
+              return;
+          }
+          NSError *commitError = nil;
+          NSDictionary *config = nil;
+          DYYYABConfigMode mode = DYYYABConfigModeUnspecified;
+          BOOL updated = NO;
+          if (!DYYYABConfigPersistJSON(data, DYYYABConfigFilePath(), &config, &mode, &updated, &commitError)) {
+              NSLog(@"[DYYY] ABTest远程配置校验或保存失败: %@", commitError.localizedDescription);
+              DYYYABConfigShowResult(notify, @"配置校验或保存失败");
+              return;
+          }
+          // 磁盘成功后一次发布配置，不清空旧状态，不排入二次异步加载。
+          s_localABTestData = config;
+          s_fileMode = mode;
+          s_localConfigLoaded = YES;
+          [self applyFixedABTestData];
+          BOOL remoteMode = [self isRemoteMode];
+          if (remoteMode) {
+              [[NSUserDefaults standardUserDefaults] setBool:YES forKey:DYYY_REMOTE_CONFIG_FLAG_KEY];
+          }
+          // 观察者会同步读取本队列，通知必须在队列退出后从主线程发送。
+          dispatch_async(dispatch_get_main_queue(), ^{
+            __block BOOL current = NO;
+            DYYYQueueSync(^{ current = (generation == s_remoteRequestGeneration); });
+            if (!current) return;
+            if (remoteMode && [self isRemoteMode]) {
+                [[NSNotificationCenter defaultCenter] postNotificationName:DYYY_REMOTE_CONFIG_CHANGED_NOTIFICATION object:nil];
+            }
+            if (notify) [DYYYUtils showToast:updated ? @"配置已更新" : @"已是最新配置"];
+          });
+        });
+      }];
       [task resume];
     });
 }
@@ -487,7 +486,7 @@ static void DYYYApplyTabBarHeightToCurrentABTestDataIfNeeded(void) {
     %init;
 
     // 在队列上异步读取初始状态并加载/应用配置
-    dispatch_async(DYYYABTestQueue(), ^{
+    DYYYQueueAsync(^{
       s_abTestBlockEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:@"DYYYABTestBlockEnabled"];
 
       NSString *currentMode = nil;
