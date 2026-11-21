@@ -3,6 +3,7 @@
 #import "DYYYUtils.h"
 #import "AwemeHeaders.h"
 #import <objc/runtime.h>
+#import <math.h>
 
 @interface DYYYFullscreenPlayerState : NSObject
 @property(nonatomic, weak) UIViewController *owner;
@@ -19,6 +20,17 @@
 @property(nonatomic, assign) CGPoint captionAppliedCenter;
 @property(nonatomic, assign) BOOL applying;
 @property(nonatomic, assign) BOOL adjusted;
+@property(nonatomic, weak) UIViewController *playerOwner;
+@property(nonatomic, weak) AWEAwemeModel *playerModel;
+@property(nonatomic, weak) id playerContent;
+@property(nonatomic, copy) NSString *playerItemID;
+@property(nonatomic, weak) UIView *playerSuperview;
+@property(nonatomic, weak) UIView *playerCell;
+@property(nonatomic, weak) UIWindow *playerWindow;
+@property(nonatomic, assign) CGRect playerSuperviewBounds;
+@property(nonatomic, assign) CGSize playerCellSize;
+@property(nonatomic, assign) BOOL playerCanCache;
+@property(nonatomic, assign) BOOL awaitingNativeFrame;
 @property(nonatomic, assign) CGRect normalWindowFrame;
 @property(nonatomic, assign) BOOL hasNormalWindowFrame;
 @property(nonatomic, assign) CGSize normalRenderSize;
@@ -45,7 +57,7 @@
 @end
 
 @implementation DYYYFullscreenCoordinator
-+ (NSString *)buildIdentifier { return @"fullscreen-creator-native-20261024.2"; }
++ (NSString *)buildIdentifier { return @"fullscreen-native-position-20261121.1"; }
 + (NSString *)contentSourceForController:(UIViewController *)controller {
     // 以当前内容来源为准，不能仅凭它仍挂在首页导航栈中判断。
     for (NSUInteger depth = 0; controller && depth < 8; depth++, controller = controller.parentViewController) {
@@ -564,7 +576,10 @@
     if (window && (!CGSizeEqualToSize(state.layoutWindowSize, window.bounds.size) || !UIEdgeInsetsEqualToEdgeInsets(state.layoutSafeArea, window.safeAreaInsets))) {
         state.layoutWindowSize = window.bounds.size;
         state.layoutSafeArea = window.safeAreaInsets;
+        state.awaitingNativeFrame = [DYYYFullscreenGeometry awaitsNativePlayerFrame:state.awaitingNativeFrame
+            adjusted:state.adjusted current:player.frame lastApplied:state.lastAppliedFrame];
         state.hasNativeFrame = NO;
+        state.adjusted = NO;
         state.hasNormalWindowFrame = NO;
         state.normalRenderSize = CGSizeZero;
         state.hasClosedImageTransform = NO;
@@ -585,7 +600,8 @@
     return CGRectIntersectsRect([view convertRect:view.bounds toView:view.window], view.window.bounds);
 }
 + (UIViewController *)owner:(UIView *)player state:(DYYYFullscreenPlayerState *)state {
-    if (state.owner && state.owner.viewIfLoaded.window == player.window && [player isDescendantOfView:state.owner.viewIfLoaded]) return state.owner;
+    // 复用时旧 owner 仍可能是祖先；重新查找最近的播放控制器，不能只验证 descendant。
+    state.owner = nil;
     UIResponder *responder = player;
     for (NSUInteger i = 0; responder && i < 16; i++, responder = responder.nextResponder) {
         if ([responder isKindOfClass:[UIViewController class]]) {
@@ -628,10 +644,82 @@
     }
     return NO;
 }
-+ (CGRect)targetForPlayer:(UIView *)player native:(CGRect)native state:(DYYYFullscreenPlayerState *)state {
-    if (!DYYYGetBool(@"DYYYEnableFullScreen") || ![self visible:player]) return native;
-    UIWindow *window = player.window;
++ (UIViewController *)synchronizePlayer:(UIView *)player state:(DYYYFullscreenPlayerState *)state {
     UIViewController *owner = [self owner:player state:state];
+    AWEAwemeModel *model = [owner respondsToSelector:@selector(model)] ? [(AWEPlayVideoViewController *)owner model] : nil;
+    id content = [model respondsToSelector:@selector(video)] ? model.video : nil;
+    id identifier = [model respondsToSelector:@selector(itemID)] ? model.itemID : nil;
+    NSString *itemID = [identifier isKindOfClass:NSString.class] ? identifier : nil;
+    content = content ?: model;
+    UIView *cell = [self cellForPlayer:player owner:owner];
+    BOOL canCache = model && content && itemID.length && player.window && player.superview && cell && cell.window == player.window &&
+        CGAffineTransformIsIdentity(player.transform) && CGAffineTransformIsIdentity(player.superview.transform) &&
+        CGAffineTransformIsIdentity(cell.transform);
+    BOOL sameItem = state.playerItemID == itemID || [state.playerItemID isEqualToString:itemID];
+    // 作品标识、对象及坐标系都要相同；旧视图上的自身结果不自动升级成新作品的原生基准。
+    if (!canCache || state.playerOwner != owner || state.playerModel != model || state.playerContent != content || !sameItem ||
+        state.playerCell != cell || state.playerSuperview != player.superview || state.playerWindow != player.window ||
+        !CGRectEqualToRect(state.playerSuperviewBounds, player.superview.bounds) || !CGSizeEqualToSize(state.playerCellSize, cell.bounds.size)) {
+        state.awaitingNativeFrame = [DYYYFullscreenGeometry awaitsNativePlayerFrame:state.awaitingNativeFrame
+            adjusted:state.adjusted current:player.frame lastApplied:state.lastAppliedFrame];
+        state.hasNativeFrame = NO;
+        state.adjusted = NO;
+        state.hasNormalWindowFrame = NO;
+        state.normalRenderSize = CGSizeZero;
+        state.normalWindow = nil;
+        state.normalCell = nil;
+    }
+    state.awaitingNativeFrame = [DYYYFullscreenGeometry awaitsNativePlayerFrame:state.awaitingNativeFrame
+        adjusted:NO current:player.frame lastApplied:state.lastAppliedFrame];
+    state.playerOwner = owner;
+    state.playerModel = model;
+    state.playerContent = content;
+    state.playerItemID = itemID;
+    state.playerCell = cell;
+    state.playerSuperview = player.superview;
+    state.playerWindow = player.window;
+    state.playerSuperviewBounds = player.superview.bounds;
+    state.playerCellSize = cell.bounds.size;
+    state.playerCanCache = canCache;
+    return owner;
+}
++ (void)rememberNativeFrame:(CGRect)frame forPlayer:(UIView *)player state:(DYYYFullscreenPlayerState *)state {
+    UIView *cell = state.playerCell;
+    UIWindow *window = player.window;
+    BOOL valid = state.playerCanCache && !state.awaitingNativeFrame && cell && cell.window == window &&
+        window && player.superview && [DYYYFullscreenGeometry isUsablePlayerFrame:frame];
+    if (!valid) {
+        state.hasNormalWindowFrame = NO;
+        return;
+    }
+    CGRect normal = [player.superview convertRect:frame toView:window];
+    CGRect reference = [cell convertRect:cell.bounds toView:window];
+    if (![DYYYFullscreenGeometry isUsablePlayerFrame:normal] || ![DYYYFullscreenGeometry isUsablePlayerFrame:reference]) {
+        state.hasNormalWindowFrame = NO;
+        return;
+    }
+    state.normalWindowFrame = normal;
+    state.normalCell = cell;
+    state.normalCellWindowFrame = reference;
+    state.hasNormalWindowFrame = YES;
+    state.normalWindow = window;
+}
++ (CGRect)normalFrameForPlayer:(UIView *)player state:(DYYYFullscreenPlayerState *)state {
+    UIView *cell = state.playerCell;
+    UIWindow *window = player.window;
+    if (!state.hasNormalWindowFrame || !window || state.normalWindow != window || state.normalCell != cell ||
+        cell.window != window || !player.superview) return CGRectNull;
+    CGRect reference = [cell convertRect:cell.bounds toView:window];
+    CGRect normal = [DYYYFullscreenGeometry translateRect:state.normalWindowFrame fromReference:state.normalCellWindowFrame toReference:reference];
+    if (CGRectIsNull(normal)) return CGRectNull;
+    CGRect local = [player.superview convertRect:normal fromView:window];
+    return [DYYYFullscreenGeometry isUsablePlayerFrame:local] ? local : CGRectNull;
+}
++ (CGRect)targetForPlayer:(UIView *)player native:(CGRect)native state:(DYYYFullscreenPlayerState *)state {
+    if (!DYYYGetBool(@"DYYYEnableFullScreen") || ![self visible:player] ||
+        !state.playerCanCache || state.awaitingNativeFrame || !state.hasNativeFrame) return native;
+    UIWindow *window = player.window;
+    UIViewController *owner = state.playerOwner;
     BOOL recommended = [self usesRecommendedLayoutForController:owner];
     if (![self usesFullscreenLayoutForController:owner]) return native;
     if ([self isImageContentController:owner]) {
@@ -640,15 +728,17 @@
         return native;
     }
     BOOL activeComment = [self hasCommentInWindow:window];
-    UIView *cell = [self cellForPlayer:player owner:owner];
-    if (recommended && DYYYGetBool(@"DYYYEnableCommentBlur") && activeComment && state.hasNormalWindowFrame && state.normalWindow == window &&
-        state.normalCell == cell && cell.window == window && player.superview) {
-        // 预加载下一页时记录的窗口 y 不能直接用于已滚到屏幕中心的页面。
-        CGRect reference = [cell convertRect:cell.bounds toView:window];
-        CGRect normal = [DYYYFullscreenGeometry translateRect:state.normalWindowFrame fromReference:state.normalCellWindowFrame toReference:reference];
-        if (!CGRectIsNull(normal)) return [player.superview convertRect:normal fromView:window];
-    }
+    UIView *cell = state.playerCell;
     if (!owner || !cell || cell.window != window || !player.superview) return native;
+    if (!activeComment) {
+        // 普通播放只记录本作品原生几何，不按宿主 bounds、交互层高度或视频横竖比改写。
+        [self rememberNativeFrame:native forPlayer:player state:state];
+        return native;
+    }
+    if (DYYYGetBool(@"DYYYEnableCommentBlur")) {
+        CGRect normal = recommended ? [self normalFrameForPlayer:player state:state] : CGRectNull;
+        return CGRectIsNull(normal) ? native : normal;
+    }
     CGRect viewport = CGRectIntersection([cell convertRect:cell.bounds toView:window], window.bounds);
     if (CGRectIsNull(viewport) || CGRectIsEmpty(viewport)) return native;
     CGSize media = CGSizeZero;
@@ -659,7 +749,7 @@
         state.normalRenderSize = CGSizeZero;
         return native;
     }
-    CGRect panel = DYYYGetBool(@"DYYYEnableCommentBlur") ? CGRectNull : [self panelInWindow:window viewport:viewport];
+    CGRect panel = [self panelInWindow:window viewport:viewport];
     if (!CGRectIsNull(panel)) {
         // 用满状态栏下沿到评论区顶部的空间，等比缩放时不额外预留导航栏或间距。
         CGFloat top = MAX(CGRectGetMinY(viewport), CGRectGetMinY(window.bounds) + window.safeAreaInsets.top);
@@ -671,67 +761,28 @@
         CGRect fit = [DYYYFullscreenGeometry aspectFit:media inRect:available];
         return CGRectIsNull(fit) ? native : [player.superview convertRect:fit fromView:window];
     }
-    if (!recommended) {
-        // 原生详情页只共用不透明评论下的避让计算，关闭态保留原有播放器布局。
-        if (!activeComment) {
-            state.normalWindowFrame = [player.superview convertRect:native toView:window];
-            state.normalCell = cell;
-            state.normalCellWindowFrame = [cell convertRect:cell.bounds toView:window];
-            state.hasNormalWindowFrame = YES;
-            state.normalWindow = window;
-        }
-        return native;
-    }
-    BOOL nativeFillsPage = fabs(native.size.width - viewport.size.width) < 1.0 && fabs(native.origin.x) < 1.0;
-    if (recommended && nativeFillsPage && player.superview) {
-        // Feed 全屏只有一个几何真值：播放器宿主 bounds。上游同一页会交替送入 y=0/-27.95，
-        // 交互层也会短暂在 852/792 间切换；不可逐次把这些瞬态值写回可见播放器。
-        native = [DYYYFullscreenGeometry stableFullscreenPlayerFrame:native inSuperviewBounds:player.superview.bounds];
-        if (!activeComment) {
-            state.normalWindowFrame = [player.superview convertRect:native toView:window];
-            state.normalCell = cell;
-            state.normalCellWindowFrame = [cell convertRect:cell.bounds toView:window];
-            state.hasNormalWindowFrame = YES;
-            state.normalWindow = window;
-        }
-        return native;
-    }
-    if (media.width > media.height) {
-        // 小窗/非全宽横屏沿用交互层高度，不参与首页全屏的稳定宿主规则。
-        for (UIViewController *controller in [self interactions].allObjects) {
-            UIView *interaction = controller.viewIfLoaded;
-            if (interaction.window != window || ![interaction isDescendantOfView:cell]) continue;
-            CGRect guide = [interaction convertRect:interaction.bounds toView:window];
-            if (guide.size.height > viewport.size.height * 0.6 && guide.size.height <= viewport.size.height) native.size.height = guide.size.height;
-            break;
-        }
-        if (!activeComment) {
-            state.normalWindowFrame = [player.superview convertRect:native toView:window];
-            state.normalCell = cell;
-            state.normalCellWindowFrame = [cell convertRect:cell.bounds toView:window];
-            state.hasNormalWindowFrame = YES;
-            state.normalWindow = window;
-        }
-        return native;
-    }
-    // 竖屏媒体扩展到本页底部；不影响宽度缩小的原生面板/小窗布局。
-    if (fabs(native.size.width - viewport.size.width) < 1 && fabs(native.origin.x) < 1) native.size.height = MAX(native.size.height, viewport.size.height);
-    if (!activeComment) {
-        state.normalWindowFrame = [player.superview convertRect:native toView:window];
-        state.normalCell = cell;
-        state.normalCellWindowFrame = [cell convertRect:cell.bounds toView:window];
-        state.hasNormalWindowFrame = YES;
-        state.normalWindow = window;
-    }
     return native;
 }
 + (CGRect)frameForPlayer:(UIView *)player proposed:(CGRect)frame {
     if (![NSThread isMainThread]) return frame;
     DYYYFullscreenPlayerState *state = [self state:player];
     if (state.applying) return frame;
+    [self synchronizePlayer:player state:state];
+    if (!state.playerCanCache || ![DYYYFullscreenGeometry isUsablePlayerFrame:frame]) {
+        state.hasNativeFrame = NO;
+        state.adjusted = NO;
+        state.hasNormalWindowFrame = NO;
+        state.normalRenderSize = CGSizeZero;
+        return frame;
+    }
+    // 当前作品明确收到原生 setter 输入，才解除复用后对旧自身结果的等待。
+    state.awaitingNativeFrame = NO;
     state.nativeFrame = frame;
     state.hasNativeFrame = YES;
-    return [self targetForPlayer:player native:frame state:state];
+    CGRect target = [self targetForPlayer:player native:frame state:state];
+    state.lastAppliedFrame = target;
+    state.adjusted = !CGRectEqualToRect(target, frame);
+    return target;
 }
 + (void)preparePlayer:(UIView *)player {
     if (![NSThread isMainThread]) return;
@@ -740,19 +791,46 @@
     [[self players] addObject:player];
     UIViewController *owner = [self owner:player state:state];
     [self layoutPlayerContainer:owner.parentViewController];
+    owner = [self synchronizePlayer:player state:state];
     if ([self isImageContentController:owner]) {
+        state.hasNativeFrame = NO;
+        state.adjusted = NO;
         state.hasNormalWindowFrame = NO;
         state.normalRenderSize = CGSizeZero;
         return;
     }
-    if (!state.hasNativeFrame) { state.nativeFrame = player.frame; state.hasNativeFrame = YES; }
-    CGRect target = [self targetForPlayer:player native:state.nativeFrame state:state];
-    state.adjusted = !CGRectEqualToRect(target, state.nativeFrame);
+    if (!state.playerCanCache || state.awaitingNativeFrame) return;
     CGRect current = player.frame;
-    if (fabs(current.origin.x - target.origin.x) + fabs(current.origin.y - target.origin.y) + fabs(current.size.width - target.size.width) + fabs(current.size.height - target.size.height) > 0.25) {
+    if (![DYYYFullscreenGeometry isUsablePlayerFrame:current]) {
+        state.hasNativeFrame = NO;
+        state.adjusted = NO;
+        state.hasNormalWindowFrame = NO;
+        state.normalRenderSize = CGSizeZero;
+        return;
+    }
+    CGRect savedNative = state.nativeFrame;
+    BOOL canRestore = state.hasNativeFrame && state.adjusted;
+    if (canRestore && ![self hasCommentInWindow:player.window]) {
+        savedNative = [self normalFrameForPlayer:player state:state];
+        // 参考坐标系不再可比较时，不得退回旧局部 frame。
+        canRestore = [DYYYFullscreenGeometry isUsablePlayerFrame:savedNative];
+    }
+    // 只有当前 frame 仍是本模块最后一次改写的结果，才允许撤销评论避让。
+    // 原生通过 bounds/center 或转场更新了几何时，以实际 frame 为准，绝不回放旧值。
+    CGRect native = [DYYYFullscreenGeometry nativePlayerFrameForLayout:current savedNative:savedNative
+        lastApplied:state.lastAppliedFrame adjusted:canRestore];
+    state.nativeFrame = native;
+    state.hasNativeFrame = YES;
+    CGRect target = [self targetForPlayer:player native:native state:state];
+    state.lastAppliedFrame = target;
+    state.adjusted = !CGRectEqualToRect(target, native);
+    if (!CGRectEqualToRect(current, target)) {
         state.applying = YES;
-        player.frame = target;
-        state.applying = NO;
+        @try {
+            player.frame = target;
+        } @finally {
+            state.applying = NO;
+        }
     }
 }
 + (UIView *)renderView:(UIView *)player {
@@ -811,6 +889,8 @@
     DYYYFullscreenPlayerState *state = [self state:player];
     UIViewController *owner = [self owner:player state:state];
     [self layoutPlayerContainer:owner.parentViewController];
+    owner = [self synchronizePlayer:player state:state];
+    if (!state.playerCanCache || state.awaitingNativeFrame) return;
     BOOL recommended = [self usesRecommendedLayoutForController:owner];
     if (![self usesFullscreenLayoutForController:owner] || [self isImageContentController:owner]) return;
     if (recommended && DYYYGetBool(@"DYYYEnableFullScreen") && DYYYGetBool(@"DYYYEnableCommentBlur") && [self hasCommentInWindow:player.window]) [self preparePlayer:player];

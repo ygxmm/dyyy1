@@ -133,7 +133,6 @@ static const CGFloat kInvalidHeight = -1.0;
 static CGFloat gGlobalTransparency = kInvalidAlpha;
 static CGFloat gCurrentTabBarHeight = kInvalidHeight;
 static CGFloat originalTabBarHeight = kInvalidHeight;
-static BOOL gDYYYInRotation = NO;  // 旋转中标志：viewWillTransitionToSize 置位，completion + 0.3s 兜底复位
 
 // v590: 全屏几何异步归位。绝不能在 viewDidLayoutSubviews 里同步改 frame：
 // 改 frame 会再次触发自身 layout，形成 self -> layout -> frame -> layout 死循环，
@@ -142,9 +141,6 @@ static char kDYYYAsyncFramePendingKey;
 static char kDYYYAsyncFrameTimeKey;
 static char kDYYYRotationRetryKey;
 
-
-// 旋转期间 layout 被全部跳过，而 gDYYYInRotation 要等转场结束 0.3s 才复位；
-// 这里补一次复位后的 setNeedsLayout，让上面的异步归位重新跑起来。
 
 // v596: 详情页是纵向分页器（AWEAwemeDetailTableViewController）。
 // 判断“当前这一页”是视频还是图文，必须读分页器的 currentDisplayingAweme，
@@ -15677,16 +15673,6 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
 
 %hook UIViewController
 
-- (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator {
-    gDYYYInRotation = YES;
-    [coordinator animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> ctx) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            gDYYYInRotation = NO;
-        });
-    }];
-    %orig(size, coordinator);
-}
-
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
     isAppInTransition = YES;
@@ -16315,60 +16301,6 @@ static BOOL DYYYIsHomePlayInteraction(UIView *view) {
         parent.backgroundColor = self.backgroundColor;
     }
     [DYYYFullscreenCoordinator finishPlayer:self];
-}
-
-%end
-
-%hook TTMetalView
-- (void)setCenter:(CGPoint)center {
-    if (gDYYYInRotation) { %orig(center); return; }
-    BOOL shouldAdjust = NO;
-    UIView *view = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat viewWidth = CGRectGetWidth(view.bounds);
-        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-        if (viewWidth + 0.5f >= screenWidth) {
-            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
-            Class playClass = %c(AWEPlayVideoViewController);
-            if (playClass && [vc isKindOfClass:playClass]) {
-                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
-                AWEAwemeModel *model = playVC.model;
-                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
-                    shouldAdjust = YES;
-                }
-            }
-        }
-    }
-
-    // v329: 删除 center 上移（40.7.0 isShowLandscapeEntryView 恒 YES 导致误判）
-    %orig(center);
-}
-
-%end
-
-%hook TTMetalViewNew
-- (void)setCenter:(CGPoint)center {
-    if (gDYYYInRotation) { %orig(center); return; }
-    BOOL shouldAdjust = NO;
-    UIView *view = (UIView *)self;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        CGFloat viewWidth = CGRectGetWidth(view.bounds);
-        CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-        if (viewWidth + 0.5f >= screenWidth) {
-            UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:view];
-            Class playClass = %c(AWEPlayVideoViewController);
-            if (playClass && [vc isKindOfClass:playClass]) {
-                AWEPlayVideoViewController *playVC = (AWEPlayVideoViewController *)vc;
-                AWEAwemeModel *model = playVC.model;
-                if ([model respondsToSelector:@selector(isShowLandscapeEntryView)] && model.isShowLandscapeEntryView) {
-                    shouldAdjust = YES;
-                }
-            }
-        }
-    }
-
-    // v329: 删除 center 上移（40.7.0 isShowLandscapeEntryView 恒 YES 导致误判）
-    %orig(center);
 }
 
 %end
