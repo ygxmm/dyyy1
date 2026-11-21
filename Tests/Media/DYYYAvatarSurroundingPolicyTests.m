@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#include <stdio.h>
 #import "DYYYAvatarSurroundingPolicy.h"
 #import "DYYYSettingsBackupValidation.h"
 
