@@ -1,6 +1,7 @@
 #import "DYYYSettingsBackupValidation.h"
 #import "DYYYAvatarSurroundingPolicy.h"
 #import "DYYYConstants.h"
+#import <ImageIO/ImageIO.h>
 #import <math.h>
 #import <fcntl.h>
 #import <sys/stat.h>
