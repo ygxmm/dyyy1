@@ -63,8 +63,9 @@
 // 关掉开关时，下面每一处都必须原样走 %orig，与抖音原生一致。
 //
 //   1. 首页信息流
-//      AWEFeedTableView -layoutSubviews            → 表撑满父视图
-//      DYYYStretchPagerTableToSuperview(table,0)   （共用函数）
+//      AWEFeedTableViewController / AWEFeedModuleService
+//        -tableViewBottomInsetForAllPlatform       → 全屏时底部预留归零
+//      原生控制器统一计算表尺寸、行高与分页吸附。
 //   2. 详情页
 //      AWEAwemeDetailTableView -setFrame:          → 792 夹成屏高
 //      AWEAwemeDetailTableViewController            → 底栏约束归零 / tableViewBottomMargin=0 /
@@ -15351,42 +15352,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 %end
 
 
-// v675: 首页与详情共用同一条表高规则——布局后把分页表撑到父视图满高。
-// minRatio: 详情页传 0.5（转场/布局早期的半成品不动），首页传 0（保持原行为）。
-static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRatio) {
-    if (!table || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
-    UIView *sv = table.superview;
-    if (!sv) return;
-    CGFloat target = sv.bounds.size.height;
-    if (target < 400.0) return;
-    CGRect frame = table.frame;
-    if (fabs(frame.size.height - target) < 0.5) return;
-    if (minRatio > 0.0 && frame.size.height < target * minRatio) return;
-    frame.size.height = target;
-    table.frame = frame;
-}
-
-%hook AWEFeedTableView
-
-- (void)layoutSubviews {
-    %orig;
-
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        DYYYStretchPagerTableToSuperview(self, 0.0);
-
-    } else if (gCurrentTabBarHeight > 0) {
-        UIWindow *keyWindow = [DYYYUtils getActiveWindow];
-        if (keyWindow && keyWindow.safeAreaInsets.bottom == 0) {
-            return;
-        }
-
-        CGRect frame = self.frame;
-        frame.size.height = self.superview.frame.size.height - gCurrentTabBarHeight;
-        self.frame = frame;
-    }
-}
-%end
-
 %hook AWEFeedTableViewCell
 - (void)prepareForReuse {
     if (hideButton && hideButton.isElementsHidden) {
@@ -15497,9 +15462,8 @@ static void DYYYStretchPagerTableToSuperview(UITableView *table, CGFloat minRati
 
 %hook AWEFeedTableViewController
 
-// v735: 探针实测——本方法恒返回 60，applyTableViewLayoutForAllPlatform 就按它把表摆成 792
-// （before=792 after=792，superH 始终 852），随后又被 layoutSubviews 撑回 852，两套网格来回拉锯，
-// 行有时按 792 量、有时按 852 量，缓存就混了。与详情页同一处源头：这里答 0。
+// 41.2 的 applyTableViewLayoutForAllPlatform 使用此预留计算首页表尺寸。
+// 全屏只在这里归零，表布局、行高与分页吸附继续使用原生计算结果。
 - (double)tableViewBottomInsetForAllPlatform {
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
     return %orig;

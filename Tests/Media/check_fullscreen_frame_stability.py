@@ -69,6 +69,22 @@ check('state.playerSuperviewBounds' in sync and 'state.playerCellSize' in sync a
       '同 window 内父区或 cell 改尺寸也使旧恢复失效')
 check('%hook TTMetalView' not in xm and 'gDYYYInRotation' not in xm,
       '删除两个空转 Metal 位置钩子和无人读取的旋转闸，不加渲染层位移')
+feed = re.search(r'^%hook AWEFeedTableViewController\s*$(.*?)^%end\s*$', xm, re.M | re.S)
+check(feed is not None and len(re.findall(r'^%hook AWEFeedTableViewController\s*$', xm, re.M)) == 1,
+      '首页控制器维持唯一 Hook 入口')
+check(not re.search(r'^%hook AWEFeedTableView\s*$', xm, re.M) and
+      'DYYYStretchPagerTableToSuperview' not in xm,
+      '删除首页分页表布局后置写高与关闭时重复扣底栏的整段旧实现')
+feed_inset = re.search(r'- \(double\)tableViewBottomInsetForAllPlatform\s*\{(.*?)\n\}', feed.group(1), re.S)
+check(feed_inset is not None and
+      re.fullmatch(r'\s*if \(DYYYGetBoolCached\(@"DYYYEnableFullScreen"\)\) return 0\.0;\s*return %orig;\s*',
+                   feed_inset.group(1)) is not None,
+      '首页全屏底部预留归零，关闭后返回原生预留')
+check(all(selector not in feed.group(1) for selector in (
+      'heightForRowAtIndexPath:', 'smartSlidePageSnapCellHeightForIndex:',
+      'applyTableViewLayoutForAllPlatform {', 'scrollViewDidScroll:',
+      'scrollViewWillEndDragging:', 'setContentOffset:', 'setFrame:')),
+      '首页表尺寸、行高、滚动偏移与分页吸附统一使用原生布局')
 runner = (ROOT / 'Tests/Media/run_media_tests.sh').read_text()
 check('DYYYFullscreenGeometryTests.m' in runner and 'DYYYFullscreenGeometry.m' in runner and
       'check_fullscreen_frame_stability.py' in runner,
