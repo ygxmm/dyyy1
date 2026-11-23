@@ -102,6 +102,8 @@ check('hasCommentForInteractionController:self' in xm and
       'outer.interactionViewController != controller' in method('+ (BOOL)hasCommentForInteractionController:') and
       'isPlayVC && frame.origin.x' not in xm,
       '磨砂只冻结本互动控制器的评论，移除全局吞帧路径')
+check(all(field not in coordinator for field in ('hasClosedImageTransform', 'imageAdjusted')),
+      '图文状态已从播放器状态完全迁出，旧字段不可保留')
 image = method('+ (CGAffineTransform)targetForImageView:')
 image_layout = method('+ (void)layoutImageView:')
 check(image.index('DYYYEnableFullScreen') < image.index('DYYYEnableCommentBlur') and

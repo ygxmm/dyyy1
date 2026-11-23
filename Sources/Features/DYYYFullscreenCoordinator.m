@@ -618,8 +618,6 @@
         state.adjusted = NO;
         state.hasNormalWindowFrame = NO;
         state.normalRenderSize = CGSizeZero;
-        state.hasClosedImageTransform = NO;
-        state.imageAdjusted = NO;
         state.closedInteractionSize = CGSizeZero;
         state.hasCaptionFrame = NO;
         state.captionAdjusted = NO;
