@@ -16,6 +16,8 @@ for file in \
   "$TESTS/DYYYDownloadLifecycleTests.m" \
   "$TESTS/DYYYHDRMetadataTests.m" \
   "$TESTS/DYYYAvatarSurroundingPolicyTests.m" \
+  "$TESTS/DYYYAvatarInteractionPolicyTests.m" \
+  "$TESTS/DYYYAvatarActionRuntimeTests.m" \
   "$TESTS/DYYYFullscreenGeometryTests.m" \
   "$TESTS/DYYYNowPlayingPolicyTests.m" \
   "$TESTS/check_fullscreen_frame_stability.py" \
@@ -30,6 +32,13 @@ for file in \
   "$ROOT/Sources/Core/DYYYABConfigValidation.m" \
   "$ROOT/Sources/Settings/DYYYSettingsBackupValidation.m" \
   "$FEATURES/DYYYAvatarSurroundingPolicy.h" \
+  "$FEATURES/DYYYAvatarInteractionPolicy.h" \
+  "$FEATURES/DYYYAvatarActionRuntime.h" \
+  "$TESTS/check_avatar_interaction_integration.py" \
+  "$TESTS/Support/UIKit/UIKit.h" \
+  "$TESTS/Support/DYYYAvatarUIKitDouble.inc" \
+  "$TESTS/Support/DYYYAvatarRuntimeDispatch.inc" \
+  "$TESTS/Support/check_avatar_runtime_test_contract.py" \
   "$ROOT/Sources/Media/DYYYMediaSourceSelection.h" \
   "$ROOT/Sources/Media/DYYYMediaSourceSelection.m" \
   "$FEATURES/DYYYLikeLivePhotoBuilder.h" \
@@ -46,6 +55,8 @@ done
 
 python3 "$TESTS/check_video_quality_integration.py"
 python3 "$TESTS/check_maintenance_integration.py"
+python3 "$TESTS/check_avatar_interaction_integration.py"
+python3 "$TESTS/Support/check_avatar_runtime_test_contract.py"
 python3 "$TESTS/check_story_layout_integration.py"
 python3 "$TESTS/check_fullscreen_frame_stability.py"
 
@@ -58,6 +69,7 @@ set -x
 xcrun --sdk macosx clang \
   -fobjc-arc -fblocks -O1 -g \
   -I"$FEATURES" \
+  -I"$TESTS/Support" \
   -I"$ROOT/Sources/Core" \
   -I"$ROOT/Sources/Media" \
   -I"$ROOT/Sources/Settings" \
@@ -69,6 +81,8 @@ xcrun --sdk macosx clang \
   "$TESTS/DYYYDownloadLifecycleTests.m" \
   "$TESTS/DYYYHDRMetadataTests.m" \
   "$TESTS/DYYYAvatarSurroundingPolicyTests.m" \
+  "$TESTS/DYYYAvatarInteractionPolicyTests.m" \
+  "$TESTS/DYYYAvatarActionRuntimeTests.m" \
   "$TESTS/DYYYFullscreenGeometryTests.m" \
   "$FEATURES/DYYYFullscreenGeometry.m" \
   "$TESTS/DYYYNowPlayingPolicyTests.m" \
@@ -81,6 +95,7 @@ xcrun --sdk macosx clang \
   "$FEATURES/DYYYLikeAnimatedImage.m" \
   "$ROOT/Sources/Media/DYYYAlbumImageDescription.m" \
   -framework Foundation \
+  -framework QuartzCore \
   -framework AVFoundation \
   -framework CoreMedia \
   -framework CoreVideo \
