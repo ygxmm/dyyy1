@@ -198,7 +198,13 @@ static void DYYYAvatarActionApplyState(id object, DYYYAvatarActionState *state, 
 static void DYYYAvatarActionRefreshTrackedObjects(void) {
     static uint32_t refreshedGeneration = UINT32_MAX;
     uint32_t generation = __atomic_load_n(&gDYYYSettingsGeneration, __ATOMIC_RELAXED);
-    if (!NSThread.isMainThread || DYYYAvatarActionRefreshing || !DYYYAvatarActionEverMarked || (!DYYYAvatarActionBoundaryDirty && refreshedGeneration == generation)) return;
+    if (!NSThread.isMainThread || DYYYAvatarActionRefreshing || (!DYYYAvatarActionBoundaryDirty && refreshedGeneration == generation)) return;
+    if (!DYYYAvatarActionEverMarked) {
+        // 尚无压制状态需要恢复，但本次已处理的标记仍应消费，不能污染下次稳定布局。
+        refreshedGeneration = generation;
+        DYYYAvatarActionBoundaryDirty = NO;
+        return;
+    }
     DYYYAvatarActionRefreshing = YES;
     @try {
         NSArray *objects;
