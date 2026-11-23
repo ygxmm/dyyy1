@@ -371,6 +371,10 @@ static void TestRetryCleanup(void) {
             NSException *last = DYYYTestDrainOne(YES);
             CHECK((last != nil) == (scenario == 4 || scenario == 5));
             CHECK(!Pending(owner) && !Applying(owner) && !DYYYTestDelayedBlocks.count);
+            if (owner.getterCalls != registeredCalls + (scenario == 5 ? 1 : 2))
+                printf("DIAG AvatarRuntime/retry scenario=%lu registered=%lu observed=%lu resolves=%lu\n",
+                       (unsigned long)scenario, (unsigned long)registeredCalls, (unsigned long)owner.getterCalls,
+                       (unsigned long)DYYYAvatarActionResolveCount);
             CHECK(owner.getterCalls == registeredCalls + (scenario == 5 ? 1 : 2));
         }
         // 移出窗口只多排队一次拓扑对齐，不产生另一次重试或无限回调。

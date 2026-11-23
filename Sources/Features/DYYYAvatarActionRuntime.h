@@ -384,6 +384,7 @@ static NSArray<NSArray *> *DYYYAvatarActionSelectorGroups(void) {
     });
     return groups;
 }
+static void DYYYAvatarActionValidateClaims(NSArray<UIView *> *views);
 static void DYYYAvatarActionRegisterClaim(id owner, NSString *selectorName, UIView *view,
                                         DYYYAvatarActionKind kind, BOOL protect,
                                         NSMutableArray *claims) {
@@ -414,6 +415,8 @@ static void DYYYAvatarActionRegisterClaim(id owner, NSString *selectorName, UIVi
     }
     if (![claims containsObject:claim]) [claims addObject:claim];
     [DYYYAvatarActionBoundaryViews addObject:view];
+    // 当前 owner 的 getter 虽未变，竞争者可能已放弃这个 view；只复核本边界。
+    if (boundary.ambiguous || boundary.protectedVisual) DYYYAvatarActionValidateClaims(@[view]);
 }
 // 低频批处理复核所有 getter，包括单 kind 及保护边界；setter 不全局调用这些 getter。
 static void DYYYAvatarActionValidateClaims(NSArray<UIView *> *views) {
