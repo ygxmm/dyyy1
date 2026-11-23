@@ -696,8 +696,6 @@ extern int DYYYRunABConfigValidationTests(void);
 extern int DYYYRunDownloadLifecycleTests(void);
 extern int DYYYRunHDRMetadataTests(void);
 extern int DYYYRunAvatarSurroundingPolicyTests(void);
-extern int DYYYRunAvatarInteractionPolicyTests(void);
-extern int DYYYRunAvatarActionRuntimeTests(void);
 extern int DYYYRunFullscreenGeometryTests(void);
 extern int DYYYRunNowPlayingPolicyTests(void);
 
@@ -707,7 +705,7 @@ int main(void) {
         int qualityPolicyFailures = DYYYRunVideoQualityPolicyTests();
         int maintenanceFailures = DYYYRunSettingsBackupValidationTests() + DYYYRunSettingsBackupTransactionTests() +
             DYYYRunABConfigValidationTests() + DYYYRunDownloadLifecycleTests() + DYYYRunHDRMetadataTests() +
-            DYYYRunAvatarSurroundingPolicyTests() + DYYYRunAvatarInteractionPolicyTests() + DYYYRunAvatarActionRuntimeTests();
+            DYYYRunAvatarSurroundingPolicyTests();
         int fullscreenGeometryFailures = DYYYRunFullscreenGeometryTests();
         int nowPlayingPolicyFailures = DYYYRunNowPlayingPolicyTests();
         NSURL *directory = MakeTempDirectory();

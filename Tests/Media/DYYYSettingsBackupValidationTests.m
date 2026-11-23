@@ -7,8 +7,6 @@
 #include <stdio.h>
 #import "DYYYSettingsBackupValidation.h"
 #import "DYYYConstants.h"
-#import "DYYYAvatarInteractionPolicy.h"
-#import "DYYYAvatarSurroundingPolicy.h"
 
 static int DYYYBackupCheck(BOOL passed, const char *meaning) {
     printf("%s backup: %s\n", passed ? "PASS" : "FAIL", meaning);
@@ -23,57 +21,6 @@ static BOOL DYYYBackupReject(id object) {
     NSError *error = nil;
     DYYYValidatedSettingsBackup *result = DYYYValidateSettingsBackupData(DYYYBackupJSON(object), &error);
     return result == nil && error != nil;
-}
-
-// 头像入口只扩充布尔白名单；旧关注键仍原样保存，不迁移到新隐藏键。
-static int DYYYRunAvatarActionBackupValueTests(void) {
-    int failures = 0;
-    NSError *error = nil;
-    NSSet *removed = nil;
-    NSArray<NSString *> *newKeys = @[DYYYHideAvatarSendMessageKey, DYYYHideAvatarEnterStoreKey, DYYYHideAvatarAdLinkKey];
-    NSDictionary *local = @{DYYYAvatarFollowDeleteKey: @YES, DYYYAvatarFollowRemoveVisualKey: @YES,
-        DYYYHideAvatarSendMessageKey: @YES, DYYYHideAvatarEnterStoreKey: @YES, DYYYHideAvatarAdLinkKey: @YES};
-    for (NSString *key in newKeys) {
-        for (NSNumber *value in @[@YES, @NO]) {
-            NSDictionary *payload = @{key: value};
-            NSData *json = [NSJSONSerialization dataWithJSONObject:payload options:NSJSONWritingPrettyPrinted | NSJSONWritingSortedKeys error:&error];
-            DYYYValidatedSettingsBackup *valid = DYYYValidateSettingsBackupData(json, &error);
-            failures += DYYYBackupCheck(valid && !error && [valid.settings isEqual:payload], "三个独立头像入口均可导出并导入显式 true/false");
-            NSDictionary *normalized = DYYYNormalizeLegacySettingsBackup(valid.settings, local, &removed, &error);
-            failures += DYYYBackupCheck(normalized && !error && [normalized isEqual:payload] && removed.count == 0,
-                "新入口显式 false 不被本机 true 覆盖，单键导入不生成其他头像键");
-        }
-        for (id invalid in @[@2, @(-1), @1.5, @"true", @"false", @"1", @[], @{}, NSNull.null]) {
-            failures += DYYYBackupCheck(DYYYBackupReject(@{key: invalid}), "独立头像入口拒绝非布尔备份值，不能部分接收");
-        }
-    }
-    for (NSUInteger flags = 0; flags < 4; flags++) {
-        NSDictionary *payload = @{DYYYAvatarFollowRemoveVisualKey: ((flags & 1) ? @YES : @NO), DYYYAvatarFollowDeleteKey: ((flags & 2) ? @YES : @NO)};
-        DYYYValidatedSettingsBackup *valid = DYYYValidateSettingsBackupData(DYYYBackupJSON(payload), &error);
-        NSDictionary *normalized = DYYYNormalizeLegacySettingsBackup(valid.settings, local, &removed, &error);
-        failures += DYYYBackupCheck(valid && !error && [valid.settings isEqual:payload] && [normalized isEqual:payload] && removed.count == 0,
-            "两个旧关注键的四种 true/false 组合原值原键保留，不翻转、不删除、不派生新隐藏键");
-    }
-    for (NSString *key in @[DYYYAvatarFollowDeleteKey, DYYYAvatarFollowRemoveVisualKey]) {
-        for (NSNumber *value in @[@YES, @NO]) {
-            NSDictionary *payload = @{key: value};
-            NSDictionary *normalized = DYYYNormalizeLegacySettingsBackup(payload, local, &removed, &error);
-            failures += DYYYBackupCheck(normalized && !error && [normalized isEqual:payload] && removed.count == 0,
-                "旧关注单键导入不写另一模式，也不迁移成消息、店铺、广告、彩环或挂件键");
-        }
-    }
-    NSDictionary *legacyTypes = @{DYYYAvatarFollowRemoveVisualKey: @"true", DYYYAvatarFollowDeleteKey: @0};
-    DYYYValidatedSettingsBackup *legacyValid = DYYYValidateSettingsBackupData(DYYYBackupJSON(legacyTypes), &error);
-    NSDictionary *legacyNormalized = DYYYNormalizeLegacySettingsBackup(legacyValid.settings, local, &removed, &error);
-    failures += DYYYBackupCheck(legacyValid && !error && [legacyNormalized isEqual:legacyTypes] && removed.count == 0,
-        "旧关注键原有字符串和数字值兼容，不被新布尔白名单收紧");
-    NSDictionary *empty = DYYYNormalizeLegacySettingsBackup(@{}, local, &removed, &error);
-    failures += DYYYBackupCheck(empty && !error && empty.count == 0 && removed.count == 0, "空备份不从本机关注或新入口键制造默认值");
-    NSDictionary *surrounding = DYYYNormalizeLegacySettingsBackup(@{DYYYHideAvatarSurroundingKey: @YES}, @{}, &removed, &error);
-    failures += DYYYBackupCheck(surrounding && !error && !surrounding[DYYYAvatarFollowDeleteKey] && !surrounding[DYYYAvatarFollowRemoveVisualKey] &&
-        !surrounding[DYYYHideAvatarSendMessageKey] && !surrounding[DYYYHideAvatarEnterStoreKey] && !surrounding[DYYYHideAvatarAdLinkKey],
-        "原彩环挂件迁移不扩散到关注或三个独立头像入口");
-    return failures;
 }
 
 // 动态生成有效 PNG，避免测试依赖 UIKit 或外部图片资源。
@@ -97,7 +44,7 @@ static NSData *DYYYBackupTestPNG(size_t width, size_t height) {
 // 由主测试 runner 调用，不定义 main，不写入真实偏好或用户图片。
 int DYYYRunSettingsBackupValidationTests(void) {
     @autoreleasepool {
-        int failures = DYYYRunAvatarActionBackupValueTests();
+        int failures = 0;
         NSError *error = nil;
         NSData *png = DYYYBackupTestPNG(1, 1);
         if (!png) return DYYYBackupCheck(NO, "测试 PNG 生成失败");
@@ -225,63 +172,6 @@ int DYYYRunSettingsBackupTransactionTests(void) {
             [defaults synchronize];
             NSDictionary *icons = @{@"share.png": png};
             NSURL *documents = [NSURL fileURLWithPath:root isDirectory:YES];
-            // 真实偏好提交与导出回归仅使用本测试的随机 suite，不触碰标准偏好或用户文件。
-            NSArray<NSString *> *avatarKeys = @[DYYYHideAvatarSendMessageKey, DYYYHideAvatarEnterStoreKey, DYYYHideAvatarAdLinkKey];
-            DYYYAvatarActionSettings initialAvatar = DYYYAvatarActionSettingsFromDefaults(defaults);
-            failures += DYYYBackupCheck(!initialAvatar.hideSendMessage && !initialAvatar.hideEnterStore && !initialAvatar.hideAdLink &&
-                ![defaults objectForKey:DYYYHideAvatarSendMessageKey] && ![defaults objectForKey:DYYYHideAvatarEnterStoreKey] && ![defaults objectForKey:DYYYHideAvatarAdLinkKey],
-                "三个新入口缺省关闭，读取不写默认值");
-            NSDictionary *unchangedAvatar = @{@"DYYYHideAvatarButton": @YES, DYYYHideAvatarStoryRingKey: @NO,
-                DYYYHideAvatarDecorationKey: @YES, @"DYYYHideAvatarLive": @NO};
-            for (NSString *key in unchangedAvatar) [defaults setObject:unchangedAvatar[key] forKey:key];
-            for (NSUInteger flags = 0; flags < 4; flags++) {
-                NSDictionary *oldFollow = @{DYYYAvatarFollowRemoveVisualKey: ((flags & 1) ? @YES : @NO), DYYYAvatarFollowDeleteKey: ((flags & 2) ? @YES : @NO)};
-                DYYYValidatedSettingsBackup *followBackup = DYYYValidateSettingsBackupData(DYYYBackupJSON(oldFollow), &error);
-                BOOL committed = DYYYCommitSettingsBackup(followBackup.settings, @{}, [NSSet set], defaults, identifier, documents, &error);
-                DYYYAvatarActionMode expected = (flags & 2) ? DYYYAvatarActionModeDelete : ((flags & 1) ? DYYYAvatarActionModeRemoveVisual : DYYYAvatarActionModeNative);
-                failures += DYYYBackupCheck(committed && !error &&
-                    [[defaults objectForKey:DYYYAvatarFollowRemoveVisualKey] isEqual:oldFollow[DYYYAvatarFollowRemoveVisualKey]] &&
-                    [[defaults objectForKey:DYYYAvatarFollowDeleteKey] isEqual:oldFollow[DYYYAvatarFollowDeleteKey]] &&
-                    DYYYAvatarActionModeForSettings(DYYYAvatarActionSettingsFromDefaults(defaults), DYYYAvatarActionFollow) == expected,
-                    "旧关注备份实际提交保留值；删除不可点击，移除仍可点，两键同时真时删除优先");
-                failures += DYYYBackupCheck(![defaults objectForKey:DYYYHideAvatarSendMessageKey] &&
-                    ![defaults objectForKey:DYYYHideAvatarEnterStoreKey] && ![defaults objectForKey:DYYYHideAvatarAdLinkKey],
-                    "旧关注实际恢复不创建三个新入口默认值");
-            }
-            NSDictionary *allAvatarTrue = @{DYYYHideAvatarSendMessageKey: @YES, DYYYHideAvatarEnterStoreKey: @YES, DYYYHideAvatarAdLinkKey: @YES};
-            for (NSNumber *value in @[@YES, @NO]) {
-                NSDictionary *payload = @{DYYYHideAvatarSendMessageKey: value, DYYYHideAvatarEnterStoreKey: value, DYYYHideAvatarAdLinkKey: value};
-                DYYYValidatedSettingsBackup *avatarBackup = DYYYValidateSettingsBackupData(DYYYBackupJSON(payload), &error);
-                BOOL committed = DYYYCommitSettingsBackup(avatarBackup.settings, @{}, [NSSet set], defaults, identifier, documents, &error);
-                NSMutableDictionary *settingsExport = [NSMutableDictionary dictionary];
-                NSDictionary *persisted = [defaults persistentDomainForName:identifier];
-                // 沿用界面导出的 DYYY 前缀集合及 JSON 结构，但数据来源限定隔离域。
-                for (NSString *key in persisted) if ([key hasPrefix:@"DYYY"] && ![key isEqualToString:@"DYYYIconsBase64"]) settingsExport[key] = persisted[key];
-                DYYYValidatedSettingsBackup *roundTrip = DYYYValidateSettingsBackupData(DYYYBackupJSON(settingsExport), &error);
-                BOOL preserved = committed && roundTrip && !error && !roundTrip.settings[@"hostPreference"] &&
-                    [roundTrip.settings[DYYYAvatarFollowDeleteKey] isEqual:@YES] && [roundTrip.settings[DYYYAvatarFollowRemoveVisualKey] isEqual:@YES];
-                for (NSString *key in avatarKeys) preserved = preserved && [[defaults objectForKey:key] isEqual:value] && [roundTrip.settings[key] isEqual:value];
-                failures += DYYYBackupCheck(preserved, "三个新入口 true/false 实际提交后均能导出再导入，旧关注值与宿主偏好不变");
-            }
-            for (NSString *key in avatarKeys) {
-                BOOL primed = DYYYCommitSettingsBackup(allAvatarTrue, @{}, [NSSet set], defaults, identifier, documents, &error);
-                DYYYValidatedSettingsBackup *single = DYYYValidateSettingsBackupData(DYYYBackupJSON(@{key: @NO}), &error);
-                BOOL committed = DYYYCommitSettingsBackup(single.settings, @{}, [NSSet set], defaults, identifier, documents, &error);
-                BOOL independent = primed && committed && !error;
-                for (NSString *other in avatarKeys) independent = independent && [[defaults objectForKey:other] isEqual:([other isEqualToString:key] ? @NO : @YES)];
-                failures += DYYYBackupCheck(independent && [defaults boolForKey:DYYYAvatarFollowDeleteKey] && [defaults boolForKey:DYYYAvatarFollowRemoveVisualKey],
-                    "仅导入某入口 false，不改另两个入口或旧关注键");
-                NSDictionary *before = [[defaults persistentDomainForName:identifier] copy];
-                failures += DYYYBackupCheck(!DYYYCommitSettingsBackup(@{key: @"true", @"DYYYTest": @"must-not-write"}, @{}, [NSSet set], defaults, identifier, documents, &error) &&
-                    error != nil && [[defaults persistentDomainForName:identifier] isEqual:before], "新入口无效值在事务二次校验中整体拒绝，不部分写入");
-                defaults.failNextSynchronize = YES;
-                failures += DYYYBackupCheck(!DYYYCommitSettingsBackup(@{key: @YES}, @{}, [NSSet set], defaults, identifier, documents, &error) &&
-                    error != nil && [[defaults persistentDomainForName:identifier] isEqual:before], "新入口恢复同步失败精确回滚，显式 false 及其他配置不丢失");
-            }
-            BOOL avatarUnchanged = YES;
-            for (NSString *key in unchangedAvatar) avatarUnchanged = avatarUnchanged && [[defaults objectForKey:key] isEqual:unchangedAvatar[key]];
-            failures += DYYYBackupCheck(avatarUnchanged && [[defaults objectForKey:@"hostPreference"] isEqual:@"host-original"],
-                "头像本体、彩环、挂件、直播及宿主偏好不受独立入口恢复影响");
             NSString *inputPath = [root stringByAppendingPathComponent:@"input.json"];
             NSData *inputData = DYYYBackupJSON(@{@"DYYYTest": @YES});
             [inputData writeToFile:inputPath atomically:YES];

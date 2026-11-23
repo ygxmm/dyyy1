@@ -41,7 +41,6 @@
 #import "DYYYFullscreenCoordinator.h"
 #import "DYYYNativeAutoPlay.h"
 #import "DYYYAvatarSurroundingPolicy.h"
-#import "DYYYAvatarActionRuntime.h"
 #import "DYYYLikeLongPressSave.h"
 #import "DYYYVideoQualityPolicy.h"
 
@@ -2516,10 +2515,23 @@ static id DYYYIvarValueIfPossible(id object, const char *ivarName) {
 
 
 
-// 关闭时仅为已有标记保留原生写入追踪，不扫描任何头像树。
+// v222: CALayer hook 快速短路
 static inline BOOL DYYYLayerHookNeeded(void) {
-    return DYYYAvatarActionRuntimeNeeded() || DYYYGetBoolCached(@"DYYYHideCollectButton");
+    static uint32_t lastGen = UINT32_MAX;
+    static BOOL lastVal = NO;
+    uint32_t gen = gDYYYSettingsGeneration;
+    if (__builtin_expect(lastGen == gen, 1)) return lastVal;
+    lastVal = DYYYGetBool(@"DYYYHideLOTAnimationView") ||
+              DYYYGetBool(@"DYYYHideFollowPromptView") ||
+              DYYYGetBool(@"DYYYHideCollectButton");
+    lastGen = gen;
+    return lastVal;
 }
+
+// 头像加号可能由异步动画重建图层，需要在 CALayer 写入点继续压制。
+static BOOL DYYYShouldForceHideAvatarActionLayer(CALayer *layer);
+static BOOL DYYYShouldClearAvatarActionLayer(CALayer *layer);
+static void DYYYPrepareAvatarActionSublayer(CALayer *parentLayer, CALayer *sublayer);
 
 // 收藏按钮在部分视频中会异步重建图片/动画图层，标记后在写入点继续压制。
 static char kDYYYFeedVideoCollectButtonHiddenViewKey;
@@ -2535,136 +2547,107 @@ static void DYYYMarkFeedVideoCollectButtonViewHidden(UIView *view);
 %hook CALayer
 
 - (void)setHidden:(BOOL)hidden {
-    if (DYYYAvatarActionIsOwnWrite(self, DYYYAvatarLayerHidden) || !DYYYLayerHookNeeded()) {
+    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) {
         %orig(hidden);
         return;
     }
-    DYYYAvatarActionState *state = DYYYAvatarActionStateForObject(self);
-    if (state) DYYYAvatarActionRecordNative(self, state, DYYYAvatarLayerHidden, @(hidden));
-    BOOL suppress = DYYYAvatarActionHideLayer(state) || DYYYShouldForceHideFeedVideoCollectButtonLayer(self);
-    if (state) { DYYY_AVATAR_WRITE(self, DYYYAvatarLayerHidden, %orig(suppress ? YES : hidden)); }
-    else { %orig(suppress ? YES : hidden); }
+    BOOL shouldForceHidden = DYYYShouldForceHideAvatarActionLayer(self) || DYYYShouldForceHideFeedVideoCollectButtonLayer(self);
+    %orig(shouldForceHidden ? YES : hidden);
 }
 
 - (void)setContents:(id)contents {
-    if (DYYYAvatarActionIsOwnWrite(self, DYYYAvatarLayerContents) || !DYYYLayerHookNeeded()) {
+    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) {
         %orig(contents);
         return;
     }
-    DYYYAvatarActionState *state = DYYYAvatarActionStateForObject(self);
-    if (state) DYYYAvatarActionRecordNative(self, state, DYYYAvatarLayerContents, contents);
-    BOOL suppress = DYYYAvatarActionClearChrome(state) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
-    if (state) { DYYY_AVATAR_WRITE(self, DYYYAvatarLayerContents, %orig(suppress ? nil : contents)); }
-    else { %orig(suppress ? nil : contents); }
+    BOOL shouldClearLayer = DYYYShouldClearAvatarActionLayer(self) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
+    %orig(shouldClearLayer ? nil : contents);
 }
 
 - (void)setBackgroundColor:(CGColorRef)backgroundColor {
-    if (DYYYAvatarActionIsOwnWrite(self, DYYYAvatarLayerBackground) || !DYYYLayerHookNeeded()) {
+    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) {
         %orig(backgroundColor);
         return;
     }
-    DYYYAvatarActionState *state = DYYYAvatarActionStateForObject(self);
-    if (state) DYYYAvatarActionRecordNative(self, state, DYYYAvatarLayerBackground, DYYYAvatarActionBoxColor(backgroundColor));
-    BOOL suppress = DYYYAvatarActionClearChrome(state) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
-    if (state) { DYYY_AVATAR_WRITE(self, DYYYAvatarLayerBackground, %orig(suppress ? UIColor.clearColor.CGColor : backgroundColor)); }
-    else { %orig(suppress ? UIColor.clearColor.CGColor : backgroundColor); }
+    BOOL shouldClearLayer = DYYYShouldClearAvatarActionLayer(self) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
+    %orig(shouldClearLayer ? UIColor.clearColor.CGColor : backgroundColor);
 }
 
 - (void)setOpaque:(BOOL)opaque {
-    if (DYYYAvatarActionIsOwnWrite(self, DYYYAvatarLayerOpaque) || !DYYYLayerHookNeeded()) {
+    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) {
         %orig(opaque);
         return;
     }
-    DYYYAvatarActionState *state = DYYYAvatarActionStateForObject(self);
-    if (state) DYYYAvatarActionRecordNative(self, state, DYYYAvatarLayerOpaque, @(opaque));
-    BOOL suppress = DYYYAvatarActionClearChrome(state) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
-    if (state) { DYYY_AVATAR_WRITE(self, DYYYAvatarLayerOpaque, %orig(suppress ? NO : opaque)); }
-    else { %orig(suppress ? NO : opaque); }
+    BOOL shouldClearLayer = DYYYShouldClearAvatarActionLayer(self) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
+    %orig(shouldClearLayer ? NO : opaque);
 }
 
 - (void)setBorderWidth:(CGFloat)borderWidth {
-    if (DYYYAvatarActionIsOwnWrite(self, DYYYAvatarLayerBorderWidth) || !DYYYLayerHookNeeded()) {
+    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) {
         %orig(borderWidth);
         return;
     }
-    DYYYAvatarActionState *state = DYYYAvatarActionStateForObject(self);
-    if (state) DYYYAvatarActionRecordNative(self, state, DYYYAvatarLayerBorderWidth, @(borderWidth));
-    BOOL suppress = DYYYAvatarActionClearChrome(state) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
-    if (state) { DYYY_AVATAR_WRITE(self, DYYYAvatarLayerBorderWidth, %orig(suppress ? 0.0 : borderWidth)); }
-    else { %orig(suppress ? 0.0 : borderWidth); }
+    BOOL shouldClearLayer = DYYYShouldClearAvatarActionLayer(self) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
+    %orig(shouldClearLayer ? 0.0 : borderWidth);
 }
 
 - (void)setBorderColor:(CGColorRef)borderColor {
-    if (DYYYAvatarActionIsOwnWrite(self, DYYYAvatarLayerBorderColor) || !DYYYLayerHookNeeded()) {
+    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) {
         %orig(borderColor);
         return;
     }
-    DYYYAvatarActionState *state = DYYYAvatarActionStateForObject(self);
-    if (state) DYYYAvatarActionRecordNative(self, state, DYYYAvatarLayerBorderColor, DYYYAvatarActionBoxColor(borderColor));
-    BOOL suppress = DYYYAvatarActionClearChrome(state) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
-    if (state) { DYYY_AVATAR_WRITE(self, DYYYAvatarLayerBorderColor, %orig(suppress ? UIColor.clearColor.CGColor : borderColor)); }
-    else { %orig(suppress ? UIColor.clearColor.CGColor : borderColor); }
+    BOOL shouldClearLayer = DYYYShouldClearAvatarActionLayer(self) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
+    %orig(shouldClearLayer ? UIColor.clearColor.CGColor : borderColor);
 }
 
 - (void)setShadowOpacity:(float)shadowOpacity {
-    if (DYYYAvatarActionIsOwnWrite(self, DYYYAvatarLayerShadowOpacity) || !DYYYLayerHookNeeded()) {
+    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) {
         %orig(shadowOpacity);
         return;
     }
-    DYYYAvatarActionState *state = DYYYAvatarActionStateForObject(self);
-    if (state) DYYYAvatarActionRecordNative(self, state, DYYYAvatarLayerShadowOpacity, @(shadowOpacity));
-    BOOL suppress = DYYYAvatarActionClearChrome(state) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
-    if (state) { DYYY_AVATAR_WRITE(self, DYYYAvatarLayerShadowOpacity, %orig(suppress ? 0.0f : shadowOpacity)); }
-    else { %orig(suppress ? 0.0f : shadowOpacity); }
+    BOOL shouldClearLayer = DYYYShouldClearAvatarActionLayer(self) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
+    %orig(shouldClearLayer ? 0.0f : shadowOpacity);
 }
 
 - (void)setShadowColor:(CGColorRef)shadowColor {
-    if (DYYYAvatarActionIsOwnWrite(self, DYYYAvatarLayerShadowColor) || !DYYYLayerHookNeeded()) {
+    if (__builtin_expect(!DYYYLayerHookNeeded(), 1)) {
         %orig(shadowColor);
         return;
     }
-    DYYYAvatarActionState *state = DYYYAvatarActionStateForObject(self);
-    if (state) DYYYAvatarActionRecordNative(self, state, DYYYAvatarLayerShadowColor, DYYYAvatarActionBoxColor(shadowColor));
-    BOOL suppress = DYYYAvatarActionClearChrome(state) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
-    if (state) { DYYY_AVATAR_WRITE(self, DYYYAvatarLayerShadowColor, %orig(suppress ? UIColor.clearColor.CGColor : shadowColor)); }
-    else { %orig(suppress ? UIColor.clearColor.CGColor : shadowColor); }
+    BOOL shouldClearLayer = DYYYShouldClearAvatarActionLayer(self) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
+    %orig(shouldClearLayer ? UIColor.clearColor.CGColor : shadowColor);
 }
 
 - (void)addSublayer:(CALayer *)layer {
+    DYYYPrepareAvatarActionSublayer(self, layer);
     DYYYPrepareFeedVideoCollectButtonSublayer(self, layer);
     %orig(layer);
-    DYYYPrepareAvatarActionSublayer(self, layer);
 }
 
 - (void)insertSublayer:(CALayer *)layer atIndex:(unsigned int)index {
+    DYYYPrepareAvatarActionSublayer(self, layer);
     DYYYPrepareFeedVideoCollectButtonSublayer(self, layer);
     %orig(layer, index);
-    DYYYPrepareAvatarActionSublayer(self, layer);
 }
 
 - (void)insertSublayer:(CALayer *)layer below:(CALayer *)sibling {
+    DYYYPrepareAvatarActionSublayer(self, layer);
     DYYYPrepareFeedVideoCollectButtonSublayer(self, layer);
     %orig(layer, sibling);
-    DYYYPrepareAvatarActionSublayer(self, layer);
 }
 
 - (void)insertSublayer:(CALayer *)layer above:(CALayer *)sibling {
+    DYYYPrepareAvatarActionSublayer(self, layer);
     DYYYPrepareFeedVideoCollectButtonSublayer(self, layer);
     %orig(layer, sibling);
-    DYYYPrepareAvatarActionSublayer(self, layer);
 }
 
 - (void)setSublayers:(NSArray<CALayer *> *)sublayers {
-    NSArray *previous = DYYYAvatarActionRuntimeNeeded() ? [self.sublayers copy] : nil;
-    for (CALayer *layer in sublayers) DYYYPrepareFeedVideoCollectButtonSublayer(self, layer);
+    for (CALayer *layer in sublayers) {
+        DYYYPrepareAvatarActionSublayer(self, layer);
+        DYYYPrepareFeedVideoCollectButtonSublayer(self, layer);
+    }
     %orig(sublayers);
-    for (CALayer *layer in previous) if (layer.superlayer != self) DYYYAvatarActionObjectTopologyDidChange(layer);
-    for (CALayer *layer in sublayers) DYYYPrepareAvatarActionSublayer(self, layer);
-}
-
-- (void)removeFromSuperlayer {
-    %orig;
-    DYYYAvatarActionObjectTopologyDidChange(self);
 }
 
 %end
@@ -2672,27 +2655,13 @@ static void DYYYMarkFeedVideoCollectButtonViewHidden(UIView *view);
 %hook CAShapeLayer
 
 - (void)setFillColor:(CGColorRef)fillColor {
-    if (DYYYAvatarActionIsOwnWrite(self, DYYYAvatarLayerFillColor) || !DYYYLayerHookNeeded()) {
-        %orig(fillColor);
-        return;
-    }
-    DYYYAvatarActionState *state = DYYYAvatarActionStateForObject(self);
-    if (state) DYYYAvatarActionRecordNative(self, state, DYYYAvatarLayerFillColor, DYYYAvatarActionBoxColor(fillColor));
-    BOOL suppress = DYYYAvatarActionClearChrome(state) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
-    if (state) { DYYY_AVATAR_WRITE(self, DYYYAvatarLayerFillColor, %orig(suppress ? UIColor.clearColor.CGColor : fillColor)); }
-    else { %orig(suppress ? UIColor.clearColor.CGColor : fillColor); }
+    BOOL shouldClearLayer = DYYYShouldClearAvatarActionLayer(self) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
+    %orig(shouldClearLayer ? UIColor.clearColor.CGColor : fillColor);
 }
 
 - (void)setStrokeColor:(CGColorRef)strokeColor {
-    if (DYYYAvatarActionIsOwnWrite(self, DYYYAvatarLayerStrokeColor) || !DYYYLayerHookNeeded()) {
-        %orig(strokeColor);
-        return;
-    }
-    DYYYAvatarActionState *state = DYYYAvatarActionStateForObject(self);
-    if (state) DYYYAvatarActionRecordNative(self, state, DYYYAvatarLayerStrokeColor, DYYYAvatarActionBoxColor(strokeColor));
-    BOOL suppress = DYYYAvatarActionClearChrome(state) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
-    if (state) { DYYY_AVATAR_WRITE(self, DYYYAvatarLayerStrokeColor, %orig(suppress ? UIColor.clearColor.CGColor : strokeColor)); }
-    else { %orig(suppress ? UIColor.clearColor.CGColor : strokeColor); }
+    BOOL shouldClearLayer = DYYYShouldClearAvatarActionLayer(self) || DYYYShouldClearFeedVideoCollectButtonLayer(self);
+    %orig(shouldClearLayer ? UIColor.clearColor.CGColor : strokeColor);
 }
 
 %end
@@ -3098,7 +3067,6 @@ static BOOL DYYYAvatarSurroundingHidden(DYYYAvatarSurroundingKind kind) {
 }
 
 - (void)onFollowViewClicked:(UITapGestureRecognizer *)gesture {
-    if (DYYYAvatarActionBlocksClick(DYYYAvatarActionSnapshot(), DYYYAvatarActionFollow)) return;
     if (DYYYGetBool(@"DYYYFollowTips")) {
         // 获取用户信息
         AWEUserModel *author = nil;
@@ -3157,48 +3125,10 @@ static BOOL DYYYAvatarSurroundingHidden(DYYYAvatarSurroundingKind kind) {
     }
 }
 
-// 旧 Element 的入口签名来自 classdump412；不把头像本体/profile 点击纳入禁点。
-- (void)layoutElementView {
-    %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
-}
-- (void)viewController_willDisplay {
-    %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
-}
-- (void)playEnterStoreGuideAnimationIfNeeded {
-    %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
-}
-- (void)onUnFollowViewClicked:(id)sender {
-    if (DYYYAvatarActionBlocksClick(DYYYAvatarActionSnapshot(), DYYYAvatarActionFollow)) return;
-    %orig(sender);
-}
-- (void)onEnterStoreViewClicked:(id)sender {
-    if (DYYYAvatarActionBlocksClick(DYYYAvatarActionSnapshot(), DYYYAvatarActionEnterStore)) return;
-    %orig(sender);
-}
-- (void)onlinkIconContainerViewClicked:(id)sender {
-    if (DYYYAvatarActionBlocksClick(DYYYAvatarActionSnapshot(), DYYYAvatarActionAdLink)) return;
-    %orig(sender);
-}
-%end
-
-// 旧消息点击由头像专属 ViewModel 接收，Element 没有该方法，不能伪造入口。
-%hook AWEPlayInteractionUserAvatarElementViewModel
-- (void)onSendMessageViewClicked:(id)sender {
-    if (DYYYAvatarActionBlocksClick(DYYYAvatarActionSnapshot(), DYYYAvatarActionSendMessage)) return;
-    %orig(sender);
-}
-- (void)onSendMessageViewClicked:(id)sender voipEnable:(BOOL)voipEnable iconType:(id)iconType {
-    if (DYYYAvatarActionBlocksClick(DYYYAvatarActionSnapshot(), DYYYAvatarActionSendMessage)) return;
-    %orig(sender, voipEnable, iconType);
-}
 %end
 
 %hook AWEPlayInteractionUserAvatarFollowController
 - (void)onFollowViewClicked:(UITapGestureRecognizer *)gesture {
-    if (DYYYAvatarActionBlocksClick(DYYYAvatarActionSnapshot(), DYYYAvatarActionFollow)) return;
     if (DYYYGetBool(@"DYYYFollowTips")) {
         // 获取用户信息
         AWEUserModel *author = nil;
@@ -7570,27 +7500,523 @@ static NSArray *DYYYIMMenuItemsByAddingDownloadAction(NSArray *menuItems, id cel
 
 %hook AWEFeedLiveMarkView
 - (void)setHidden:(BOOL)hidden {
-    if (DYYYAvatarActionIsOwnWrite(self, DYYYAvatarViewHidden)) { %orig(hidden); return; }
-    DYYYAvatarActionState *state = DYYYAvatarActionTrackIndependentVisibility(self, YES);
-    if (!state) { %orig(hidden); return; }
-    DYYYAvatarActionRecordNative(self, state, DYYYAvatarViewHidden, @(hidden));
-    BOOL suppress = DYYYAvatarActionHideView(state);
-    // 类自身 setter 保存原请求，屏障防止继承的 UIView setter 把 YES 当作原生值。
-    state.mode = DYYYAvatarActionModeForState(state);
-    DYYY_AVATAR_WRITE(self, DYYYAvatarViewHidden, %orig(suppress ? YES : hidden));
+    if (DYYYGetBool(@"DYYYHideAvatarLive") || DYYYGetBool(@"DYYYHideAvatarButton")) {
+        hidden = YES;
+    }
+
+    %orig(hidden);
 }
 %end
 
-// 旧版只从明确的关注提示边界识别动画，不再按尺寸向上扩大删除范围。
+static id DYYYAvatarObjectForSelector(id object, SEL selector) {
+    if (!object || !selector || ![object respondsToSelector:selector]) {
+        return nil;
+    }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+    @try {
+        return [object performSelector:selector];
+    } @catch (__unused NSException *exception) {
+        return nil;
+    }
+#pragma clang diagnostic pop
+}
+
+static UIView *DYYYAvatarViewForSelector(id object, SEL selector) {
+    id value = DYYYAvatarObjectForSelector(object, selector);
+    return [value isKindOfClass:[UIView class]] ? value : nil;
+}
+
+static char kDYYYAvatarFollowApplyingKey;
+static char kDYYYAvatarFollowDeferredApplyKey;
+static char kDYYYAvatarFollowScopeViewKey;
+static char kDYYYAvatarActionHiddenViewKey;
+static char kDYYYAvatarActionRemovedViewKey;
+static char kDYYYAvatarActionChromeViewKey;
+static char kDYYYAvatarActionHiddenLayerKey;
+static char kDYYYAvatarActionChromeLayerKey;
+
+static BOOL DYYYAvatarFollowOptionsEnabled(void) {
+    return DYYYGetBoolCached(@"DYYYHideLOTAnimationView") || DYYYGetBoolCached(@"DYYYHideFollowPromptView");
+}
+
+// 与收藏按钮同理：开关关闭时不再进入 runtime 关联对象表查询。
+static BOOL DYYYShouldForceHideAvatarActionLayer(CALayer *layer) {
+    return layer && DYYYAvatarFollowOptionsEnabled() && objc_getAssociatedObject(layer, &kDYYYAvatarActionHiddenLayerKey);
+}
+
+static BOOL DYYYShouldClearAvatarActionLayer(CALayer *layer) {
+    if (!layer || !DYYYAvatarFollowOptionsEnabled()) {
+        return NO;
+    }
+    return objc_getAssociatedObject(layer, &kDYYYAvatarActionChromeLayerKey) != nil ||
+           objc_getAssociatedObject(layer, &kDYYYAvatarActionHiddenLayerKey) != nil;
+}
+
+static void DYYYMarkAvatarActionLayerHidden(CALayer *layer) {
+    if (!layer) {
+        return;
+    }
+
+    objc_setAssociatedObject(layer, &kDYYYAvatarActionHiddenLayerKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    layer.hidden = YES;
+    for (CALayer *sublayer in [layer.sublayers copy]) {
+        DYYYMarkAvatarActionLayerHidden(sublayer);
+    }
+}
+
+static void DYYYMarkAvatarActionLayerChrome(CALayer *layer) {
+    if (!layer) {
+        return;
+    }
+
+    objc_setAssociatedObject(layer, &kDYYYAvatarActionChromeLayerKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    layer.contents = nil;
+    layer.opaque = NO;
+    layer.backgroundColor = UIColor.clearColor.CGColor;
+    layer.borderWidth = 0.0;
+    layer.borderColor = UIColor.clearColor.CGColor;
+    layer.shadowOpacity = 0.0;
+    layer.shadowColor = UIColor.clearColor.CGColor;
+    if ([layer isKindOfClass:[CAShapeLayer class]]) {
+        CAShapeLayer *shapeLayer = (CAShapeLayer *)layer;
+        shapeLayer.fillColor = UIColor.clearColor.CGColor;
+        shapeLayer.strokeColor = UIColor.clearColor.CGColor;
+    }
+
+    for (CALayer *sublayer in [layer.sublayers copy]) {
+        DYYYMarkAvatarActionLayerHidden(sublayer);
+    }
+}
+
+static void DYYYPrepareAvatarActionSublayer(CALayer *parentLayer, CALayer *sublayer) {
+    if (!parentLayer || !sublayer) {
+        return;
+    }
+
+    BOOL isSuppressedTree = objc_getAssociatedObject(parentLayer, &kDYYYAvatarActionChromeLayerKey) ||
+                            objc_getAssociatedObject(parentLayer, &kDYYYAvatarActionHiddenLayerKey);
+    if (isSuppressedTree && DYYYAvatarFollowOptionsEnabled()) {
+        DYYYMarkAvatarActionLayerHidden(sublayer);
+    }
+}
+
+static void DYYYMarkAvatarActionViewHidden(UIView *view) {
+    if (!view) {
+        return;
+    }
+
+    objc_setAssociatedObject(view, &kDYYYAvatarActionHiddenViewKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    view.hidden = YES;
+}
+
+static BOOL DYYYShouldForceAvatarActionViewHidden(UIView *view) {
+    // 两个开关全关时结果必然为 NO，提前返回可省掉后面的关联对象查询。
+    if (!view || !DYYYAvatarFollowOptionsEnabled()) {
+        return NO;
+    }
+
+    BOOL hideVisual = objc_getAssociatedObject(view, &kDYYYAvatarActionHiddenViewKey) != nil;
+    if (hideVisual) {
+        return YES;
+    }
+
+    BOOL removeView = objc_getAssociatedObject(view, &kDYYYAvatarActionRemovedViewKey) != nil;
+    return removeView && DYYYGetBoolCached(@"DYYYHideFollowPromptView");
+}
+
+static BOOL DYYYShouldClearAvatarActionViewChrome(UIView *view) {
+    return view && DYYYGetBoolCached(@"DYYYHideLOTAnimationView") && objc_getAssociatedObject(view, &kDYYYAvatarActionChromeViewKey);
+}
+
+static void DYYYHideAvatarVisualForSelector(id object, SEL selector) {
+    UIView *view = DYYYAvatarViewForSelector(object, selector);
+    if (view) {
+        view.hidden = YES;
+    }
+}
+
+static void DYYYRemoveAvatarView(UIView *view) {
+    if (!view) {
+        return;
+    }
+    objc_setAssociatedObject(view, &kDYYYAvatarActionRemovedViewKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    view.hidden = YES;
+    view.userInteractionEnabled = NO;
+}
+
+static void DYYYHideAvatarFollowLayerContents(UIView *view) {
+    if (!view) {
+        return;
+    }
+    objc_setAssociatedObject(view, &kDYYYAvatarActionChromeViewKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    view.backgroundColor = UIColor.clearColor;
+    view.opaque = NO;
+    DYYYMarkAvatarActionLayerChrome(view.layer);
+}
+
+static void DYYYClearAvatarActionLayerChrome(CALayer *layer) {
+    DYYYMarkAvatarActionLayerChrome(layer);
+}
+
+static void DYYYClearAvatarActionSubviewChrome(UIView *view) {
+    if (!view) {
+        return;
+    }
+
+    objc_setAssociatedObject(view, &kDYYYAvatarActionChromeViewKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    view.backgroundColor = UIColor.clearColor;
+    view.opaque = NO;
+    DYYYClearAvatarActionLayerChrome(view.layer);
+
+    for (UIView *subview in [view.subviews copy]) {
+        DYYYClearAvatarActionSubviewChrome(subview);
+    }
+}
+
+static void DYYYClearAvatarActionViewChrome(UIView *view) {
+    if (!view) {
+        return;
+    }
+
+    objc_setAssociatedObject(view, &kDYYYAvatarActionChromeViewKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    view.backgroundColor = UIColor.clearColor;
+    view.opaque = NO;
+    DYYYClearAvatarActionLayerChrome(view.layer);
+
+    for (UIView *subview in [view.subviews copy]) {
+        DYYYClearAvatarActionSubviewChrome(subview);
+    }
+}
+
+static BOOL DYYYIsLegacyAvatarFollowAnimationView(UIView *view) {
+    Class promptClass = NSClassFromString(@"AWEPlayInteractionFollowPromptView");
+    UIView *ancestor = view.superview;
+    for (NSInteger depth = 0; ancestor && depth < 6; depth++, ancestor = ancestor.superview) {
+        if (promptClass && [ancestor isKindOfClass:promptClass]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+static BOOL DYYYHideAvatarFollowIconInView(UIView *view) {
+    if (!view) {
+        return NO;
+    }
+
+    NSString *className = NSStringFromClass(view.class);
+    if ([className isEqualToString:@"LOTAnimationView"]) {
+        DYYYHideAvatarFollowLayerContents(view);
+        return YES;
+    }
+
+    if ([className isEqualToString:@"AWEPlayInteractionStaticFollowAnimationView"]) {
+        BOOL foundIcon = NO;
+        for (NSString *selectorName in @[ @"plusImageView", @"tickImageView" ]) {
+            UIView *iconView = DYYYAvatarViewForSelector(view, NSSelectorFromString(selectorName));
+            if (iconView) {
+                DYYYMarkAvatarActionViewHidden(iconView);
+                foundIcon = YES;
+            }
+        }
+        if (!foundIcon) {
+            DYYYHideAvatarFollowLayerContents(view);
+        }
+        return YES;
+    }
+
+    BOOL foundIcon = NO;
+    for (UIView *subview in view.subviews) {
+        foundIcon = DYYYHideAvatarFollowIconInView(subview) || foundIcon;
+    }
+    return foundIcon;
+}
+
+static BOOL DYYYIsAvatarFollowContainerView(UIView *view) {
+    NSString *className = NSStringFromClass(view.class);
+    return [className containsString:@"Follow"] || [className containsString:@"follow"] ||
+           [className containsString:@"Prompt"] || [className containsString:@"Add"] ||
+           [className containsString:@"SendMessage"] || [className containsString:@"sendMessage"] ||
+           [className containsString:@"SendMsg"] || [className containsString:@"sendMsg"] ||
+           [className containsString:@"EnterStore"] || [className containsString:@"enterStore"] ||
+           [className containsString:@"LinkIcon"] || [className containsString:@"linkIcon"];
+}
+
+static BOOL DYYYIsSmallAvatarFollowBadgeView(UIView *view) {
+    CGFloat width = CGRectGetWidth(view.bounds);
+    CGFloat height = CGRectGetHeight(view.bounds);
+    return width > 0.0 && height > 0.0 && width <= 52.0 && height <= 52.0;
+}
+
+static UIView *DYYYAvatarFollowRemovalTargetForView(UIView *view, UIView *rootView) {
+    UIView *target = view;
+    UIView *ancestor = view.superview;
+    while (ancestor && ancestor != rootView) {
+        if (DYYYIsAvatarFollowContainerView(ancestor) || DYYYIsSmallAvatarFollowBadgeView(ancestor)) {
+            target = ancestor;
+            ancestor = ancestor.superview;
+            continue;
+        }
+        break;
+    }
+    return target;
+}
+
+static BOOL DYYYHideAvatarAuxiliaryActionVisualsInView(UIView *view) {
+    if (!view) {
+        return NO;
+    }
+
+    NSString *className = NSStringFromClass(view.class);
+    BOOL isActionVisual = [view isKindOfClass:[UIImageView class]] ||
+                          [className containsString:@"GuideAnimation"] ||
+                          [className containsString:@"SendMessageImage"] ||
+                          [className containsString:@"SendMsgImage"] ||
+                          [className containsString:@"EnterStoreImage"] ||
+                          [className containsString:@"LinkIcon"];
+    if (isActionVisual) {
+        DYYYMarkAvatarActionViewHidden(view);
+        return YES;
+    }
+
+    BOOL foundVisual = NO;
+    for (UIView *subview in [view.subviews copy]) {
+        foundVisual = DYYYHideAvatarAuxiliaryActionVisualsInView(subview) || foundVisual;
+    }
+    return foundVisual;
+}
+
+static NSArray<NSArray<NSString *> *> *DYYYAvatarAuxiliaryActionSelectorGroups(void) {
+    return @[
+        @[ @"sendMessageView", @"avatarSendMessageImageView", @"sendMessageGuideView" ],
+        @[ @"enterStoreView", @"avatarEnterStoreImageView", @"enterStoreGuideView" ],
+        @[ @"linkIconContainerView", @"userAvatarLinkIcon" ],
+    ];
+}
+
+static BOOL DYYYApplyAvatarAuxiliaryActionSettingsForOwner(id owner) {
+    BOOL hidePlus = DYYYGetBool(@"DYYYHideLOTAnimationView");
+    BOOL removePlus = DYYYGetBool(@"DYYYHideFollowPromptView");
+    if (!hidePlus && !removePlus) {
+        return NO;
+    }
+
+    BOOL handled = NO;
+    for (NSArray<NSString *> *selectorGroup in DYYYAvatarAuxiliaryActionSelectorGroups()) {
+        UIView *containerView = DYYYAvatarViewForSelector(owner, NSSelectorFromString(selectorGroup.firstObject));
+        NSMutableArray<UIView *> *visualViews = [NSMutableArray array];
+        for (NSUInteger index = 1; index < selectorGroup.count; index++) {
+            UIView *visualView = DYYYAvatarViewForSelector(owner, NSSelectorFromString(selectorGroup[index]));
+            if (visualView) {
+                [visualViews addObject:visualView];
+            }
+        }
+
+        if (removePlus) {
+            UIView *fallbackVisual = visualViews.firstObject;
+            UIView *removalTarget = containerView ?: DYYYAvatarFollowRemovalTargetForView(fallbackVisual, nil);
+            DYYYRemoveAvatarView(removalTarget);
+            for (UIView *visualView in visualViews) {
+                DYYYRemoveAvatarView(visualView);
+            }
+            handled = (removalTarget || visualViews.count > 0) || handled;
+            continue;
+        }
+
+        for (UIView *visualView in visualViews) {
+            visualView.hidden = YES;
+            handled = YES;
+        }
+        if (containerView) {
+            DYYYClearAvatarActionViewChrome(containerView);
+            BOOL foundVisual = DYYYHideAvatarAuxiliaryActionVisualsInView(containerView);
+            if (!foundVisual && visualViews.count == 0) {
+                DYYYHideAvatarFollowLayerContents(containerView);
+            }
+            handled = YES;
+        }
+    }
+    return handled;
+}
+
+static BOOL DYYYApplyAvatarFollowSettingsInView(UIView *view, UIView *rootView) {
+    if (!view) {
+        return NO;
+    }
+
+    BOOL hidePlus = DYYYGetBool(@"DYYYHideLOTAnimationView");
+    BOOL removePlus = DYYYGetBool(@"DYYYHideFollowPromptView");
+    if (!hidePlus && !removePlus) {
+        return NO;
+    }
+
+    // 记录已识别的头像操作树，便于异步追加子视图时立即再识别。
+    objc_setAssociatedObject(view, &kDYYYAvatarFollowScopeViewKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    NSString *className = NSStringFromClass(view.class);
+    BOOL isAvatarView = [className isEqualToString:@"AWEPlayInteractionUserAvatarView"];
+    BOOL isStaticFollowView = [className isEqualToString:@"AWEPlayInteractionStaticFollowAnimationView"];
+    BOOL isLegacyFollowAnimation = [className isEqualToString:@"LOTAnimationView"] && DYYYIsLegacyAvatarFollowAnimationView(view);
+    BOOL isLegacyPromptContainer = [className isEqualToString:@"AWEPlayInteractionFollowPromptView"];
+    BOOL handled = NO;
+
+    if (isAvatarView) {
+        handled = DYYYApplyAvatarAuxiliaryActionSettingsForOwner(view) || handled;
+    }
+
+    if (isStaticFollowView || isLegacyFollowAnimation) {
+        if (removePlus) {
+            DYYYRemoveAvatarView(DYYYAvatarFollowRemovalTargetForView(view, rootView));
+        } else {
+            DYYYHideAvatarFollowIconInView(view);
+        }
+        handled = YES;
+    } else if (removePlus && isLegacyPromptContainer) {
+        view.hidden = YES;
+        view.userInteractionEnabled = NO;
+        handled = YES;
+    }
+
+    for (UIView *subview in [view.subviews copy]) {
+        handled = DYYYApplyAvatarFollowSettingsInView(subview, rootView) || handled;
+    }
+    return handled;
+}
+
+static void DYYYApplyAvatarFollowSettingsForContext(id context) {
+    UIView *elementView = DYYYAvatarViewForSelector(context, NSSelectorFromString(@"elementView"));
+    if (elementView) {
+        DYYYApplyAvatarFollowSettingsInView(elementView, elementView);
+    }
+}
+
+static void DYYYApplyAvatarFollowPromptSettings(id owner) {
+    BOOL hidePlus = DYYYGetBool(@"DYYYHideLOTAnimationView");
+    BOOL removePlus = DYYYGetBool(@"DYYYHideFollowPromptView");
+    if (!hidePlus && !removePlus) {
+        return;
+    }
+
+    for (NSString *selectorName in @[ @"followAnimationView", @"unfollowAnimationView", @"staticFollowAnimationView" ]) {
+        UIView *animationView = DYYYAvatarViewForSelector(owner, NSSelectorFromString(selectorName));
+        if (!animationView) {
+            continue;
+        }
+        if (removePlus) {
+            DYYYRemoveAvatarView(DYYYAvatarFollowRemovalTargetForView(animationView, nil));
+        } else {
+            DYYYHideAvatarFollowIconInView(animationView);
+        }
+    }
+
+    UIView *followAddView = DYYYAvatarViewForSelector(owner, NSSelectorFromString(@"followAddView"));
+    if (removePlus) {
+        DYYYRemoveAvatarView(followAddView);
+    } else {
+        BOOL foundIcon = DYYYHideAvatarFollowIconInView(followAddView);
+        if (hidePlus && followAddView) {
+            DYYYClearAvatarActionViewChrome(followAddView);
+            if (!foundIcon) {
+                DYYYHideAvatarFollowLayerContents(followAddView);
+            }
+        }
+    }
+
+    UIView *followPromptView = DYYYAvatarViewForSelector(owner, NSSelectorFromString(@"followPromptView"));
+    if (removePlus) {
+        DYYYRemoveAvatarView(followPromptView);
+    } else {
+        DYYYApplyAvatarFollowSettingsInView(followPromptView, followPromptView);
+    }
+
+    DYYYApplyAvatarAuxiliaryActionSettingsForOwner(owner);
+
+    if ([owner isKindOfClass:[UIView class]]) {
+        DYYYApplyAvatarFollowSettingsInView((UIView *)owner, (UIView *)owner);
+    } else if ([owner isKindOfClass:[UIViewController class]]) {
+        DYYYApplyAvatarFollowSettingsInView(((UIViewController *)owner).view, ((UIViewController *)owner).view);
+    }
+    UIView *userAvatarView = DYYYAvatarViewForSelector(owner, NSSelectorFromString(@"userAvatarView"));
+    if (userAvatarView) {
+        DYYYApplyAvatarFollowSettingsInView(userAvatarView, userAvatarView);
+    }
+    DYYYApplyAvatarFollowSettingsForContext(DYYYAvatarObjectForSelector(owner, NSSelectorFromString(@"userAvatarContext")));
+}
+
+static void DYYYApplyAvatarFollowPromptSettingsSafely(id owner) {
+    if (!owner || !DYYYAvatarFollowOptionsEnabled() ||
+        objc_getAssociatedObject(owner, &kDYYYAvatarFollowApplyingKey)) {
+        return;
+    }
+
+    // 必须在任何动态 getter 探测前建立屏障。部分版本的 userAvatarView getter
+    // 会同步回调 controllerStartConfigAvatarView:，若稍后再标记会形成无限递归。
+    objc_setAssociatedObject(owner, &kDYYYAvatarFollowApplyingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    @try {
+        DYYYApplyAvatarFollowPromptSettings(owner);
+    } @catch (__unused NSException *exception) {
+        // 宿主私有 getter 在版本变化时可能抛出异常；头像附加功能失败不应终止主进程。
+    } @finally {
+        objc_setAssociatedObject(owner, &kDYYYAvatarFollowApplyingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
+static void DYYYApplyAvatarFollowPromptSettingsWithRetry(id owner) {
+    if (!owner || !DYYYAvatarFollowOptionsEnabled() ||
+        objc_getAssociatedObject(owner, &kDYYYAvatarFollowApplyingKey)) {
+        return;
+    }
+
+    DYYYApplyAvatarFollowPromptSettingsSafely(owner);
+    if (objc_getAssociatedObject(owner, &kDYYYAvatarFollowDeferredApplyKey)) {
+        return;
+    }
+
+    objc_setAssociatedObject(owner, &kDYYYAvatarFollowDeferredApplyKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    __weak id weakTarget = owner;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        id target = weakTarget;
+        if (!target) return;
+        // v487: 页面销毁时立即停止后续操作，避免死锁和野指针
+        if ([target isKindOfClass:[UIView class]] && !((UIView *)target).window) return;
+        if ([target isKindOfClass:[UIViewController class]] && !((UIViewController *)target).view.window) return;
+        
+        DYYYApplyAvatarFollowPromptSettingsSafely(target);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            id target2 = weakTarget;
+            if (!target2) return;
+            // v487: 延迟后再次校验状态
+            if ([target2 isKindOfClass:[UIView class]] && !((UIView *)target2).window) return;
+            if ([target2 isKindOfClass:[UIViewController class]] && !((UIViewController *)target2).view.window) return;
+            
+            DYYYApplyAvatarFollowPromptSettingsSafely(target2);
+            objc_setAssociatedObject(target2, &kDYYYAvatarFollowDeferredApplyKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        });
+    });
+}
+
+// 隐藏头像加号和透明
 %hook LOTAnimationView
 - (void)layoutSubviews {
     %orig;
-    UIView *boundary = DYYYAvatarLegacyFollowBoundary(self);
-    if (boundary) {
-        DYYYApplyAvatarActionSettingsWithRetry(boundary);
-        if (DYYYAvatarActionModeForSettings(DYYYAvatarActionSnapshot(), DYYYAvatarActionFollow) == DYYYAvatarActionModeNative) {
-            NSString *transparencyValue = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYAvatarViewTransparency"];
-            if (transparencyValue && transparencyValue.length > 0) self.alpha = [transparencyValue floatValue];
+    // 旧版加号动画可能被额外容器包裹，沿父视图向上识别关注提示视图。
+    if (DYYYIsLegacyAvatarFollowAnimationView(self)) {
+        // 检查是否需要隐藏加号
+        if (DYYYAvatarFollowOptionsEnabled()) {
+            if (DYYYGetBool(@"DYYYHideFollowPromptView")) {
+                DYYYRemoveAvatarView(DYYYAvatarFollowRemovalTargetForView(self, nil));
+            } else {
+                DYYYHideAvatarFollowLayerContents(self);
+            }
+            DYYYApplyAvatarFollowPromptSettingsWithRetry(self.superview ?: self);
+            return;
+        }
+        // 应用透明度设置
+        NSString *transparencyValue = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYAvatarViewTransparency"];
+        if (transparencyValue && transparencyValue.length > 0) {
+            CGFloat alphaValue = [transparencyValue floatValue];
+            self.alpha = alphaValue;
         }
     }
 }
@@ -7599,7 +8025,10 @@ static NSArray *DYYYIMMenuItemsByAddingDownloadAction(NSArray *menuItems, id cel
 %hook AWEPlayInteractionStaticFollowAnimationView
 - (void)layoutSubviews {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    if (DYYYAvatarFollowOptionsEnabled()) {
+        DYYYApplyAvatarFollowSettingsInView((UIView *)self, nil);
+        DYYYApplyAvatarFollowPromptSettingsWithRetry(self.superview ?: self);
+    }
 }
 %end
 
@@ -7608,9 +8037,11 @@ static NSArray *DYYYIMMenuItemsByAddingDownloadAction(NSArray *menuItems, id cel
 - (void)layoutSubviews {
     %orig;
 
-    DYYYAvatarActionState *bodyState = DYYYAvatarActionTrackIndependentVisibility(self, NO);
-    if (bodyState) DYYYAvatarActionApplyState(self, bodyState, DYYYAvatarActionModeForState(bodyState));
-    if (DYYYGetBoolCached(@"DYYYHideAvatarButton")) return;
+    // 检查是否需要隐藏头像
+    if (DYYYGetBool(@"DYYYHideAvatarButton")) {
+        self.hidden = YES;
+        return;
+    }
 
     // 应用透明度设置
     NSString *transparencyValue = [[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYAvatarViewTransparency"];
@@ -8450,18 +8881,35 @@ static void DYYYHideDouYinSelectAppGuideViews(id owner) {
 %end
 
 %hook AWEPlayInteractionFollowPromptView
+
 - (void)layoutSubviews {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+
+    if (DYYYAvatarFollowOptionsEnabled()) {
+        DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
+        if (DYYYGetBool(@"DYYYHideFollowPromptView")) {
+            return;
+        }
+    }
 }
+
 - (void)didMoveToWindow {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+
+    if (DYYYAvatarFollowOptionsEnabled()) {
+        DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
+    }
 }
+
 - (void)didMoveToSuperview {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+
+    if (DYYYAvatarFollowOptionsEnabled()) {
+        DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
+        return;
+    }
 }
+
 %end
 
 %hook AWEPlayInteractionElementMaskView
@@ -11764,7 +12212,7 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 %hook AWEUserModel
 
 - (NSNumber *)roomID {
-	BOOL DYYYHideAvatarLive = DYYYGetBoolCached(@"DYYYHideAvatarLive");
+	BOOL DYYYHideAvatarLive = DYYYGetBool(@"DYYYHideAvatarLive") || DYYYGetBool(@"DYYYHideAvatarButton");
 	if (DYYYHideAvatarLive) {
 		return @(0);
 	}
@@ -12145,49 +12593,51 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 - (void)layoutSubviews {
     %orig;
 
-    DYYYApplyAvatarBodyVisibilityForSelector(self, NSSelectorFromString(@"userAvatarView"));
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    if (DYYYGetBool(@"DYYYHideAvatarButton")) {
+        DYYYHideAvatarVisualForSelector(self, NSSelectorFromString(@"userAvatarView"));
+    }
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)didMoveToWindow {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)didMoveToSuperview {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)updateRightContainerElement {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)p_resetFollowAnimation {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)playFollowAnimation:(id)completion {
     %orig(completion);
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)playUnFollowAnimation {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)changeSendMessageViewWithFlag:(BOOL)flag {
     %orig(flag);
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 %end
 
 %hook AWEPlayInteractionUserAvatarFollowPromptController
 - (void)onFollowViewClicked:(UITapGestureRecognizer *)gesture {
-    if (DYYYAvatarActionBlocksClick(DYYYAvatarActionSnapshot(), DYYYAvatarActionFollow)) {
+    if (DYYYGetBool(@"DYYYHideFollowPromptView")) {
         return;
     }
 
@@ -12244,14 +12694,14 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 }
 
 - (void)onUnFollowViewClicked:(id)arg1 {
-    if (DYYYAvatarActionBlocksClick(DYYYAvatarActionSnapshot(), DYYYAvatarActionFollow)) {
+    if (DYYYGetBool(@"DYYYHideFollowPromptView")) {
         return;
     }
     %orig(arg1);
 }
 
 - (void)followPromptViewClicked:(id)arg1 {
-    if (DYYYAvatarActionBlocksClick(DYYYAvatarActionSnapshot(), DYYYAvatarActionFollow)) {
+    if (DYYYGetBool(@"DYYYHideFollowPromptView")) {
         return;
     }
     %orig(arg1);
@@ -12259,86 +12709,104 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 
 - (void)layoutElementView {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
+}
+
+- (BOOL)shouldShowFollowAddWithModel:(id)arg1 {
+    if (DYYYGetBool(@"DYYYHideFollowPromptView")) {
+        return NO;
+    }
+    return %orig(arg1);
+}
+
+- (BOOL)shouldShowSpecialFollowWithModel:(id)arg1 {
+    if (DYYYGetBool(@"DYYYHideFollowPromptView")) {
+        return NO;
+    }
+    return %orig(arg1);
 }
 
 - (void)showFollowAddView:(BOOL)show {
     %orig(show);
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)viewController_willDisplay {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)viewController_viewDidAppear {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)updateFollowStatus {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)followStatusChanged:(id)arg1 {
     %orig(arg1);
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)playFollowAnimation {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)playFollowAnimation:(id)completion {
     %orig(completion);
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)playUnFollowAnimation {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)_ensureStaticFollowAnimationView {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 %end
 
 %hook AWEPlayInteractionUserAvatarMainBusinessController
 - (void)layoutElementView {
     %orig;
-    DYYYApplyAvatarBodyVisibilityForSelector(self, NSSelectorFromString(@"avatarPicView"));
-    id context = DYYYAvatarObjectForSelector(self, NSSelectorFromString(@"userAvatarContext"));
-    DYYYApplyAvatarBodyVisibilityForSelector(context, NSSelectorFromString(@"avatarPicView"));
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    if (DYYYGetBool(@"DYYYHideAvatarButton")) {
+        DYYYHideAvatarVisualForSelector(self, NSSelectorFromString(@"avatarPicView"));
+        id context = DYYYAvatarObjectForSelector(self, NSSelectorFromString(@"userAvatarContext"));
+        DYYYHideAvatarVisualForSelector(context, NSSelectorFromString(@"avatarPicView"));
+    }
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 %end
 
 %hook AWEPlayInteractionUserAvatarOptElementElement
 - (void)layoutElementView {
     %orig;
-    id context = DYYYAvatarObjectForSelector(self, NSSelectorFromString(@"userAvatarContext"));
-    DYYYApplyAvatarBodyVisibilityForSelector(context, NSSelectorFromString(@"avatarPicView"));
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    if (DYYYGetBool(@"DYYYHideAvatarButton")) {
+        id context = DYYYAvatarObjectForSelector(self, NSSelectorFromString(@"userAvatarContext"));
+        DYYYHideAvatarVisualForSelector(context, NSSelectorFromString(@"avatarPicView"));
+    }
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)viewController_willDisplay {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)viewController_viewDidAppear {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)setAppear:(BOOL)appear {
     %orig(appear);
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 %end
 
@@ -12358,70 +12826,84 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 
 - (void)layoutElementView {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)viewController_willDisplay {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)setDecorationStyle:(long long)style {
     %orig(style);
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 %end
 
 %hook AWEPlayInteractionUserAvatarSendMessageController
 - (void)controllerViewDidLayout {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)controllerStartConfigAvatarView:(id)view {
     %orig(view);
-    DYYYApplyAvatarActionSettingsWithRetry(self);
-    DYYYApplyAvatarActionSettingsWithRetry(view);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(view);
 }
 
 - (void)controllerWillDisplay {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)controllerPlay {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)controllerReset {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)updateSendMessageView:(BOOL)show {
     %orig(show);
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)p_updateSendMessageView:(BOOL)show {
     %orig(show);
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)p_showSendMessageView:(id)view shouldShowSendMessageView:(BOOL)show animated:(BOOL)animated completion:(id)completion {
     %orig(view, show, animated, completion);
-    DYYYApplyAvatarActionSettingsWithRetry(self);
-    DYYYApplyAvatarActionSettingsWithRetry(view);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(view);
+}
+
+- (BOOL)shouldShowSendMessageView {
+    if (DYYYGetBool(@"DYYYHideFollowPromptView")) {
+        return NO;
+    }
+    return %orig;
+}
+
+- (BOOL)shouldShowSendMessageGuideAnimation {
+    if (DYYYAvatarFollowOptionsEnabled()) {
+        return NO;
+    }
+    return %orig;
 }
 
 - (void)playSendMessageGuideAnimationIfNeeded {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)onSendMessageViewClicked:(id)arg1 {
-    if (DYYYAvatarActionBlocksClick(DYYYAvatarActionSnapshot(), DYYYAvatarActionSendMessage)) {
+    if (DYYYGetBool(@"DYYYHideFollowPromptView")) {
         return;
     }
     %orig(arg1);
@@ -12431,62 +12913,76 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 %hook AWEPlayInteractionUserAvatarSendMsgController
 - (void)layoutElementView {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)viewController_willDisplay {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)viewController_viewDidDisappear {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)play {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)reset {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)changeSendMessageViewWithFlag:(BOOL)flag {
     %orig(flag);
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)showSendMessageView:(id)view show:(BOOL)show animated:(BOOL)animated completion:(id)completion {
     %orig(view, show, animated, completion);
-    DYYYApplyAvatarActionSettingsWithRetry(self);
-    DYYYApplyAvatarActionSettingsWithRetry(view);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(view);
 }
 
 - (void)showSendMessageViewWithAnimation:(BOOL)animated {
     %orig(animated);
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
+}
+
+- (BOOL)shouldShowSendMessageView:(id)arg1 {
+    if (DYYYGetBool(@"DYYYHideFollowPromptView")) {
+        return NO;
+    }
+    return %orig(arg1);
+}
+
+- (BOOL)shouldShowSendMessageGuideAnimation {
+    if (DYYYAvatarFollowOptionsEnabled()) {
+        return NO;
+    }
+    return %orig;
 }
 
 - (void)updateSendMsgWithFollowShow:(BOOL)show animation:(BOOL)animated {
     %orig(show, animated);
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)handleAvatarFollowStatusChange:(id)arg1 {
     %orig(arg1);
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)playSendMessageGuideAnimationIfNeeded {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)onSendMessageViewClicked:(id)arg1 {
-    if (DYYYAvatarActionBlocksClick(DYYYAvatarActionSnapshot(), DYYYAvatarActionSendMessage)) {
+    if (DYYYGetBool(@"DYYYHideFollowPromptView")) {
         return;
     }
     %orig(arg1);
@@ -12496,51 +12992,69 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 %hook AWEPlayInteractionUserAvatarEnterStoreController
 - (void)layoutElementView {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)viewController_willDisplay {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)viewController_viewDidAppear {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)play {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)reset {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)showEnterStore {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)hideEnterStore {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
+}
+
+- (BOOL)shouldShowEnterStoreView {
+    if (DYYYGetBool(@"DYYYHideFollowPromptView")) {
+        return NO;
+    }
+    return %orig;
+}
+
+- (BOOL)shouldShowEnterStoreGuideAnimation {
+    if (DYYYAvatarFollowOptionsEnabled()) {
+        return NO;
+    }
+    return %orig;
 }
 
 - (void)playEnterStoreGuideAnimationIfNeeded {
+    if (DYYYAvatarFollowOptionsEnabled()) {
+        DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
+        return;
+    }
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)handleAvatarFollowStatusChange:(id)arg1 {
     %orig(arg1);
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)onEnterStoreViewClicked:(id)arg1 {
-    if (DYYYAvatarActionBlocksClick(DYYYAvatarActionSnapshot(), DYYYAvatarActionEnterStore)) {
+    if (DYYYGetBool(@"DYYYHideFollowPromptView")) {
         return;
     }
     %orig(arg1);
@@ -12550,21 +13064,21 @@ static BOOL DYYYAwemeModelMatchesConfiguredContentFilters(AWEAwemeModel *aweme,
 %hook AWEPlayInteractionUserAvatarAdLinkController
 - (void)layoutElementView {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)reset {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)updateCommerceHotSplashLinkIconImageIfNeeded:(id)arg1 {
     %orig(arg1);
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)onLinkIconContainerViewClicked:(id)arg1 {
-    if (DYYYAvatarActionBlocksClick(DYYYAvatarActionSnapshot(), DYYYAvatarActionAdLink)) {
+    if (DYYYGetBool(@"DYYYHideFollowPromptView")) {
         return;
     }
     %orig(arg1);
@@ -13709,9 +14223,16 @@ static Class tabBarButtonClass = nil;
 
 // setHidden 是转场时的高频钩子；周边已使用原生谓词，不再接入全局视图拦截。
 static BOOL DYYYViewHideGate(void) {
-    // 无关黑条逻辑只保留旧关注/收藏触发条件，辅助开关不扩大此 gate。
-    return DYYYGetBoolCached(DYYYAvatarFollowRemoveVisualKey) ||
-           DYYYGetBoolCached(DYYYAvatarFollowDeleteKey) || DYYYFeedVideoCollectButtonHideEnabled();
+    static uint32_t gen = UINT32_MAX;
+    static BOOL enabled = NO;
+    uint32_t g = gDYYYSettingsGeneration;
+    if (gen != g) {
+        enabled = DYYYGetBool(@"DYYYHideLOTAnimationView") ||
+                  DYYYGetBool(@"DYYYHideFollowPromptView") ||
+                  DYYYFeedVideoCollectButtonHideEnabled();
+        gen = g;
+    }
+    return enabled;
 }
 
 // v743: 弱引用盒子，用于给视图缓存「最近的 VC」，避免每次 setFrame 都走 responder 链。
@@ -13724,23 +14245,12 @@ static BOOL DYYYViewHideGate(void) {
 %hook UIView
 
 - (void)setHidden:(BOOL)hidden {
-    if (DYYYAvatarActionIsOwnWrite(self, DYYYAvatarViewHidden)) {
-        %orig(hidden);
-        return;
-    }
-
-    DYYYAvatarActionState *state = DYYYAvatarActionStateForObject(self);
-    if (state) {
-        DYYYAvatarActionRecordNative(self, state, DYYYAvatarViewHidden, @(hidden));
-        BOOL suppress = DYYYAvatarActionHideView(state) || DYYYShouldForceHideFeedVideoCollectButtonView(self);
-        DYYY_AVATAR_WRITE(self, DYYYAvatarViewHidden, %orig(suppress ? YES : hidden));
-        return;
-    }
     if (__builtin_expect(!DYYYViewHideGate(), 1)) {
         %orig(hidden);
         return;
     }
-    BOOL shouldForceHidden = DYYYShouldForceHideFeedVideoCollectButtonView(self);
+
+    BOOL shouldForceHidden = DYYYShouldForceAvatarActionViewHidden(self) || DYYYShouldForceHideFeedVideoCollectButtonView(self);
 
     // v378: 黑条要显示时直接拒绝（frame={0,0,屏宽,40~80} + 颜色纯黑）
     if (!hidden && !shouldForceHidden) {
@@ -13767,15 +14277,6 @@ static BOOL DYYYViewHideGate(void) {
     }
 
     %orig(shouldForceHidden ? YES : hidden);
-}
-
-- (void)setUserInteractionEnabled:(BOOL)enabled {
-    if (DYYYAvatarActionIsOwnWrite(self, DYYYAvatarViewInteraction)) { %orig(enabled); return; }
-    DYYYAvatarActionState *state = DYYYAvatarActionStateForObject(self);
-    if (!state) { %orig(enabled); return; }
-    DYYYAvatarActionRecordNative(self, state, DYYYAvatarViewInteraction, @(enabled));
-    BOOL suppress = DYYYAvatarActionBlocksViewInteraction(state);
-    DYYY_AVATAR_WRITE(self, DYYYAvatarViewInteraction, %orig(suppress ? NO : enabled));
 }
 
 - (void)didAddSubview:(UIView *)subview {
@@ -13812,20 +14313,27 @@ static BOOL DYYYViewHideGate(void) {
         DYYYMarkFeedVideoCollectButtonViewHidden(subview);
     }
 
-    DYYYPrepareAvatarActionSubview(self, subview);
+    BOOL hasSuppressedChrome = objc_getAssociatedObject(self, &kDYYYAvatarActionChromeViewKey) != nil;
+    BOOL isAvatarFollowScope = objc_getAssociatedObject(self, &kDYYYAvatarFollowScopeViewKey) != nil;
+    if ((!hasSuppressedChrome && !isAvatarFollowScope) || !DYYYAvatarFollowOptionsEnabled()) {
+        return;
+    }
+
+    if (hasSuppressedChrome) {
+        DYYYClearAvatarActionSubviewChrome(subview);
+        DYYYHideAvatarAuxiliaryActionVisualsInView(subview);
+    }
+
+    if (isAvatarFollowScope) {
+        DYYYApplyAvatarFollowSettingsInView(subview, self);
+    }
 }
 
 - (void)didMoveToWindow {
     %orig;
-    DYYYAvatarActionObjectTopologyDidChange(self);
     if (!hideButton || !hideButton.isElementsHidden || DYYYShouldExemptClearTargetView(self)) {
         DYYYRestoreClearTargetViewStateIfNeeded(self);
     }
-}
-
-- (void)didMoveToSuperview {
-    %orig;
-    DYYYAvatarActionObjectTopologyDidChange(self);
 }
 
 - (id)initWithFrame:(CGRect)frame {
@@ -13851,7 +14359,6 @@ static BOOL DYYYViewHideGate(void) {
 }
 
 - (void)setBackgroundColor:(UIColor *)backgroundColor {
-    if (DYYYAvatarActionIsOwnWrite(self, DYYYAvatarViewBackground)) { %orig(backgroundColor); return; }
     if (![NSThread isMainThread]) {
         dispatch_async(dispatch_get_main_queue(), ^{
           [self setBackgroundColor:backgroundColor];
@@ -13864,11 +14371,8 @@ static BOOL DYYYViewHideGate(void) {
         return;
     }
 
-    DYYYAvatarActionState *state = DYYYAvatarActionStateForObject(self);
-    if (state) {
-        DYYYAvatarActionRecordNative(self, state, DYYYAvatarViewBackground, backgroundColor);
-        BOOL clear = DYYYAvatarActionClearChrome(state);
-        DYYY_AVATAR_WRITE(self, DYYYAvatarViewBackground, %orig(clear ? UIColor.clearColor : backgroundColor));
+    if (DYYYShouldClearAvatarActionViewChrome(self)) {
+        %orig([UIColor clearColor]);
         return;
     }
 
@@ -14408,12 +14912,12 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 - (void)performCommentAction {
     %orig;
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)setIsCommentVCShowing:(BOOL)showing {
     %orig(showing);
-    DYYYApplyAvatarActionSettingsWithRetry(self);
+    DYYYApplyAvatarFollowPromptSettingsWithRetry(self);
 }
 
 - (void)onPlayer:(id)arg0 didDoubleClick:(id)arg1 {
@@ -16165,7 +16669,6 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
         static dispatch_once_t onceToken;
         dispatch_once(&onceToken, ^{
           %init;
-          DYYYInstallAvatarActionRuntime();
           Class wSwiftImpl = objc_getClass("AWECommentInputViewSwiftImpl.CommentInputContainerView");
           if (wSwiftImpl) {
               %init(DYYYCommentInputContainerGroup, CommentInputContainerView = wSwiftImpl);

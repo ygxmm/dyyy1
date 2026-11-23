@@ -5,7 +5,6 @@
 #import "DYYYNativeAutoPlay.h"
 #import "DYYYPickerDelegates.h"
 #import "DYYYAvatarSurroundingPolicy.h"
-#import "DYYYAvatarInteractionPolicy.h"
 #import "DYYYUtils.h"
 
 #import "DYYYAboutDialogView.h"
@@ -102,9 +101,8 @@
               @"DYYYEnableDoubleTapMenu" : @[ @"DYYYEnableDoubleOpenComment" ],
               @"DYYYRemoveTimeProgress" : @[ @"DYYYHideTimeProgress" ],
               @"DYYYHideTimeProgress" : @[ @"DYYYRemoveTimeProgress" ],
-              // 只在用户开启关注模式时关闭另一旧键，不翻转或迁移已有配置。
-              DYYYAvatarFollowRemoveVisualKey : @[ DYYYAvatarFollowDeleteKey ],
-              DYYYAvatarFollowDeleteKey : @[ DYYYAvatarFollowRemoveVisualKey ],
+              @"DYYYHideLOTAnimationView" : @[ @"DYYYHideFollowPromptView" ],
+              @"DYYYHideFollowPromptView" : @[ @"DYYYHideLOTAnimationView" ],
               @"DYYYSkipLive" : @[ @"DYYYSkipAllLive" ],
               @"DYYYSkipAllLive" : @[ @"DYYYSkipLive" ],
               @"DYYYHideEntry" : @[ @"DYYYRemoveEntry" ],

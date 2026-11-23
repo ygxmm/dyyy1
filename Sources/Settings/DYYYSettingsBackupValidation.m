@@ -1,6 +1,5 @@
 #import "DYYYSettingsBackupValidation.h"
 #import "DYYYAvatarSurroundingPolicy.h"
-#import "DYYYAvatarInteractionPolicy.h"
 #import "DYYYConstants.h"
 #import <ImageIO/ImageIO.h>
 #import <math.h>
@@ -149,13 +148,6 @@ static BOOL DYYYBackupValidateKnownValue(NSString *key, id value, NSError **erro
         if ([value isKindOfClass:NSNumber.class] && isfinite([value doubleValue]) &&
             ([value doubleValue] == 0.0 || [value doubleValue] == 1.0)) return YES;
         return DYYYBackupFail(error, @"抖音播放卡片开关必须为布尔值");
-    }
-    // 新独立入口键采用布尔白名单；不改变旧关注键的值类型和归一化语义。
-    NSArray *avatarActionFlags = @[DYYYHideAvatarSendMessageKey, DYYYHideAvatarEnterStoreKey, DYYYHideAvatarAdLinkKey];
-    if ([avatarActionFlags containsObject:key]) {
-        if ([value isKindOfClass:NSNumber.class] && isfinite([value doubleValue]) &&
-            ([value doubleValue] == 0.0 || [value doubleValue] == 1.0)) return YES;
-        return DYYYBackupFail(error, @"头像入口开关必须为布尔值");
     }
     NSArray *flags = @[
         @"DYYYEnableAutoPlay", @"DYYYisEnableAutoPlay",

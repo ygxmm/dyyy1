@@ -8,7 +8,6 @@
 #import "DYYYKeyboardAvoidanceCoordinator.h"
 #import "DYYYSettingsHelper.h"
 #import "DYYYAvatarSurroundingPolicy.h"
-#import "DYYYAvatarInteractionPolicy.h"
 #import "DYYYUtils.h"
 
 typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYYYSettingItemTypeTextField, DYYYSettingItemTypePicker };
@@ -19,11 +18,9 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
 @property(nonatomic, copy) NSString *key;
 @property(nonatomic, assign) DYYYSettingItemType type;
 @property(nonatomic, copy, nullable) NSString *placeholder;
-@property(nonatomic, copy, nullable) NSString *subTitle;
 
 + (instancetype)itemWithTitle:(NSString *)title key:(NSString *)key type:(DYYYSettingItemType)type;
 + (instancetype)itemWithTitle:(NSString *)title key:(NSString *)key type:(DYYYSettingItemType)type placeholder:(nullable NSString *)placeholder;
-+ (instancetype)itemWithTitle:(NSString *)title key:(NSString *)key type:(DYYYSettingItemType)type subTitle:(NSString *)subTitle;
 
 @end
 
@@ -39,12 +36,6 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
     item.key = key;
     item.type = type;
     item.placeholder = placeholder;
-    return item;
-}
-
-+ (instancetype)itemWithTitle:(NSString *)title key:(NSString *)key type:(DYYYSettingItemType)type subTitle:(NSString *)subTitle {
-    DYYYSettingItem *item = [self itemWithTitle:title key:key type:type];
-    item.subTitle = subTitle;
     return item;
 }
 
@@ -246,8 +237,8 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
             [DYYYSettingItem itemWithTitle:@"隐藏消息星光商城" key:@"DYYYHideMessageTabStarMall" type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"隐藏我的页头像加号" key:@"DYYYHideMineAvatarPlus" type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"隐藏我的创作AI作品" key:@"DYYYHideMineAICreation" type:DYYYSettingItemTypeSwitch],
-            [DYYYSettingItem itemWithTitle:@"隐藏头像加号" key:DYYYAvatarFollowRemoveVisualKey type:DYYYSettingItemTypeSwitch],
-            [DYYYSettingItem itemWithTitle:@"移除头像加号" key:DYYYAvatarFollowDeleteKey type:DYYYSettingItemTypeSwitch],
+            [DYYYSettingItem itemWithTitle:@"隐藏头像加号" key:@"DYYYHideLOTAnimationView" type:DYYYSettingItemTypeSwitch],
+            [DYYYSettingItem itemWithTitle:@"移除头像加号" key:@"DYYYHideFollowPromptView" type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"隐藏点赞数值" key:@"DYYYHideLikeLabel" type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"隐藏评论数值" key:@"DYYYHideCommentLabel" type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"隐藏收藏数值" key:@"DYYYHideCollectLabel" type:DYYYSettingItemTypeSwitch],
@@ -259,10 +250,6 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
             [DYYYSettingItem itemWithTitle:@"隐藏头像日常彩环" key:DYYYHideAvatarStoryRingKey type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"隐藏头像挂件/装饰" key:DYYYHideAvatarDecorationKey type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"隐藏头像直播提示" key:@"DYYYHideAvatarLive" type:DYYYSettingItemTypeSwitch],
-            // 仅把原加号联动的附加入口拆开，不新增另一套关注功能。
-            [DYYYSettingItem itemWithTitle:@"隐藏头像消息入口" key:DYYYHideAvatarSendMessageKey type:DYYYSettingItemTypeSwitch subTitle:@"仅隐藏头像消息入口并禁用其点击，不影响关注、店铺和广告链接"],
-            [DYYYSettingItem itemWithTitle:@"隐藏头像店铺入口" key:DYYYHideAvatarEnterStoreKey type:DYYYSettingItemTypeSwitch subTitle:@"仅隐藏头像店铺入口并禁用其点击，不影响关注、消息和广告链接"],
-            [DYYYSettingItem itemWithTitle:@"隐藏头像广告链接入口" key:DYYYHideAvatarAdLinkKey type:DYYYSettingItemTypeSwitch subTitle:@"仅隐藏头像广告链接入口并禁用其点击，不影响关注、消息和店铺"],
             [DYYYSettingItem itemWithTitle:@"隐藏音乐按钮" key:@"DYYYHideMusicButton" type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"隐藏推荐应用下载" key:@"DYYYHideRecommendAppDownload" type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"隐藏分享按钮" key:@"DYYYHideShareButton" type:DYYYSettingItemTypeSwitch],
@@ -665,22 +652,12 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     DYYYSettingItem *item = self.settingSections[indexPath.section][indexPath.row];
 
-    // 只有带头像入口说明的行使用副标题，其他行保持原样式与约束。
-    BOOL hasSubTitle = item.subTitle.length > 0;
-    NSString *reuseIdentifier = hasSubTitle ? @"AvatarSettingSubtitleCell" : @"SettingCell";
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:reuseIdentifier];
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"SettingCell"];
     if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:(hasSubTitle ? UITableViewCellStyleSubtitle : UITableViewCellStyleDefault) reuseIdentifier:reuseIdentifier];
-        if (!hasSubTitle) {
-            cell.textLabel.translatesAutoresizingMaskIntoConstraints = NO;
-            [cell.textLabel.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:16].active = YES;
-            [cell.textLabel.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor].active = YES;
-        } else {
-            cell.textLabel.numberOfLines = 0;
-            cell.detailTextLabel.numberOfLines = 0;
-            cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
-            cell.detailTextLabel.textColor = [UIColor colorWithWhite:1 alpha:0.7];
-        }
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"SettingCell"];
+        cell.textLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        [cell.textLabel.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:16].active = YES;
+        [cell.textLabel.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor].active = YES;
 
         UIView *selectedBackgroundView = [[UIView alloc] init];
         selectedBackgroundView.backgroundColor = [UIColor colorWithRed:84 / 255.0 green:84 / 255.0 blue:84 / 255.0 alpha:1.0];
@@ -688,7 +665,6 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
     }
 
     cell.textLabel.text = item.title;
-    cell.detailTextLabel.text = item.subTitle;
     BOOL itemEnabled = [self isSpeedButtonSettingEnabledForKey:item.key];
     cell.textLabel.textColor = itemEnabled ? [UIColor whiteColor] : [UIColor grayColor];
     cell.selectionStyle = itemEnabled ? UITableViewCellSelectionStyleDefault : UITableViewCellSelectionStyleNone;
@@ -788,12 +764,6 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
 }
 
 #pragma mark - UITableViewDelegate
-
-- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    DYYYSettingItem *item = self.settingSections[indexPath.section][indexPath.row];
-    // 为头像入口说明预留多行空间，不调整其他设置行的高度。
-    return item.subTitle.length > 0 ? 88.0 : tableView.rowHeight;
-}
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     DYYYSettingItem *item = self.settingSections[indexPath.section][indexPath.row];
@@ -922,11 +892,10 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
 
     if (sender.isOn) {
         NSString *conflictingKey = nil;
-        // 旧键只保留双向互斥；关闭任一模式不会启用另一模式或其他头像入口。
-        if ([item.key isEqualToString:DYYYAvatarFollowRemoveVisualKey]) {
-            conflictingKey = DYYYAvatarFollowDeleteKey;
-        } else if ([item.key isEqualToString:DYYYAvatarFollowDeleteKey]) {
-            conflictingKey = DYYYAvatarFollowRemoveVisualKey;
+        if ([item.key isEqualToString:@"DYYYHideLOTAnimationView"]) {
+            conflictingKey = @"DYYYHideFollowPromptView";
+        } else if ([item.key isEqualToString:@"DYYYHideFollowPromptView"]) {
+            conflictingKey = @"DYYYHideLOTAnimationView";
         }
 
         if (conflictingKey) {
