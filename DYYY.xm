@@ -13392,64 +13392,8 @@ static void DYYYLogHidePlusOverlayOnce(NSString *target) {
 %end
 
 
-// DYYY_FIX_TABBAR_INTERNAL_BACKGROUND
-static void DYYYRepairTabBarInternalBackground(UIView *tabBar) {
-    if (!tabBar || !DYYYGetBool(@"DYYYEnableFullScreen")) return;
-
-    UIColor *clear = [UIColor clearColor];
-    tabBar.opaque = NO;
-    tabBar.backgroundColor = clear;
-    tabBar.layer.backgroundColor = clear.CGColor;
-
-    NSArray *names = @[
-        @"darkBackgroundImageView",
-        @"lightBackgroundImageView",
-        @"backgroundView",
-        @"compactModeBackgroundView",
-        @"awe_blurView",
-        @"skinContainerView"
-    ];
-
-    for (NSString *name in names) {
-        SEL sel = NSSelectorFromString(name);
-        if (![tabBar respondsToSelector:sel]) continue;
-
-        id obj = ((id (*)(id, SEL))objc_msgSend)(tabBar, sel);
-        if (![obj isKindOfClass:[UIView class]]) continue;
-
-        UIView *view = (UIView *)obj;
-        view.opaque = NO;
-        view.backgroundColor = clear;
-        view.layer.backgroundColor = clear.CGColor;
-
-        // 图片背景和模糊背景在全屏时隐藏。
-        if ([name containsString:@"BackgroundImageView"] ||
-            [name isEqualToString:@"awe_blurView"]) {
-            view.hidden = YES;
-        }
-
-        if ([name isEqualToString:@"skinContainerView"]) {
-            view.hidden = YES;
-        }
-
-        for (UIView *child in view.subviews) {
-            if ([child isKindOfClass:[UIImageView class]]) {
-                child.hidden = YES;
-            }
-            if ([NSStringFromClass(child.class)
-                 localizedCaseInsensitiveContainsString:@"blur"]) {
-                child.hidden = YES;
-            }
-            child.opaque = NO;
-            child.backgroundColor = clear;
-            child.layer.backgroundColor = clear.CGColor;
-        }
-    }
-}
-
 %hook AWENormalModeTabBar
 
-static Class barBackgroundClass = nil;
 static Class generalButtonClass = nil;
 static Class plusContainerButtonClass = nil;
 static Class plusButtonClass = nil;
@@ -13457,7 +13401,6 @@ static Class plusInnerButtonClass = nil;
 static Class tabBarButtonClass = nil;
 + (void)initialize {
     if (self == [%c(AWENormalModeTabBar) class]) {
-        barBackgroundClass = NSClassFromString(@"_UIBarBackground");
         generalButtonClass = %c(AWENormalModeTabBarGeneralButton);
         plusContainerButtonClass = %c(AWENormalModeTabBarPlusButton);
         plusButtonClass = %c(AWENormalModeTabBarGeneralPlusButton);
@@ -13502,23 +13445,6 @@ static Class tabBarButtonClass = nil;
 
 - (void)layoutSubviews {
     %orig;
-    [DYYYFullscreenCoordinator registerTabBar:self];
-    DYYYRepairTabBarInternalBackground(self);
-    // DYYY_FIX_TABBAR_BG_TRANSPARENT
-    // 全屏时让底栏背景透明，不改变按钮和视频布局。
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        self.opaque = NO;
-        self.backgroundColor = [UIColor clearColor];
-        self.layer.backgroundColor = [UIColor clearColor].CGColor;
-
-        if (self.skinContainerView) {
-            self.skinContainerView.opaque = NO;
-            self.skinContainerView.backgroundColor = [UIColor clearColor];
-            self.skinContainerView.layer.backgroundColor = [UIColor clearColor].CGColor;
-        }
-    }
-
-
     if (originalTabBarHeight == kInvalidHeight) {
         [self initializeOriginalTabBarHeight];
     }
@@ -13597,147 +13523,20 @@ static Class tabBarButtonClass = nil;
         }
     }
 
-    // 背景和分隔线处理
-    BOOL hideBottomBg = DYYYGetBool(@"DYYYHideBottomBg");
-    BOOL enableFullScreen = DYYYGetBool(@"DYYYEnableFullScreen");
-
-    if (hideBottomBg || enableFullScreen) {
-        if (self.skinContainerView) {
-            self.skinContainerView.hidden = YES;
-        }
-
-        BOOL isHomeSelected = NO;
-        BOOL isFriendsSelected = NO;
-
-        if (enableFullScreen && !hideBottomBg) {
-            for (UIView *subview in self.subviews) {
-                if ([subview isKindOfClass:generalButtonClass]) {
-                    AWENormalModeTabBarGeneralButton *button = (AWENormalModeTabBarGeneralButton *)subview;
-                    if (button.status == 2) {
-                        if ([button.accessibilityLabel isEqualToString:@"首页"])
-                            isHomeSelected = YES;
-                        else if ([button.accessibilityLabel containsString:@"朋友"])
-                            isFriendsSelected = YES;
-                    }
-                }
-            }
-        }
-
-        BOOL hideFriendsButton = DYYYGetBool(@"DYYYHideFriendsButton");
-        BOOL shouldHideBackgrounds = hideBottomBg || (enableFullScreen && (isHomeSelected || (isFriendsSelected && !hideFriendsButton)));
-
-        // 单次遍历处理所有背景和分割线
-        for (UIView *subview in self.subviews) {
-            // 跳过底栏按钮
-            if ([subview isKindOfClass:generalButtonClass] || [subview isKindOfClass:plusContainerButtonClass] || [subview isKindOfClass:plusButtonClass] ||
-                [subview isKindOfClass:plusInnerButtonClass]) {
-                continue;
-            }
-            // 隐藏底栏背景
-            if ([subview isKindOfClass:barBackgroundClass] || ([subview isMemberOfClass:[UIView class]] && originalTabBarHeight > 0 && fabs(subview.frame.size.height - gCurrentTabBarHeight) < 0.1)) {
-                subview.hidden = shouldHideBackgrounds;
-            }
-            // 隐藏细分割线
-            if (subview.frame.size.height > 0 && subview.frame.size.height < 1 && subview.frame.size.width > 300) {
-                subview.hidden = enableFullScreen;
-            }
-        }
-    } else {
-        if (self.skinContainerView) {
-            self.skinContainerView.hidden = NO;
-        }
-
-        for (UIView *subview in self.subviews) {
-            if ([subview isKindOfClass:barBackgroundClass] || [subview isMemberOfClass:[UIView class]]) {
-                subview.hidden = NO;
-            }
-        }
-    }
+    [DYYYFullscreenCoordinator registerTabBar:self];
 }
 
 - (void)setHidden:(BOOL)hidden {
     %orig(hidden);
-    DYYYRepairTabBarInternalBackground(self);
-    // 全屏状态下，底栏显示状态变化后仍保持透明背景。
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
-        self.opaque = NO;
-        self.backgroundColor = [UIColor clearColor];
-        self.layer.backgroundColor = [UIColor clearColor].CGColor;
-        if (self.skinContainerView) {
-            self.skinContainerView.opaque = NO;
-            self.skinContainerView.backgroundColor = [UIColor clearColor];
-            self.skinContainerView.layer.backgroundColor = [UIColor clearColor].CGColor;
-        }
-    }
-
-
-    BOOL disableHomeRefresh = DYYYGetBool(@"DYYYDisableHomeRefresh");
-    BOOL enableFullScreen = DYYYGetBool(@"DYYYEnableFullScreen");
-    BOOL hideBottomBg = DYYYGetBool(@"DYYYHideBottomBg");
-    BOOL hideFriendsButton = DYYYGetBool(@"DYYYHideFriendsButton");
-
-    BOOL isHomeSelected = NO;
-    BOOL isFriendsSelected = NO;
-
-    for (UIView *subview in self.subviews) {
-        if ([subview isKindOfClass:generalButtonClass]) {
-            AWENormalModeTabBarGeneralButton *button = (AWENormalModeTabBarGeneralButton *)subview;
-
-            // 禁用首页刷新功能
-            if (disableHomeRefresh && [button.accessibilityLabel isEqualToString:@"首页"]) {
+    if (DYYYGetBool(@"DYYYDisableHomeRefresh")) {
+        for (UIView *subview in self.subviews) {
+            if ([subview isKindOfClass:generalButtonClass] && [subview.accessibilityLabel isEqualToString:@"首页"]) {
+                AWENormalModeTabBarGeneralButton *button = (AWENormalModeTabBarGeneralButton *)subview;
                 button.userInteractionEnabled = (button.status != 2);
             }
-
-            // 检查当前选中的页
-            if (enableFullScreen && button.status == 2) {
-                if ([button.accessibilityLabel isEqualToString:@"首页"]) {
-                    isHomeSelected = YES;
-                } else if ([button.accessibilityLabel containsString:@"朋友"]) {
-                    isFriendsSelected = YES;
-                }
-            }
         }
     }
-
-    if (hideBottomBg || enableFullScreen) {
-        if (self.skinContainerView) {
-            self.skinContainerView.hidden = YES;
-        }
-
-        BOOL shouldHideBackgrounds = NO;
-        if (hideBottomBg) {
-            shouldHideBackgrounds = YES;
-        } else if (enableFullScreen) {
-            shouldHideBackgrounds = isHomeSelected || (isFriendsSelected && !hideFriendsButton);
-        }
-
-        // 处理所有背景和分割线
-        for (UIView *subview in self.subviews) {
-            CGFloat subviewHeight = subview.frame.size.height;
-            // 跳过底栏按钮
-            if ([subview isKindOfClass:generalButtonClass] || [subview isKindOfClass:plusContainerButtonClass] || [subview isKindOfClass:plusButtonClass] ||
-                [subview isKindOfClass:plusInnerButtonClass]) {
-                continue;
-            }
-            // 隐藏底栏背景
-            if ([subview isKindOfClass:barBackgroundClass] || ([subview isMemberOfClass:[UIView class]] && originalTabBarHeight > 0 && fabs(subviewHeight - gCurrentTabBarHeight) < 0.1)) {
-                subview.hidden = shouldHideBackgrounds;
-            }
-            // 隐藏细分割线
-            if (subviewHeight > 0 && subviewHeight < 1 && subview.frame.size.width > 300) {
-                subview.hidden = enableFullScreen;
-            }
-        }
-    } else {
-        if (self.skinContainerView) {
-            self.skinContainerView.hidden = NO;
-        }
-        for (UIView *subview in self.subviews) {
-            if ([subview isKindOfClass:barBackgroundClass] || [subview isMemberOfClass:[UIView class]]) {
-                subview.hidden = NO;
-            }
-        }
-    }
+    [DYYYFullscreenCoordinator registerTabBar:self];
 }
 
 %end
@@ -14092,6 +13891,7 @@ static Class tabBarButtonClass = nil;
 
 - (void)viewDidAppear:(BOOL)animated {
     %orig;
+    [DYYYFullscreenCoordinator commentController:self visible:YES];
     dyyyCommentViewVisible = YES;
     updateSpeedButtonVisibility();
     updateClearButtonVisibility();
@@ -14128,6 +13928,7 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
+    [DYYYFullscreenCoordinator commentController:self visible:NO];
     dyyyCommentViewVisible = NO;
     updateSpeedButtonVisibility();
     updateClearButtonVisibility();
@@ -14136,6 +13937,7 @@ static Class tabBarButtonClass = nil;
 
 - (void)viewDidLayoutSubviews {
     %orig;
+    [DYYYFullscreenCoordinator commentController:self visible:YES];
 
     if (!DYYYGetBool(@"DYYYEnableCommentBlur"))
         return;
@@ -14235,13 +14037,6 @@ static BOOL DYYYViewHideGate(void) {
     }
     return enabled;
 }
-
-// v743: 弱引用盒子，用于给视图缓存「最近的 VC」，避免每次 setFrame 都走 responder 链。
-@interface DYYYWeakRef : NSObject
-@property (nonatomic, weak) id obj;
-@end
-@implementation DYYYWeakRef
-@end
 
 %hook UIView
 
@@ -14431,87 +14226,20 @@ static BOOL DYYYViewHideGate(void) {
     %orig([DYYYFullscreenCoordinator centerForMediaHost:self proposed:center]);
 }
 
+// 不在 UIView 的全局 setter 丢弃原生位移。仅已登记的媒体宿主和互动根视图会被协调。
 - (void)setFrame:(CGRect)frame {
-    if (gDYYYSetFrameDepth > 0) {
+    if (gDYYYSetFrameDepth > 0 || !DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
         %orig(frame);
+        return;
+    }
+    if (![NSThread isMainThread]) {
+        __weak UIView *view = self;
+        dispatch_async(dispatch_get_main_queue(), ^{ view.frame = frame; });
         return;
     }
     gDYYYSetFrameDepth++;
     int _dyyySfGuard __attribute__((unused, cleanup(DYYYSetFrameDepthDec))) = 0;
-    BOOL enableBlur = DYYYGetBoolCached(@"DYYYEnableCommentBlur");
-    BOOL enableFS = DYYYGetBoolCached(@"DYYYEnableFullScreen");
-    if (!enableBlur && !enableFS) {
-        %orig(frame);
-        return;
-    }
-    frame = [DYYYFullscreenCoordinator frameForInteractionView:self proposed:frame];
-
-
-    // v605: 不再在 setFrame 里撑 Merge 容器（会把 cell/交互层一起带大）。
-
-    // v382: 卡帧优化 —— 最便宜的 isMemberOfClass 放最前面
-    // 99% 的 setFrame 调用来自 UILabel/UIButton/UIImageView 等子类，
-    // 一行判定立即跳过，完全不碰关联对象（objc_getAssociatedObject 有全局锁，最贵）。
-    // v527: 黑条启发式已停用。
-    // 原逻辑会在任意 setFrame 里把「40~80pt、全宽、纯黑」的视图置零并隐藏，
-    // 满屏（852）滚动时反复打断布局，实测主线程卡死 30s 以上。
-    // 顶部黑条清理机制已移除（树扫描会误隐藏正常 UI + 全树递归卡顿）。
-
-
-    if (![NSThread isMainThread]) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-          [self setFrame:frame];
-        });
-        return;
-    }
-
-
-    // v742: 评论磨砂那段逻辑只在面板真的在屏时才需要（responder 链遍历很贵，
-    // 转场时每个带 x 偏移的 setFrame 都会触发一次）。面板不在屏直接透传。
-    if (!enableBlur || !dyyyCommentViewVisible || frame.origin.x == 0) {
-        %orig(frame);
-        return;
-    }
-
-    // v744: 先按尺寸筛。播放器/互动层都是整屏尺寸，而转场里高频 setFrame 的是标题、按钮、图标。
-    // 小视图直接透传，连关联对象都不用读（objc_getAssociatedObject 有全局锁）。
-    CGFloat dyyyScreenW = [UIScreen mainScreen].bounds.size.width;
-    if (frame.size.width < dyyyScreenW - 1.0 || frame.size.height < 300.0) {
-        %orig(frame);
-        return;
-    }
-
-    // v743: 不再每次沿 responder 链找 VC（最多 100 跳 isKindOfClass，转场时每个视图都要走一遍）。
-    // 每个视图只查一次并用弱引用记住结果，之后就是一次关联对象读取。
-    static char kDYYYNearestVCKey;
-    DYYYWeakRef *vcRef = objc_getAssociatedObject(self, &kDYYYNearestVCKey);
-    UIViewController *vc = vcRef.obj;
-    if (!vc) {
-        vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-        if (vc) {
-            DYYYWeakRef *ref = [DYYYWeakRef new];
-            ref.obj = vc;
-            objc_setAssociatedObject(self, &kDYYYNearestVCKey, ref, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-    }
-    static Class PlayVCClass1, PlayVCClass2, PlayVCClass3;
-    static dispatch_once_t playClassesOnce;
-    dispatch_once(&playClassesOnce, ^{
-        PlayVCClass1 = NSClassFromString(@"AWEAwemePlayVideoViewController");
-        PlayVCClass2 = NSClassFromString(@"AWEDPlayerFeedPlayerViewController");
-        PlayVCClass3 = NSClassFromString(@"AWEDPlayerViewController_Merge");
-    });
-
-    BOOL isPlayVC = ((PlayVCClass1 && [vc isKindOfClass:PlayVCClass1]) ||
-                     (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
-                     (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
-    // v745: 这个「吞掉 setFrame」是从 v463 留下来的，为的是评论区打开时别把 video 缩小。
-    // 但它原本只看 VC 类型，页面切走后（搜索/详情/切 Tab）残留的播放器视图会被一直钉在原位，
-    // 表现就是「顶层还挂着一个在播的视频」。现在加一条硬条件：本窗口里确实有评论面板才冻结。
-    if (isPlayVC && frame.origin.x != 0 && [DYYYFullscreenCoordinator hasCommentInWindow:self.window]) {
-        return;
-    }
-    %orig(frame);
+    %orig([DYYYFullscreenCoordinator frameForInteractionView:self proposed:frame]);
 }
 
 %new
@@ -14645,10 +14373,11 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 %hook AWEPlayInteractionViewController
 
-// v720: 评论区展开时原生会调这个方法把视频收缩到上半屏（屏高变 272），
-// 顶部那条黑块就是收缩后留出来的。全屏模式下直接不收缩，视频保持 852。
+// 普通评论或未确认面板时走宿主收缩入口。磨砂只在当前播放窗口的真实评论打开时冻结。
 - (void)fitShrinkingVideoAfterContainerSizeChange {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen") && DYYYGetBoolCached(@"DYYYEnableCommentBlur") &&
+        [DYYYFullscreenCoordinator hasCommentForInteractionController:self] &&
+        [DYYYFullscreenCoordinator usesFullscreenLayoutForController:self]) return;
     %orig;
 }
 
@@ -14691,7 +14420,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 // 不能等到 viewDidLayoutSubviews 再纠正。探针实测每页都先经过 h=852 的一趟，
 // 折叠元素在这一趟按 852 排好；下一趟层高改成 792 时原生只改尺寸、不重排折叠元素，
 // 头像/点赞/翻页器/时间就停在离底 0（stack 底边 851.67，应为 791.67）。
-// 底栏占位由原生给出（同城实测 60），拿不到时退回 60。
+// 只用真实底栏占位；同城不再进入布局后另一套改高分支。
 - (void)viewWillLayoutSubviews {
     %orig;
     if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return;
@@ -14701,8 +14430,8 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
     if (!superview) return;
     if (fabs(view.bounds.size.width - superview.bounds.size.width) > 1.0) return;
     CGFloat occupied = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:view];
-    if (occupied <= 0.5) occupied = 60.0;
-    CGFloat target = MAX(0, CGRectGetHeight(superview.bounds) - occupied);
+    if (occupied <= 0.5) return; // 未确认真实占位时原样保留
+    CGFloat target = MAX(0, CGRectGetMaxY(superview.bounds) - CGRectGetMinY(view.frame) - occupied);
     if (target < 400) return;
     CGRect frame = view.frame;
     if (fabs(CGRectGetHeight(frame) - target) <= 0.5) return;
@@ -14754,7 +14483,8 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         if ([parent isKindOfClass:%c(AFDPlayRemoteFeedTableViewController)]) return;
     }
 
-    if ([DYYYFullscreenCoordinator layoutNativeInteraction:self]) return;
+    if (![DYYYFullscreenCoordinator isInsideNearbyPage:self] &&
+        ![DYYYFullscreenCoordinator layoutNativeInteraction:self]) {
 
     if ([DYYYFullscreenCoordinator usesRecommendedLayoutForController:self]) {
         [DYYYFullscreenCoordinator layoutInteraction:self];
@@ -14792,6 +14522,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
     }
     [DYYYFullscreenCoordinator rememberInteractionGuide:self];
     }
+    }
 
 
     if (DYYYGetBool(@"DYYYHideVideoAIParse")) {
@@ -14807,80 +14538,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         updateSpeedButtonVisibility();
         updateClearButtonVisibility();
     }
-
-    UIWindow *keyWindow = [DYYYUtils getActiveWindow];
-    if (keyWindow && keyWindow.safeAreaInsets.bottom == 0) {
-        return;
-    }
-
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) {
-        return;
-    }
-
-    UIViewController *directParentVC = self.parentViewController;
-    UIViewController *parentVC = directParentVC;
-    int maxIterations = 3;
-    int count = 0;
-
-    while (parentVC && count < maxIterations) {
-        if ([parentVC isKindOfClass:%c(AFDPlayRemoteFeedTableViewController)]) {
-            return;
-        }
-        parentVC = parentVC.parentViewController;
-        count++;
-    }
-
-    BOOL isShowingRelatedMixViewController = NO;
-    UIViewController *sceneParentVC = directParentVC;
-    int sceneDepth = 0;
-    while (sceneParentVC && sceneDepth < 8) {
-        if ([sceneParentVC isKindOfClass:%c(AWEMixVideoPanelDetailTableViewController)]) {
-            AWEMixVideoPanelDetailTableViewController *mixDetailVC = (AWEMixVideoPanelDetailTableViewController *)sceneParentVC;
-            isShowingRelatedMixViewController = mixDetailVC.isShowingRelatedMixViewController;
-            break;
-        }
-        sceneParentVC = sceneParentVC.parentViewController;
-        sceneDepth++;
-    }
-
-    if (!self.view.superview) {
-        return;
-    }
-
-    CGRect frame = self.view.frame;
-    CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
-    CGFloat superviewHeight = self.view.superview.frame.size.height;
-
-    if (frame.size.width != screenWidth && frame.size.height < superviewHeight) {
-        return;
-    }
-
-    NSString *currentReferString = self.referString;
-
-    BOOL useFullHeight = [currentReferString isEqualToString:@"general_search"] || [currentReferString isEqualToString:@"search_result"] || [currentReferString isEqualToString:@"search_ecommerce"] ||
-                         [currentReferString isEqualToString:@"close_friends_moment"] || [currentReferString isEqualToString:@"offline_mode"] || [currentReferString isEqualToString:@"challenge"] ||
-                         [currentReferString isEqualToString:@"general_search_scan"] || currentReferString == nil || isShowingRelatedMixViewController;
-
-    if (!useFullHeight && [currentReferString isEqualToString:@"co_play_watch"]) {
-        Class richContentVCClass = NSClassFromString(@"AWEFriendsImpl.RichContentNewListViewController");
-        if (richContentVCClass && [directParentVC isKindOfClass:richContentVCClass]) {
-            useFullHeight = YES;
-        }
-    }
-
-    if (!useFullHeight && [currentReferString isEqualToString:@"chat"]) {
-        AWEAwemeModel *currentModel = self.model;
-        BOOL isLiveModel = currentModel && (([currentModel respondsToSelector:@selector(isLive)] && currentModel.isLive) ||
-                                            ([currentModel respondsToSelector:@selector(cellRoom)] && currentModel.cellRoom != nil) ||
-                                            ([currentModel respondsToSelector:@selector(videoFeedTag)] && [currentModel.videoFeedTag isEqualToString:@"直播中"]));
-
-        // 私信视频的信息区依赖完整高度；直播内容保持原布局，避免影响直播文案位置。
-        if (!isLiveModel) {
-            useFullHeight = YES;
-        }
-    }
-
-    // v334: 删掉改 self.view.frame 的代码（和抖音 layout 打架 → 频闪）
 
 }
 
@@ -15317,21 +14974,6 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         return DYYYDetailRowHeight((UITableView *)a0, nativeH);
     }
     return nativeH;
-}
-
-- (double)contentOffsetYForCellAtIndex:(long long)index {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        return (double)index * [UIScreen mainScreen].bounds.size.height;
-    }
-    return %orig;
-}
-
-- (double)indexForContentOffsetY:(double)y {
-    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
-        CGFloat h = [UIScreen mainScreen].bounds.size.height;
-        if (h > 400.0) return y / h;
-    }
-    return %orig;
 }
 
 - (double)heightForRowAtIndexPath:(id)a0 {

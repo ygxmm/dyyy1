@@ -15,7 +15,6 @@
 + (void)registerTabBar:(UIView *)tabBar;
 + (void)invalidateGuides;
 + (CGFloat)bottomOccupiedHeightForView:(UIView *)view;
-+ (void)layoutBottomInput:(UIView *)view controller:(UIViewController *)controller;
 + (void)layoutInteraction:(UIViewController *)controller;
 + (BOOL)isInsideNearbyPage:(UIViewController *)controller;
 + (void)layoutInformationLabel:(UIView *)label;
@@ -23,14 +22,18 @@
 + (CGRect)frameForInteractionView:(UIView *)view proposed:(CGRect)frame;
 + (CGRect)boundsForMediaHost:(UIView *)view proposed:(CGRect)bounds;
 + (CGPoint)centerForMediaHost:(UIView *)view proposed:(CGPoint)center;
-+ (UIColor *)backgroundForBottomView:(UIView *)view proposed:(UIColor *)color;
 + (CGRect)frameForPlayer:(UIView *)player proposed:(CGRect)frame;
 + (void)preparePlayer:(UIView *)player;
 + (void)layoutPlayerContainer:(UIViewController *)controller;
 + (void)finishPlayer:(UIView *)player;
+/// 接在静图视图原生 layoutSubviews 之后；setTransform 将原始参数交给协调器，再调用原生 setter。
 + (CGAffineTransform)transformForImageView:(UIView *)view proposed:(CGAffineTransform)transform;
 + (void)layoutImageView:(UIView *)view;
+/// 可选：打开动作前预采样既有文案锚点，不注册评论，也不冻结几何。
 + (void)beginCommentInWindow:(UIWindow *)window;
+/// 仅对该窗口当前已挂载且可见的真实半屏评论为真，与设置开关无关。
 + (BOOL)hasCommentInWindow:(UIWindow *)window;
++ (BOOL)hasCommentForInteractionController:(UIViewController *)controller;
+/// 主线程。只传 AWECommentContainerViewController；出现/布局后报 YES，实际退出后报 NO。
 + (void)commentController:(UIViewController *)controller visible:(BOOL)visible;
 @end

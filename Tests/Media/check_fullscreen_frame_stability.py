@@ -85,6 +85,42 @@ check(all(selector not in feed.group(1) for selector in (
       'applyTableViewLayoutForAllPlatform {', 'scrollViewDidScroll:',
       'scrollViewWillEndDragging:', 'setContentOffset:', 'setFrame:')),
       '首页表尺寸、行高、滚动偏移与分页吸附统一使用原生布局')
+comment_hook = re.search(r'^%hook AWECommentContainerViewController\s*$(.*?)^%end\s*$', xm, re.M | re.S)
+check(comment_hook is not None and comment_hook.group(1).count('commentController:self visible:YES') == 2 and
+      comment_hook.group(1).count('commentController:self visible:NO') == 1 and
+      comment_hook.group(1).index('if (skipsPanelLifecycle)') < comment_hook.group(1).index('commentController:self visible:NO'),
+      '复用真实评论生命周期，媒体预览不会被当成正式退场')
+registration = method('+ (void)commentController:')
+panel = method('+ (CGRect)partialPanelForInner:')
+match = method('+ (CGRect)panelInWindow:')
+check('CommentContainerInnerViewController' in method('+ (CGRect)resolvePanelForComment:') and
+      'parent != outer' in panel and 'view.window != window' in panel and
+      'visibleRect:view.bounds' in panel and 'ownsMedia:media' in match and
+      'removeObjectForKey:outer' in registration and 'pendingComments' not in coordinator,
+      '以同窗真实半屏及当前作品为准，不以整个评论容器或定时状态替代')
+check('hasCommentForInteractionController:self' in xm and
+      'outer.interactionViewController != controller' in method('+ (BOOL)hasCommentForInteractionController:') and
+      'isPlayVC && frame.origin.x' not in xm,
+      '磨砂只冻结本互动控制器的评论，移除全局吞帧路径')
+image = method('+ (CGAffineTransform)targetForImageView:')
+image_layout = method('+ (void)layoutImageView:')
+check(image.index('DYYYEnableFullScreen') < image.index('DYYYEnableCommentBlur') and
+      image.index('CGRectIsNull(panel)') < image.index('DYYYEnableCommentBlur') and
+      'CGAffineTransformEqualToTransform(current, state.lastAppliedTransform)' in image_layout and
+      'state.awaitingNativeTransform' in image_layout,
+      '图文非评论状态透传原生变换，复用时不沿用旧图缩放')
+bar = method('+ (void)layoutBottomBar:')
+check('DYYYRepairTabBarInternalBackground' not in xm and 'restoreBackdrop:' in bar and
+      'ownsHidden' in method('+ (void)restoreBackdrop:') and
+      'separatorLine' in method('+ (NSArray<UIView *> *)bottomBackgroundViews:'),
+      '底栏仅用一个可恢复的背景入口，不改按钮和底栏占位')
+check('![DYYYFullscreenCoordinator isInsideNearbyPage:self] &&' in xm and
+      'if (occupied <= 0.5) occupied = 60.0;' not in xm and 'BOOL useFullHeight' not in xm,
+      '同城不再进入布局后改高分支，不猜固定底栏占位')
+detail_list = re.search(r'^%hook AWEDetailFeedListContainer\s*$(.*?)^%end\s*$', xm, re.M | re.S)
+check(detail_list is not None and not any(s in detail_list.group(1) for s in
+      ('contentOffsetYForCellAtIndex:', 'indexForContentOffsetY:')),
+      '移除 41.2 详情列表中不存在的两个旧分页选择器')
 runner = (ROOT / 'Tests/Media/run_media_tests.sh').read_text()
 check('DYYYFullscreenGeometryTests.m' in runner and 'DYYYFullscreenGeometry.m' in runner and
       'check_fullscreen_frame_stability.py' in runner,
