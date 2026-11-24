@@ -25,6 +25,28 @@ check('self.lifecycleState = DYYYDownloadCreateState();' in like
 check(re.search(r'if \(!DYYYDownloadStateIsActive\(state\)\) \{\s*completion\(DYYYLikeSaveError\(.+?\)\);\s*return;',
                 photo.split('} completionHandler:',1)[1],re.S) is not None,'取消后的空 PhotoKit 事务不作为成功')
 check('DYYYLikeStartGallerySave(snapshot, nil)' in like,'保留点赞图片原动作不嵌作品说明')
+endpoint=like.split('static NSString *DYYYLikeSaveInterfaceEndpoint(void)',1)[1].split('static UIAction *DYYYLikeSaveInterfaceVideoAction',1)[0]
+api_action=like.split('static UIAction *DYYYLikeSaveInterfaceVideoAction',1)[1].split('static NSArray<UIMenuElement *> *DYYYLikeSaveMenuItems',1)[0]
+like_menu=like.split('static NSArray<UIMenuElement *> *DYYYLikeSaveMenuItems',1)[1].split('@interface DYYYLikeSaveButtonState',1)[0]
+check('objectForKey:@"DYYYInterfaceDownload"' in endpoint and all(x in endpoint for x in
+      ('NSString.class','whitespaceAndNewlineCharacterSet','url.host.length','@"http"','@"https"'))
+      and all(x not in like for x in ('DYYYLongPressApiDownload','DYYYDoubleInterfaceDownload')),
+      '点赞视频复用原解析接口配置，不依赖其他菜单开关')
+check(re.search(r'BOOL canSaveViaInterface = video && awemeType != 68 && !images\.count && !standaloneLive\.count &&\s*'
+                r'!\(\[model respondsToSelector:@selector\(isLivePhoto\)\] && model\.isLivePhoto\) && DYYYLikeSaveInterfaceEndpoint\(\);',like_menu)
+      and like_menu.count('if (canSaveViaInterface) [items addObject:DYYYLikeSaveInterfaceVideoAction(model, description)]')==1
+      and like_menu.index('[items addObject:saveVideo]') < like_menu.index('if (canSaveViaInterface)') < like_menu.index('DYYYLikeSaveCoverItems'),
+      '接口仅用于普通视频，是与直链原画质并列的独立选项')
+api_setup, api_tap=api_action.split('handler:',1)
+check('DYYYLikeSaveObject(model, @"shareURL")' in api_setup and '接口保存视频' in api_setup and 'model' not in api_tap
+      and 'if (!gDYYYLikeSaveEnabled) return;' in api_tap and 'if (!shareLink.length)' in api_tap
+      and 'NSString *endpoint = DYYYLikeSaveInterfaceEndpoint();' in api_tap and 'if (!endpoint)' in api_tap
+      and api_tap.count('[DYYYManager parseAndDownloadVideoWithShareLink:shareLink apiKey:endpoint albumDescription:albumDescription]')==1
+      and like.count('parseAndDownloadVideoWithShareLink:')==1,
+      '点击后才使用当前接口，把菜单所对应作品的分享链接和说明交给原解析器')
+check('state.cachedHasInterface == gDYYYLikeSaveHasInterface' in like and 'state.cachedHasInterface = gDYYYLikeSaveHasInterface;' in like
+      and 'refreshVisibleButtons || interfaceAvailabilityChanged' in like and 'elementWithUncachedProvider:provider' in like,
+      '接口填入或清空可刷新 iOS 14 缓存菜单，较新系统保留动态菜单')
 check('dyyy_containsHDRMetadataInObject' not in xm and 'DYYYAwemeRawVideoHasHDRMetadata(arg1)' in xm,'原始 HDR 检查限定当前视频结构')
 check('AWEFeedRefreshFooter' not in xm,'删除未安装的 footer 死构造器，没有另加 Hook')
 

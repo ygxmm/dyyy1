@@ -16,6 +16,7 @@
 
 static BOOL gDYYYLikeSaveStarted;
 static BOOL gDYYYLikeSaveEnabled;
+static BOOL gDYYYLikeSaveHasInterface;
 static NSHashTable<UIButton *> *gDYYYLikeSaveButtons;
 static char kDYYYLikeSaveButtonStateKey;
 static char kDYYYLikeSaveMaterialStateKey;
@@ -570,12 +571,44 @@ static UIAction *DYYYLikeSaveImagesAction(NSString *title, NSString *identifier,
     return action;
 }
 
+static NSString *DYYYLikeSaveInterfaceEndpoint(void) {
+    id value = [NSUserDefaults.standardUserDefaults objectForKey:@"DYYYInterfaceDownload"];
+    if (![value isKindOfClass:NSString.class]) return nil;
+    NSString *configured = [value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (!configured.length) return nil;
+    NSURL *url = [NSURL URLWithString:configured];
+    NSString *scheme = url.scheme.lowercaseString;
+    return url.host.length && ([scheme isEqualToString:@"https"] || [scheme isEqualToString:@"http"]) ? configured : nil;
+}
+
+static UIAction *DYYYLikeSaveInterfaceVideoAction(AWEAwemeModel *model, NSString *albumDescription) {
+    // 作品数据随菜单固定；接口设置在点击时再读，不沿用旧地址。
+    id value = DYYYLikeSaveObject(model, @"shareURL");
+    NSString *shareLink = [value isKindOfClass:NSString.class] ?
+        [value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] : nil;
+    return [UIAction actionWithTitle:@"接口保存视频" image:DYYYLikeSaveSymbol(@"icloud.and.arrow.down")
+        identifier:@"DYYYLikeSave.InterfaceVideo" handler:^(__kindof UIAction *selectedAction) {
+            if (!gDYYYLikeSaveEnabled) return;
+            NSString *endpoint = DYYYLikeSaveInterfaceEndpoint();
+            if (!endpoint) {
+                [DYYYUtils showToast:@"请填写有效的解析接口地址"];
+                return;
+            }
+            if (!shareLink.length) {
+                [DYYYUtils showToast:@"无法获取分享链接"];
+                return;
+            }
+            [DYYYManager parseAndDownloadVideoWithShareLink:shareLink apiKey:endpoint albumDescription:albumDescription];
+        }];
+}
+
 static NSArray<UIMenuElement *> *DYYYLikeSaveMenuItems(UIButton *button) {
-    id model = DYYYLikeSaveModelForButton(button);
+    AWEAwemeModel *model = DYYYLikeSaveModelForButton(button);
     if (!model) return @[];
     NSArray *images = DYYYLikeSaveArray(DYYYLikeSaveObject(model, @"albumImages"));
+    NSInteger awemeType = DYYYLikeSaveInteger(model, @"awemeType");
     NSMutableArray<UIMenuElement *> *items = [NSMutableArray array];
-    if (DYYYLikeSaveInteger(model, @"awemeType") == 68 && images.count) {
+    if (awemeType == 68 && images.count) {
         NSArray<NSDictionary *> *snapshots = DYYYLikeSaveGalleryItems(model, images);
         NSUInteger index = DYYYLikeSaveCurrentIndex(model, snapshots.count);
         BOOL hasLive = NO, complete = YES;
@@ -603,15 +636,18 @@ static NSArray<UIMenuElement *> *DYYYLikeSaveMenuItems(UIButton *button) {
     }
     id video = DYYYLikeSaveObject(model, @"video");
     NSURL *videoURL = DYYYMediaSourceHighestVideoURLs(video).firstObject;
+    BOOL canSaveViaInterface = video && awemeType != 68 && !images.count && !standaloneLive.count &&
+        !([model respondsToSelector:@selector(isLivePhoto)] && model.isLivePhoto) && DYYYLikeSaveInterfaceEndpoint();
+    NSString *description = (videoURL || canSaveViaInterface) ? DYYYLikeSaveDescriptionForModel(model) : nil;
     if (videoURL) {
         NSURL *audioURL = DYYYLikeSaveMusicURL(model);
-        NSString *description = DYYYLikeSaveDescriptionForModel(model);
         UIAction *saveVideo = [UIAction actionWithTitle:@"保存原画质视频" image:DYYYLikeSaveSymbol(@"square.and.arrow.down")
             identifier:@"DYYYLikeSave.Video" handler:^(__kindof UIAction *selectedAction) {
                 DYYYLikeSaveVideoResource(videoURL, audioURL, description);
             }];
         [items addObject:saveVideo];
     }
+    if (canSaveViaInterface) [items addObject:DYYYLikeSaveInterfaceVideoAction(model, description)];
     NSArray<NSDictionary *> *covers = DYYYLikeSaveCoverItems(video);
     if (covers.count) [items addObject:DYYYLikeSaveImagesAction(@"保存封面原图", @"DYYYLikeSave.Cover", covers)];
     return items;
@@ -622,6 +658,7 @@ static NSArray<UIMenuElement *> *DYYYLikeSaveMenuItems(UIButton *button) {
 @property(nonatomic, strong) UIMenu *installedMenu;
 @property(nonatomic, weak) id cachedModel;
 @property(nonatomic) NSInteger cachedImageIndex;
+@property(nonatomic) BOOL cachedHasInterface;
 @end
 @implementation DYYYLikeSaveButtonState
 @end
@@ -656,7 +693,8 @@ void DYYYLikeLongPressSaveUpdateButton(UIButton *button) {
     NSInteger imageIndex = DYYYLikeSaveInteger(model, @"currentImageIndex");
     if (state && button.menu == state.installedMenu) {
         if (@available(iOS 15.0, *)) return; // uncached provider resolves the current post/page on every opening.
-        if (state.cachedModel == model && state.cachedImageIndex == imageIndex) return;
+        if (state.cachedModel == model && state.cachedImageIndex == imageIndex &&
+            state.cachedHasInterface == gDYYYLikeSaveHasInterface) return;
     }
     if (state && button.menu != state.installedMenu) state.originalMenu = button.menu;
     if (!state) {
@@ -667,6 +705,7 @@ void DYYYLikeLongPressSaveUpdateButton(UIButton *button) {
     }
     state.cachedModel = model;
     state.cachedImageIndex = imageIndex;
+    state.cachedHasInterface = gDYYYLikeSaveHasInterface;
     __weak UIButton *weakButton = button;
     void (^provider)(void (^)(NSArray<UIMenuElement *> *)) = ^(void (^completion)(NSArray<UIMenuElement *> *)) {
         void (^resolve)(void) = ^{
@@ -832,6 +871,10 @@ static void DYYYLikeSaveReadPreference(BOOL refreshVisibleButtons) {
     BOOL enabled = [NSUserDefaults.standardUserDefaults boolForKey:DYYY_LIKE_LONG_PRESS_SAVE_KEY];
     BOOL changed = enabled != gDYYYLikeSaveEnabled;
     gDYYYLikeSaveEnabled = enabled;
+    // iOS 14 缓存 provider 的结果；接口填入或清空时沿原路径刷新菜单。
+    BOOL hasInterface = enabled && DYYYLikeSaveInterfaceEndpoint() != nil;
+    BOOL interfaceAvailabilityChanged = hasInterface != gDYYYLikeSaveHasInterface;
+    gDYYYLikeSaveHasInterface = hasInterface;
     if (!enabled) {
         if (changed) {
             ++gDYYYLikeSaveMenuGeneration;
@@ -839,7 +882,7 @@ static void DYYYLikeSaveReadPreference(BOOL refreshVisibleButtons) {
             [gDYYYLikeSaveButtons removeAllObjects];
             DYYYLikeSaveRestoreMaterials();
         }
-    } else if (changed || refreshVisibleButtons) {
+    } else if (changed || refreshVisibleButtons || interfaceAvailabilityChanged) {
         DYYYLikeSaveRefreshLiveButtons();
     }
 }
