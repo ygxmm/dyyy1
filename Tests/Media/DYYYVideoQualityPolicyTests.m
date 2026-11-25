@@ -200,10 +200,72 @@ static int DYYYRunNativePlaybackPolicyCases(Class addressClass) {
     return failed;
 }
 
+static int DYYYRunVideoQualitySettingCases(void) {
+    int failed = 0;
+    failed += DYYYVerifyQuality([DYYYVideoQualitySettingDisplayValue(NO, DYYY_VIDEO_QUALITY_PREFER_HDR) isEqualToString:DYYY_VIDEO_QUALITY_OFF],
+        "旧总开关关闭时，即使保存策略为 HDR，仍显示关闭");
+    failed += DYYYVerifyQuality([DYYYVideoQualitySettingDisplayValue(YES, nil) isEqualToString:DYYY_VIDEO_QUALITY_HIGHEST] &&
+        [DYYYVideoQualitySettingDisplayValue(YES, @42) isEqualToString:DYYY_VIDEO_QUALITY_HIGHEST],
+        "总开关开启但策略缺失或无效时显示最高码率");
+    failed += DYYYVerifyQuality([DYYYVideoQualitySettingDisplayValue(YES, DYYY_VIDEO_QUALITY_PREFER_HDR) isEqualToString:DYYY_VIDEO_QUALITY_PREFER_HDR],
+        "旧配置启用 HDR 策略时显示 HDR 首选");
+
+    NSString *suiteName = [NSString stringWithFormat:@"DYYYVideoQualitySettingsTests.%@", NSUUID.UUID.UUIDString];
+    NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:suiteName];
+    if (!defaults) return failed + DYYYVerifyQuality(NO, "可创建独立的偏好设置域");
+    [defaults removePersistentDomainForName:suiteName];
+    failed += DYYYVerifyQuality([DYYYPrepareVideoQualitySettingPicker(defaults) isEqualToString:DYYY_VIDEO_QUALITY_OFF] &&
+        DYYYPlaybackQualityModeForSettings([defaults boolForKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY],
+            [defaults objectForKey:DYYY_VIDEO_QUALITY_POLICY_KEY]) == DYYYPlaybackQualityOriginal,
+        "全新默认设置显示关闭并保持抖音原生播放");
+
+    [defaults setBool:NO forKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY];
+    [defaults setObject:DYYY_VIDEO_QUALITY_PREFER_HDR forKey:DYYY_VIDEO_QUALITY_POLICY_KEY];
+    failed += DYYYVerifyQuality([DYYYPrepareVideoQualitySettingPicker(defaults) isEqualToString:DYYY_VIDEO_QUALITY_OFF] &&
+        [[defaults objectForKey:DYYY_VIDEO_QUALITY_POLICY_KEY] isEqualToString:DYYY_VIDEO_QUALITY_OFF] &&
+        DYYYPlaybackQualityModeForSettings([defaults boolForKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY],
+            [defaults objectForKey:DYYY_VIDEO_QUALITY_POLICY_KEY]) == DYYYPlaybackQualityOriginal,
+        "旧总开关关闭但策略为 HDR 时规范化为关闭，不启用画质策略");
+
+    failed += DYYYVerifyQuality(DYYYStoreVideoQualitySelection(defaults, DYYY_VIDEO_QUALITY_OFF) &&
+        ![defaults boolForKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY] &&
+        [[defaults objectForKey:DYYY_VIDEO_QUALITY_POLICY_KEY] isEqualToString:DYYY_VIDEO_QUALITY_OFF] &&
+        DYYYPlaybackQualityModeForSettings([defaults boolForKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY],
+            [defaults objectForKey:DYYY_VIDEO_QUALITY_POLICY_KEY]) == DYYYPlaybackQualityOriginal,
+        "选择关闭时同步两个兼容键并保持抖音原生播放");
+    failed += DYYYVerifyQuality(DYYYStoreVideoQualitySelection(defaults, DYYY_VIDEO_QUALITY_HIGHEST) &&
+        [defaults boolForKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY] &&
+        [[defaults objectForKey:DYYY_VIDEO_QUALITY_POLICY_KEY] isEqualToString:DYYY_VIDEO_QUALITY_HIGHEST] &&
+        DYYYPlaybackQualityModeForSettings([defaults boolForKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY],
+            [defaults objectForKey:DYYY_VIDEO_QUALITY_POLICY_KEY]) == DYYYPlaybackQualityHighest,
+        "选择最高码率时同步两个兼容键并启用原最高码率策略");
+    failed += DYYYVerifyQuality(DYYYStoreVideoQualitySelection(defaults, DYYY_VIDEO_QUALITY_PREFER_HDR) &&
+        [defaults boolForKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY] &&
+        [[defaults objectForKey:DYYY_VIDEO_QUALITY_POLICY_KEY] isEqualToString:DYYY_VIDEO_QUALITY_PREFER_HDR] &&
+        DYYYPlaybackQualityModeForSettings([defaults boolForKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY],
+            [defaults objectForKey:DYYY_VIDEO_QUALITY_POLICY_KEY]) == DYYYPlaybackQualityPreferHDR,
+        "选择 HDR 首选时同步两个兼容键并启用 HDR 策略");
+    failed += DYYYVerifyQuality(!DYYYStoreVideoQualitySelection(defaults, @"invalid choice") &&
+        [defaults boolForKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY] &&
+        [[defaults objectForKey:DYYY_VIDEO_QUALITY_POLICY_KEY] isEqualToString:DYYY_VIDEO_QUALITY_PREFER_HDR],
+        "拒绝未知选项且不改变任一兼容设置");
+
+    [defaults setBool:YES forKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY];
+    [defaults removeObjectForKey:DYYY_VIDEO_QUALITY_POLICY_KEY];
+    failed += DYYYVerifyQuality([DYYYPrepareVideoQualitySettingPicker(defaults) isEqualToString:DYYY_VIDEO_QUALITY_HIGHEST] &&
+        [[defaults objectForKey:DYYY_VIDEO_QUALITY_POLICY_KEY] isEqualToString:DYYY_VIDEO_QUALITY_HIGHEST] &&
+        DYYYPlaybackQualityModeForSettings([defaults boolForKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY],
+            [defaults objectForKey:DYYY_VIDEO_QUALITY_POLICY_KEY]) == DYYYPlaybackQualityHighest,
+        "总开关开启但旧策略缺失时规范化为最高码率");
+    [defaults removePersistentDomainForName:suiteName];
+    return failed;
+}
+
 int DYYYRunVideoQualityPolicyTests(void) {
     // These host doubles require a fresh macOS test process, never Aweme.
     if (NSClassFromString(@"AWEURLModel")) return DYYYVerifyQuality(NO, "host fixture requires an isolated test process");
     int failed = DYYYRunPlaybackPolicySelectionCases();
+    failed += DYYYRunVideoQualitySettingCases();
     failed += DYYYVerifyQuality(DYYYPlaybackQualityModeForSettings(NO, DYYY_VIDEO_QUALITY_PREFER_HDR) == DYYYPlaybackQualityOriginal,
         "master switch off always preserves native selection");
     failed += DYYYVerifyQuality(DYYYPlaybackQualityModeForSettings(YES, DYYY_VIDEO_QUALITY_OFF) == DYYYPlaybackQualityOriginal &&

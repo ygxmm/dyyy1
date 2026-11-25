@@ -18,6 +18,39 @@ DYYYPlaybackQualityMode DYYYPlaybackQualityModeForSettings(BOOL enabled, id pref
     return [preference isEqual:DYYY_VIDEO_QUALITY_PREFER_HDR] ? DYYYPlaybackQualityPreferHDR : DYYYPlaybackQualityHighest;
 }
 
+NSString *DYYYVideoQualitySettingDisplayValue(BOOL enabled, id preference) {
+    if (!enabled) return DYYY_VIDEO_QUALITY_OFF;
+    return DYYYNormalizedPlaybackQualityPolicy(preference);
+}
+
+NSString *DYYYPrepareVideoQualitySettingPicker(NSUserDefaults *defaults) {
+    if (![defaults isKindOfClass:NSUserDefaults.class]) return DYYY_VIDEO_QUALITY_OFF;
+    BOOL enabled = [defaults boolForKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY];
+    id preference = [defaults objectForKey:DYYY_VIDEO_QUALITY_POLICY_KEY];
+    NSString *displayValue = DYYYVideoQualitySettingDisplayValue(enabled, preference);
+    BOOL shouldEnable = ![displayValue isEqual:DYYY_VIDEO_QUALITY_OFF];
+    // 仅修正不一致的旧配置，确保选择器高亮与实际播放状态一致，避免无谓地刷新缓存。
+    if (enabled != shouldEnable || ![preference isEqual:displayValue]) {
+        DYYYStoreVideoQualitySelection(defaults, displayValue);
+    }
+    return displayValue;
+}
+
+BOOL DYYYStoreVideoQualitySelection(NSUserDefaults *defaults, id selection) {
+    if (![defaults isKindOfClass:NSUserDefaults.class] || ![selection isKindOfClass:NSString.class]) return NO;
+    BOOL enabled = YES;
+    if ([selection isEqual:DYYY_VIDEO_QUALITY_OFF]) {
+        enabled = NO;
+    } else if (![selection isEqual:DYYY_VIDEO_QUALITY_HIGHEST] &&
+        ![selection isEqual:DYYY_VIDEO_QUALITY_PREFER_HDR]) {
+        return NO;
+    }
+    // 先写策略：启用时，在策略准备就绪前保持总开关关闭；关闭时先让 Off 生效。
+    [defaults setObject:selection forKey:DYYY_VIDEO_QUALITY_POLICY_KEY];
+    [defaults setBool:enabled forKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY];
+    return YES;
+}
+
 static id DYYYPlaybackTierValue(id tier, NSString *key) {
     @try { return [tier valueForKey:key]; }
     @catch (__unused NSException *exception) { return nil; }

@@ -195,8 +195,7 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
             [DYYYSettingItem itemWithTitle:@"关注二次确认" key:@"DYYYFollowTips" type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"收藏二次确认" key:@"DYYYCollectTips" type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"默认直播画质" key:@"DYYYLiveQuality" type:DYYYSettingItemTypePicker],
-            [DYYYSettingItem itemWithTitle:@"提高视频画质" key:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY type:DYYYSettingItemTypeSwitch],
-            [DYYYSettingItem itemWithTitle:@"视频画质策略" key:DYYY_VIDEO_QUALITY_POLICY_KEY type:DYYYSettingItemTypePicker],
+            [DYYYSettingItem itemWithTitle:@"视频画质" key:DYYY_VIDEO_QUALITY_POLICY_KEY type:DYYYSettingItemTypePicker],
             [DYYYSettingItem itemWithTitle:@"显示详细互动数" key:@"DYYYShowExactInteractionCounts" type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"禁用直播PCDN功能" key:@"DYYYDisableLivePCDN" type:DYYYSettingItemTypeSwitch]
         ],
@@ -731,7 +730,11 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
 
         UILabel *pickerLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 80, 44)];
         // 获取当前值
-        id currentValue = [[NSUserDefaults standardUserDefaults] objectForKey:item.key];
+        NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+        id currentValue = [item.key isEqualToString:DYYY_VIDEO_QUALITY_POLICY_KEY]
+            ? DYYYVideoQualitySettingDisplayValue([defaults boolForKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY],
+                [defaults objectForKey:DYYY_VIDEO_QUALITY_POLICY_KEY])
+            : [defaults objectForKey:item.key];
         if (!currentValue) {
             currentValue = [self defaultValueForKey:item.key];
         }
@@ -792,6 +795,9 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
         return;
     }
     if (item.type == DYYYSettingItemTypePicker) {
+        if ([item.key isEqualToString:DYYY_VIDEO_QUALITY_POLICY_KEY]) {
+            DYYYPrepareVideoQualitySettingPicker(NSUserDefaults.standardUserDefaults);
+        }
         [self showUniversalPickerForIndexPath:indexPath];
     }
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
@@ -808,8 +814,13 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
         UIAlertAction *action = [UIAlertAction actionWithTitle:title
                                                          style:UIAlertActionStyleDefault
                                                        handler:^(UIAlertAction *_Nonnull action) {
-                                                         // 保存到对应的key
-                                                         [[NSUserDefaults standardUserDefaults] setObject:option forKey:item.key];
+                                                         // 保存对应设置；画质选项还需同步旧运行时键。
+                                                         NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+                                                         if ([item.key isEqualToString:DYYY_VIDEO_QUALITY_POLICY_KEY]) {
+                                                             DYYYStoreVideoQualitySelection(defaults, option);
+                                                         } else {
+                                                             [defaults setObject:option forKey:item.key];
+                                                         }
 
                                                          // 更新对应的cell显示
                                                          UITableViewCell *cell = [self.tableView cellForRowAtIndexPath:indexPath];

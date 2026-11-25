@@ -90,9 +90,55 @@ assert 'DYYYPlaybackTierHasUsableSource(nativeTier)' in resolver
 assert 'DYYYSelectHighestAllowedPlaybackTier(tiers, nativeHDRAllowed)' in policy
 assert 'DYYYPlaybackTierHasUsableSource(tier)' in policy
 print('PASS native quality wiring: addresses and native results share both policies and allowed-source fallback')
-for filename in ('DYYYSettings.xm', 'Sources/Settings/DYYYSettingViewController.m'):
-    ui = (root / filename).read_text()
-    assert re.search(r'@\[\s*DYYY_VIDEO_QUALITY_OFF,\s*DYYY_VIDEO_QUALITY_HIGHEST,\s*DYYY_VIDEO_QUALITY_PREFER_HDR\s*\]', ui), filename
-    assert 'DYYYNormalizedPlaybackQualityPolicy(' in ui, filename
-    print('PASS native quality wiring: Off option and normalized display in', filename)
+main_ui = (root / 'DYYYSettings.xm').read_text()
+assert len(re.findall(r'@"title"\s*:\s*@"视频画质"', main_ui)) == 1, 'Main panel must declare one 视频画质 row'
+assert '@"title" : @"提高视频画质"' not in main_ui, 'Remove the legacy switch row'
+assert '@"identifier" : DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY' not in main_ui, 'Do not expose the legacy switch key as a row'
+main_row = re.search(r'@\{\s*@"identifier"\s*:\s*DYYY_VIDEO_QUALITY_POLICY_KEY,(.*?)\n\s*\},', main_ui, re.S)
+assert main_row and len(re.findall(r'@"identifier"\s*:\s*DYYY_VIDEO_QUALITY_POLICY_KEY', main_ui)) == 1
+assert '@"title" : @"视频画质"' in main_row.group(0)
+assert re.search(r'@"cellType"\s*:\s*@26', main_row.group(1)), 'Video quality row itself must be a picker'
+assert 'DYYYVideoQualitySettingDisplayValue(' in main_ui and 'DYYYPrepareVideoQualitySettingPicker(defaults)' in main_ui
+assert re.search(r'optionsArray:\s*@\[DYYY_VIDEO_QUALITY_OFF,\s*DYYY_VIDEO_QUALITY_HIGHEST,\s*DYYY_VIDEO_QUALITY_PREFER_HDR\]', main_ui)
+quality_call = re.search(r'\[DYYYOptionsSelectionView showWithPreferenceKey:DYYY_VIDEO_QUALITY_POLICY_KEY(.*?)\];', main_ui, re.S)
+assert quality_call, 'Missing main quality picker call'
+quality_call = quality_call.group(1)
+assert quality_call.index('selectionWillDismiss:') < quality_call.index('selectionChanged:')
+assert 'DYYYStoreVideoQualitySelection(defaults, selectedValue)' in quality_call.split('selectionChanged:')[0]
+assert 'DYYYStoreVideoQualitySelection' not in quality_call.split('selectionChanged:')[1], 'Do not defer or duplicate persistence to dismiss completion'
+print('PASS settings integration: main panel has one synchronized three-choice picker')
+
+options_ui = (root / 'Sources/UI/DYYYOptionsSelectionView.m').read_text()
+assert len(re.findall(r'^\+ \(NSString \*\)showWithPreferenceKey:', options_ui, re.M)) == 3, 'Keep the three distinct legacy/extended selector implementations only'
+legacy_marker = 'selectionChanged:(void (^)(NSString *selectedValue))callback {'
+legacy_start = options_ui.rfind('+ (NSString *)', 0, options_ui.index(legacy_marker))
+assert legacy_start >= 0, 'Missing legacy callback API implementation'
+legacy_end = options_ui.index('}', legacy_start) + 1
+legacy_body = options_ui[legacy_start:legacy_end]
+assert 'selectionWillDismiss:nil' in legacy_body and 'selectionChanged:callback' in legacy_body, 'Legacy callback API must forward unchanged without a pre-dismiss hook'
+extended_marker = 'selectionWillDismiss:(void (^)(NSString *selectedValue))commitCallback'
+extended_start = options_ui.rfind('+ (NSString *)', 0, options_ui.index(extended_marker))
+assert extended_start >= 0, 'Missing extended pre-dismiss API implementation'
+extended_end = options_ui.index('    id config =', extended_start)
+extended_body = options_ui[extended_start:extended_end]
+assert extended_body.index('commitCallback(selectedValue)') < extended_body.index('dismissViewControllerAnimated:YES')
+assert extended_body.index('dismissViewControllerAnimated:YES') < extended_body.index('completion:^{') < extended_body.index('callback(selectedValue)')
+assert 'else {\n              [[NSUserDefaults standardUserDefaults] setObject:selectedValue forKey:preferenceKey];' in extended_body, 'Legacy default preference write remains for callers without pre-dismiss callback'
+print('PASS options picker integration: one pre-dismiss hook; legacy API retains old callback timing')
+
+alternate_ui = (root / 'Sources/Settings/DYYYSettingViewController.m').read_text()
+assert len(re.findall(r'itemWithTitle:@"视频画质"\s+key:DYYY_VIDEO_QUALITY_POLICY_KEY\s+type:DYYYSettingItemTypePicker', alternate_ui)) == 1
+assert 'itemWithTitle:@"提高视频画质"' not in alternate_ui and 'itemWithTitle:@"视频画质策略"' not in alternate_ui
+assert 'DYYYVideoQualitySettingDisplayValue(' in alternate_ui
+assert 'DYYYPrepareVideoQualitySettingPicker(NSUserDefaults.standardUserDefaults)' in alternate_ui
+assert 'DYYYStoreVideoQualitySelection(defaults, option)' in alternate_ui
+assert re.search(r'@\[\s*DYYY_VIDEO_QUALITY_OFF,\s*DYYY_VIDEO_QUALITY_HIGHEST,\s*DYYY_VIDEO_QUALITY_PREFER_HDR\s*\]', alternate_ui)
+print('PASS settings integration: alternate panel has one synchronized three-choice picker')
+
+settings_tests = (root / 'Tests/Media/DYYYVideoQualityPolicyTests.m').read_text()
+for assertion in ('DYYYRunVideoQualitySettingCases', 'DYYYPrepareVideoQualitySettingPicker', 'DYYYStoreVideoQualitySelection',
+                  '旧总开关关闭时，即使保存策略为 HDR', '选择关闭时同步两个兼容键',
+                  '选择最高码率时同步两个兼容键', '选择 HDR 首选时同步两个兼容键'):
+    assert assertion in settings_tests, 'Missing settings-policy test: ' + assertion
+print('PASS settings integration: picker mapping and legacy synchronization tests are registered')
 print('Native quality structural checks passed; native playback still requires device verification.')

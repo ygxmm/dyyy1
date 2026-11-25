@@ -2579,15 +2579,12 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
             @"detail" : @"",
             @"cellType" : @37,
             @"imageName" : kDYYYShowFPSOverlaySVGIconName},
-          @{ @"identifier" : DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY,
-            @"title" : @"提高视频画质",
-            @"detail" : @"",
-            @"cellType" : @6,
-            @"imageName" : @"ic_squaretriangletwo_outlined_20"},
           @{ @"identifier" : DYYY_VIDEO_QUALITY_POLICY_KEY,
-            @"title" : @"视频画质策略",
-            @"subTitle" : @"开启提高视频画质后生效。关闭＝交给抖音；HDR 首选需原生允许且有可用源，切换视频后生效。",
-            @"detail" : DYYY_VIDEO_QUALITY_HIGHEST,
+            @"title" : @"视频画质",
+            @"subTitle" : @"关闭＝交给抖音；HDR 首选仍需原生允许且有可用源。切换视频后生效。",
+            @"detail" : DYYYVideoQualitySettingDisplayValue(
+                [NSUserDefaults.standardUserDefaults boolForKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY],
+                [NSUserDefaults.standardUserDefaults objectForKey:DYYY_VIDEO_QUALITY_POLICY_KEY]),
             @"cellType" : @26,
             @"imageName" : @"ic_squaretriangletwo_outlined_20"},
           @{@"identifier" : @"DYYYHDRMode",
@@ -2602,17 +2599,25 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
           AWESettingItemModel *item = [DYYYSettingsHelper createSettingItem:dict cellTapHandlers:cellTapHandlers];
 
           if ([item.identifier isEqualToString:DYYY_VIDEO_QUALITY_POLICY_KEY]) {
-              NSString *policy = [NSUserDefaults.standardUserDefaults stringForKey:DYYY_VIDEO_QUALITY_POLICY_KEY];
-              item.detail = DYYYNormalizedPlaybackQualityPolicy(policy);
+              NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+              item.detail = DYYYVideoQualitySettingDisplayValue(
+                  [defaults boolForKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY],
+                  [defaults objectForKey:DYYY_VIDEO_QUALITY_POLICY_KEY]);
               item.cellTappedBlock = ^{
+                DYYYPrepareVideoQualitySettingPicker(defaults);
                 [DYYYOptionsSelectionView showWithPreferenceKey:DYYY_VIDEO_QUALITY_POLICY_KEY
                                                    optionsArray:@[DYYY_VIDEO_QUALITY_OFF, DYYY_VIDEO_QUALITY_HIGHEST, DYYY_VIDEO_QUALITY_PREFER_HDR]
-                                                     headerText:@"选择视频画质策略"
+                                                     headerText:@"选择视频画质"
                                                  onPresentingVC:topView()
+                                           selectionWillDismiss:^(NSString *selectedValue) {
+                                                 DYYYStoreVideoQualitySelection(defaults, selectedValue);
+                                               }
                                                selectionChanged:^(NSString *selectedValue) {
-                                                 item.detail = selectedValue;
+                                                 item.detail = DYYYVideoQualitySettingDisplayValue(
+                                                     [defaults boolForKey:DYYY_ENABLE_HIGHEST_VIDEO_QUALITY_KEY],
+                                                     [defaults objectForKey:DYYY_VIDEO_QUALITY_POLICY_KEY]);
                                                  [item refreshCell];
-                                                 [DYYYUtils showToast:@"画质策略已更新，切换视频后生效"];
+                                                 [DYYYUtils showToast:@"视频画质已更新，切换视频后生效"];
                                                }];
               };
           } else if ([item.identifier isEqualToString:@"DYYYHDRMode"]) {

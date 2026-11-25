@@ -152,6 +152,20 @@ static void DYYYApplySelectionSheetThemeToView(UIView *view, BOOL darkMode) {
                          headerText:(NSString *)headerText
                      onPresentingVC:(UIViewController *)presentingVC
                    selectionChanged:(void (^)(NSString *selectedValue))callback {
+    return [self showWithPreferenceKey:preferenceKey
+                          optionsArray:optionsArray
+                            headerText:headerText
+                        onPresentingVC:presentingVC
+                    selectionWillDismiss:nil
+                      selectionChanged:callback];
+}
+
++ (NSString *)showWithPreferenceKey:(NSString *)preferenceKey
+                       optionsArray:(NSArray<NSString *> *)optionsArray
+                         headerText:(NSString *)headerText
+                     onPresentingVC:(UIViewController *)presentingVC
+                 selectionWillDismiss:(void (^)(NSString *selectedValue))commitCallback
+                   selectionChanged:(void (^)(NSString *selectedValue))callback {
     NSString *savedPreference = [[NSUserDefaults standardUserDefaults] stringForKey:preferenceKey];
     if (!savedPreference && optionsArray.count > 0) {
         savedPreference = optionsArray[0];
@@ -183,7 +197,11 @@ static void DYYYApplySelectionSheetThemeToView(UIView *view, BOOL darkMode) {
           }
 
           NSString *selectedValue = [currentModel title];
-          [[NSUserDefaults standardUserDefaults] setObject:selectedValue forKey:preferenceKey];
+          if (commitCallback) {
+              commitCallback(selectedValue);
+          } else {
+              [[NSUserDefaults standardUserDefaults] setObject:selectedValue forKey:preferenceKey];
+          }
 
           if (contentSheet) {
               [contentSheet dismissViewControllerAnimated:YES
