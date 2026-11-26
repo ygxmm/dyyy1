@@ -15743,6 +15743,14 @@ static char kDYYYV29DoneKey; // v439
 
 %hook AWEAwemeDetailTableView
 
+- (void)setContentInset:(UIEdgeInsets)contentInset {
+    // 全屏详情把 table 和每页行高统一到屏高；原生仍给这个分页表写 44pt 底 inset，
+    // UIKit 会将停靠位置落在 rowTop+44，随后原生页索引纠偏又将画面拉回 rowTop。
+    // 只在全屏详情表移除这段冗余底 inset；其余 inset 与非全屏原样保留。
+    if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) contentInset.bottom = 0;
+    %orig(contentInset);
+}
+
 - (void)setFrame:(CGRect)frame {
     // v707: 原生每次布局都把表写成「屏高 − 60」（792），而初始偏移就是按这个高度算的。
     // 在写入这一刻直接夹成屏高，表从头到尾都是 852，偏移自然按 852 算。

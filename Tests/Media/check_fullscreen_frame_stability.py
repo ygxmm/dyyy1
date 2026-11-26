@@ -132,6 +132,14 @@ check(xm.count(detail_gate) == 1 and
       'if (![DYYYFullscreenCoordinator isImageContentController:self]) return;' in xm,
       '非推荐详情保留逻辑底栏占位，避免 offscreen tabbar 令交互层下移60pt')
 runner = (ROOT / 'Tests/Media/run_media_tests.sh').read_text()
+detail_table = re.search(r'^%hook AWEAwemeDetailTableView\s*$(.*?)^%end\s*$', xm, re.M | re.S)
+check(detail_table is not None and len(re.findall(r'^%hook AWEAwemeDetailTableView\s*$', xm, re.M)) == 1 and
+      detail_table.group(1).count('- (void)setContentInset:(UIEdgeInsets)contentInset') == 1 and
+      'contentInset.bottom = 0;' in detail_table.group(1) and
+      detail_table.group(1).index('DYYYEnableFullScreen') < detail_table.group(1).index('%orig(contentInset);') and
+      detail_table.group(1).count('- (void)setFrame:(CGRect)frame') == 1 and
+      detail_table.group(1).count('- (void)layoutSubviews') == 1,
+      '详情表唯一 setter 在全屏清掉残留 bottom inset，关闭时原样传递')
 check('DYYYFullscreenGeometryTests.m' in runner and 'DYYYFullscreenGeometry.m' in runner and
       'check_fullscreen_frame_stability.py' in runner,
       '集成结构与原生 geometry 断言都加入现有 CI runner')
