@@ -123,6 +123,13 @@ detail_list = re.search(r'^%hook AWEDetailFeedListContainer\s*$(.*?)^%end\s*$', 
 check(detail_list is not None and not any(s in detail_list.group(1) for s in
       ('contentOffsetYForCellAtIndex:', 'indexForContentOffsetY:')),
       '移除 41.2 详情列表中不存在的两个旧分页选择器')
+detail_gate = ('if ([DYYYFullscreenCoordinator usesRecommendedLayoutForController:self] ||\n'
+               '        [DYYYFullscreenCoordinator usesDetailLayoutForController:self]) {\n'
+               '        [DYYYFullscreenCoordinator layoutInteraction:self];')
+check(xm.count(detail_gate) == 1 and
+      xm.count('[DYYYFullscreenCoordinator layoutInteraction:self];') == 1 and
+      'if (![DYYYFullscreenCoordinator isImageContentController:self]) return;' in xm,
+      '作者作品详情与首页共用唯一互动层 owner，保留图文分支')
 runner = (ROOT / 'Tests/Media/run_media_tests.sh').read_text()
 check('DYYYFullscreenGeometryTests.m' in runner and 'DYYYFullscreenGeometry.m' in runner and
       'check_fullscreen_frame_stability.py' in runner,
