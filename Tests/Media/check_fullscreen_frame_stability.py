@@ -140,6 +140,16 @@ check(detail_table is not None and len(re.findall(r'^%hook AWEAwemeDetailTableVi
       detail_table.group(1).count('- (void)setFrame:(CGRect)frame') == 1 and
       detail_table.group(1).count('- (void)layoutSubviews') == 1,
       '详情表唯一 setter 在全屏清掉残留 bottom inset，关闭时原样传递')
+comment_bar = re.search(r'^%hook AWECommentInputBackgroundView\s*$(.*?)^%end\s*$', xm, re.M | re.S)
+hide_helper = re.search(r'static void DYYYSetCommentInputSubviewsHidden\(.*?\n\}', xm, re.S)
+check(comment_bar is not None and len(re.findall(r'^%hook AWECommentInputBackgroundView\s*$', xm, re.M)) == 1 and
+      comment_bar.group(1).count('- (void)layoutSubviews') == 1 and
+      'removeFromSuperview' not in comment_bar.group(1) and
+      'DYYYSetCommentInputSubviewsHidden(self, DYYYGetBool(@"DYYYHideComment"));' in comment_bar.group(1) and
+      'self.transform = newTransform;' in comment_bar.group(1) and
+      hide_helper is not None and 'OBJC_ASSOCIATION_RETAIN_NONATOMIC' in hide_helper.group(0) and
+      'subview.hidden = [state[@"hidden"] boolValue];' in hide_helper.group(0),
+      '隐藏底栏评论保留占位并可恢复子视图，避免详情露黑底')
 check('DYYYFullscreenGeometryTests.m' in runner and 'DYYYFullscreenGeometry.m' in runner and
       'check_fullscreen_frame_stability.py' in runner,
       '集成结构与原生 geometry 断言都加入现有 CI runner')

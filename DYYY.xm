@@ -13811,20 +13811,46 @@ static Class tabBarButtonClass = nil;
 }
 %end
 
+static char kDYYYCommentInputHiddenSubviewsKey;
+static void DYYYSetCommentInputSubviewsHidden(UIView *bar, BOOL hidden) {
+    if (![NSThread isMainThread] || !bar) return;
+    NSMutableArray<NSDictionary *> *saved = objc_getAssociatedObject(bar, &kDYYYCommentInputHiddenSubviewsKey);
+    if (hidden) {
+        if (!saved) {
+            saved = [NSMutableArray array];
+            objc_setAssociatedObject(bar, &kDYYYCommentInputHiddenSubviewsKey, saved, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        for (UIView *subview in bar.subviews) {
+            BOOL recorded = NO;
+            for (NSDictionary *state in saved) {
+                if (state[@"view"] == subview) { recorded = YES; break; }
+            }
+            // 保存首次接管前的显隐状态；重复 layout 不覆盖原生值。
+            if (!recorded) [saved addObject:@{@"view": subview, @"hidden": @(subview.hidden), @"alpha": @(subview.alpha)}];
+            subview.hidden = YES;
+            subview.alpha = 0;
+        }
+        return;
+    }
+    for (NSDictionary *state in saved) {
+        UIView *subview = state[@"view"];
+        // 仅在视图仍保持本 Hook 写入的隐藏状态时恢复，尊重原生后续改动。
+        if (subview.hidden && subview.alpha <= 0.001) {
+            subview.hidden = [state[@"hidden"] boolValue];
+            subview.alpha = [state[@"alpha"] doubleValue];
+        }
+    }
+    objc_setAssociatedObject(bar, &kDYYYCommentInputHiddenSubviewsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
 %hook AWECommentInputBackgroundView
 - (void)layoutSubviews {
     %orig;
 
-    if (DYYYGetBool(@"DYYYHideComment")) {
-        [self removeFromSuperview];
-        return;
-    }
-
+    // 隐藏评论入口时保留原生 60pt 占位与全屏变换，避免删除背景视图后露出黑色 cell 底色。
+    DYYYSetCommentInputSubviewsHidden(self, DYYYGetBool(@"DYYYHideComment"));
     CGAffineTransform newTransform = CGAffineTransformMakeTranslation(0, originalTabBarHeight - gCurrentTabBarHeight);
-
-    if (!CGAffineTransformEqualToTransform(self.transform, newTransform)) {
-        self.transform = newTransform;
-    }
+    if (!CGAffineTransformEqualToTransform(self.transform, newTransform)) self.transform = newTransform;
 }
 %end
 
