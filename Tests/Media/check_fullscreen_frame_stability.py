@@ -142,14 +142,21 @@ check(detail_table is not None and len(re.findall(r'^%hook AWEAwemeDetailTableVi
       '详情表唯一 setter 在全屏清掉残留 bottom inset，关闭时原样传递')
 comment_bar = re.search(r'^%hook AWECommentInputBackgroundView\s*$(.*?)^%end\s*$', xm, re.M | re.S)
 hide_helper = re.search(r'static void DYYYSetCommentInputSubviewsHidden\(.*?\n\}', xm, re.S)
+comment_backdrop_match = re.search(r'static BOOL DYYYCommentInputMatchesDarkReserve\(.*?\n\}', xm, re.S)
 check(comment_bar is not None and len(re.findall(r'^%hook AWECommentInputBackgroundView\s*$', xm, re.M)) == 1 and
       comment_bar.group(1).count('- (void)layoutSubviews') == 1 and
       'removeFromSuperview' not in comment_bar.group(1) and
       'DYYYSetCommentInputSubviewsHidden(self, DYYYGetBool(@"DYYYHideComment"));' in comment_bar.group(1) and
       'self.transform = newTransform;' in comment_bar.group(1) and
       hide_helper is not None and 'OBJC_ASSOCIATION_RETAIN_NONATOMIC' in hide_helper.group(0) and
+      'NSMutableOrderedSet<UIView *> *targets' in hide_helper.group(0) and
+      'for (UIView *sibling in bar.superview.subviews)' in hide_helper.group(0) and
+      'DYYYCommentInputMatchesDarkReserve(sibling, bar)' in hide_helper.group(0) and
+      comment_backdrop_match is not None and 'candidate.superview != bar.superview' in comment_backdrop_match.group(0) and
+      'fabs(candidateFrame.origin.y - barFrame.origin.y) > 0.5' in comment_backdrop_match.group(0) and
+      'white < 0.25' in comment_backdrop_match.group(0) and
       'subview.hidden = [state[@"hidden"] boolValue];' in hide_helper.group(0),
-      '隐藏底栏评论保留占位并可恢复子视图，避免详情露黑底')
+      '隐藏底栏评论还接管41.3同尺寸深色兄弟背景并可恢复')
 check('DYYYFullscreenGeometryTests.m' in runner and 'DYYYFullscreenGeometry.m' in runner and
       'check_fullscreen_frame_stability.py' in runner,
       '集成结构与原生 geometry 断言都加入现有 CI runner')

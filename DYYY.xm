@@ -13812,6 +13812,26 @@ static Class tabBarButtonClass = nil;
 %end
 
 static char kDYYYCommentInputHiddenSubviewsKey;
+static BOOL DYYYCommentInputMatchesDarkReserve(UIView *candidate, UIView *bar) {
+    if (!candidate || !bar || candidate == bar || candidate.class != UIView.class ||
+        candidate.hidden || candidate.alpha <= 0.01 || !candidate.opaque || !candidate.backgroundColor ||
+        candidate.superview != bar.superview) return NO;
+    CGRect candidateFrame = candidate.frame;
+    CGRect barFrame = bar.frame;
+    if (fabs(candidateFrame.origin.x - barFrame.origin.x) > 0.5 ||
+        fabs(candidateFrame.origin.y - barFrame.origin.y) > 0.5 ||
+        fabs(candidateFrame.size.width - barFrame.size.width) > 0.5 ||
+        fabs(candidateFrame.size.height - barFrame.size.height) > 0.5) return NO;
+    UIColor *resolved = [candidate.backgroundColor resolvedColorWithTraitCollection:bar.traitCollection];
+    CGFloat white = 0.0, alpha = 0.0;
+    if (![resolved getWhite:&white alpha:&alpha]) {
+        CGFloat red = 0.0, green = 0.0, blue = 0.0;
+        if (![resolved getRed:&red green:&green blue:&blue alpha:&alpha]) return NO;
+        white = (red + green + blue) / 3.0;
+    }
+    return alpha > 0.5 && white < 0.25;
+}
+
 static void DYYYSetCommentInputSubviewsHidden(UIView *bar, BOOL hidden) {
     if (![NSThread isMainThread] || !bar) return;
     NSMutableArray<NSDictionary *> *saved = objc_getAssociatedObject(bar, &kDYYYCommentInputHiddenSubviewsKey);
@@ -13820,7 +13840,13 @@ static void DYYYSetCommentInputSubviewsHidden(UIView *bar, BOOL hidden) {
             saved = [NSMutableArray array];
             objc_setAssociatedObject(bar, &kDYYYCommentInputHiddenSubviewsKey, saved, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
-        for (UIView *subview in bar.subviews) {
+        NSMutableOrderedSet<UIView *> *targets = [NSMutableOrderedSet orderedSetWithArray:bar.subviews];
+        // 41.3 在评论入口旁新增同 frame 的独立深色 UIView；隐藏入口子视图并不会隐藏这个兄弟背景。
+        // 只接管与 AWECommentInputBackgroundView 同父、同 frame、原生深色不透明的裸 UIView。
+        for (UIView *sibling in bar.superview.subviews) {
+            if (DYYYCommentInputMatchesDarkReserve(sibling, bar)) [targets addObject:sibling];
+        }
+        for (UIView *subview in targets) {
             BOOL recorded = NO;
             for (NSDictionary *state in saved) {
                 if (state[@"view"] == subview) { recorded = YES; break; }
@@ -13834,7 +13860,7 @@ static void DYYYSetCommentInputSubviewsHidden(UIView *bar, BOOL hidden) {
     }
     for (NSDictionary *state in saved) {
         UIView *subview = state[@"view"];
-        // 仅在视图仍保持本 Hook 写入的隐藏状态时恢复，尊重原生后续改动。
+        // 仅恢复仍保持本 Hook 隐藏状态的对象，尊重原生后续改动。
         if (subview.hidden && subview.alpha <= 0.001) {
             subview.hidden = [state[@"hidden"] boolValue];
             subview.alpha = [state[@"alpha"] doubleValue];
