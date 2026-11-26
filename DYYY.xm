@@ -14486,9 +14486,7 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
     if (![DYYYFullscreenCoordinator isInsideNearbyPage:self] &&
         ![DYYYFullscreenCoordinator layoutNativeInteraction:self]) {
 
-    // 作者作品详情（others_homepage）也走详情专属 owner，避免落入通用底栏高度兜底。
-    if ([DYYYFullscreenCoordinator usesRecommendedLayoutForController:self] ||
-        [DYYYFullscreenCoordinator usesDetailLayoutForController:self]) {
+    if ([DYYYFullscreenCoordinator usesRecommendedLayoutForController:self]) {
         [DYYYFullscreenCoordinator layoutInteraction:self];
         if (![DYYYFullscreenCoordinator isImageContentController:self]) return;
         if ([DYYYFullscreenCoordinator hasCommentInWindow:self.viewIfLoaded.window]) return;
