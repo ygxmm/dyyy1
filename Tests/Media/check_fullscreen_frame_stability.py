@@ -118,19 +118,81 @@ check('DYYYRepairTabBarInternalBackground' not in xm and 'restoreBackdrop:' in b
       '底栏仅用一个可恢复的背景入口，不改按钮和底栏占位')
 check('![DYYYFullscreenCoordinator isInsideNearbyPage:self] &&' in xm and
       'if (occupied <= 0.5) occupied = 60.0;' not in xm and 'BOOL useFullHeight' not in xm,
-      '同城不再进入布局后改高分支，不猜固定底栏占位')
+      'nearby 排除条件保持原分支，未改回布局后猜底栏占位')
 detail_list = re.search(r'^%hook AWEDetailFeedListContainer\s*$(.*?)^%end\s*$', xm, re.M | re.S)
 check(detail_list is not None and not any(s in detail_list.group(1) for s in
       ('contentOffsetYForCellAtIndex:', 'indexForContentOffsetY:')),
       '移除 41.2 详情列表中不存在的两个旧分页选择器')
-detail_gate = ('if ([DYYYFullscreenCoordinator usesRecommendedLayoutForController:self]) {\n'
-               '        [DYYYFullscreenCoordinator layoutInteraction:self];')
-check(xm.count(detail_gate) == 1 and
-      xm.count('[DYYYFullscreenCoordinator layoutInteraction:self];') == 1 and
-      'CGFloat occupied = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:self.view];' in xm and
-      'occupied = 49.0 + safeBottom;' in xm and
-      'if (![DYYYFullscreenCoordinator isImageContentController:self]) return;' in xm,
-      '非推荐详情保留逻辑底栏占位，避免 offscreen tabbar 令交互层下移60pt')
+home_feed_classifier = re.search(
+    r'^\+ \(BOOL\)usesHomeFeedLayoutForController:[^{]*\{(.*?)^\}',
+    coordinator, re.M | re.S)
+home_feed_classifier_body = home_feed_classifier.group(1) if home_feed_classifier else ''
+feed_id_check = re.compile(r'\[[^;]*?\bisEqualToString\s*:\s*@"([^"]+)"\]')
+classifier_returns = re.findall(r'\breturn\b([^;]*);', home_feed_classifier_body, re.S)
+classifier_final_return = classifier_returns[-1] if classifier_returns else ''
+classifier_return_terms = list(feed_id_check.finditer(classifier_final_return))
+classifier_return_residue = feed_id_check.sub('FEED_ID', classifier_final_return)
+classifier_return_residue = re.sub(r'\bFEED_ID\b|\|\||[()\s]', '', classifier_return_residue)
+home_feed_ids = re.findall(r'\bisEqualToString\s*:\s*@"([^"]+)"', home_feed_classifier_body)
+check(home_feed_classifier is not None and
+      len(home_feed_ids) == 2 and set(home_feed_ids) == {'homepage_hot', 'homepage_follow'} and
+      len(classifier_return_terms) == 2 and
+      {match.group(1) for match in classifier_return_terms} == {'homepage_hot', 'homepage_follow'} and
+      not classifier_return_residue and
+      not re.search(r'\b(?:isKindOfClass|isSubclassOfClass|hasPrefix|containsString|isImageContentController|return\s+YES)\b',
+                    home_feed_classifier_body),
+      '关注分类仅精确匹配 homepage_hot 与 homepage_follow，不泛化到其他内容')
+recommended_classifier = re.search(
+    r'^\+ \(BOOL\)usesRecommendedLayoutForController:[^{]*\{(.*?)^\}',
+    coordinator, re.M | re.S)
+recommended_classifier_body = recommended_classifier.group(1) if recommended_classifier else ''
+check(recommended_classifier is not None and
+      re.findall(r'isEqualToString\s*:\s*@"([^"]+)"', recommended_classifier_body) == ['homepage_hot'] and
+      'homepage_follow' not in recommended_classifier_body,
+      '推荐专属早退仍仅限 homepage_hot')
+
+interaction_hook = re.search(r'^%hook AWEPlayInteractionViewController\s*$(.*?)^%end\s*$', xm, re.M | re.S)
+interaction_layout = (re.search(r'-\s*\(void\)\s*viewDidLayoutSubviews\s*\{(.*?)^\}',
+                                interaction_hook.group(1), re.M | re.S)
+                      if interaction_hook else None)
+interaction_layout_body = interaction_layout.group(1) if interaction_layout else ''
+home_feed_gate = re.search(
+    r'if\s*\(\s*useHomeFeedFullscreen\s*\)\s*\{(.*?)^\s*\}',
+    interaction_layout_body, re.M | re.S)
+home_feed_gate_body = home_feed_gate.group(1) if home_feed_gate else ''
+interaction_after_gate = interaction_layout_body[home_feed_gate.end():] if home_feed_gate else ''
+layout_call = '[DYYYFullscreenCoordinator layoutInteraction:self];'
+fallback_occupied = 'CGFloat occupied = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:self.view];'
+fallback_bottom = 'occupied = 49.0 + safeBottom;'
+fallback_after_gate = (home_feed_gate is not None and
+                       all(token in interaction_after_gate for token in (fallback_occupied, fallback_bottom)) and
+                       interaction_after_gate.index(fallback_occupied) < interaction_after_gate.index(fallback_bottom))
+use_home_feed_fullscreen = re.search(
+    r'BOOL\s+useHomeFeedFullscreen\s*=\s*DYYYGetBoolCached\s*\(@"DYYYEnableFullScreen"\)\s*&&\s*\[DYYYFullscreenCoordinator\s+usesHomeFeedLayoutForController:self\]',
+    interaction_layout_body)
+home_video_state = ('BOOL homeFeedVideoLayoutApplied = NO;' in interaction_layout_body and
+                    'homeFeedVideoLayoutApplied = YES;' in interaction_layout_body and
+                    'if (!homeFeedVideoLayoutApplied) {' in interaction_layout_body)
+hot_video_early_return = ('if (!isImageContent && [DYYYFullscreenCoordinator usesRecommendedLayoutForController:self]) return;'
+                          in interaction_layout_body)
+image_comment_guard = ('if (isImageContent && [DYYYFullscreenCoordinator hasCommentInWindow:self.viewIfLoaded.window]) return;'
+                       in interaction_layout_body)
+post_layout_refresh = ('DYYYHideVideoAIParseBar(self.view);' in interaction_layout_body and
+                       'DYYYEnsureFloatSpeedButton(self);' in interaction_layout_body and
+                       interaction_layout_body.index('DYYYHideVideoAIParseBar(self.view);') > interaction_layout_body.index('homeFeedVideoLayoutApplied = YES;') and
+                       interaction_layout_body.index('DYYYEnsureFloatSpeedButton(self);') > interaction_layout_body.index('homeFeedVideoLayoutApplied = YES;'))
+check(interaction_hook is not None and len(re.findall(r'^%hook AWEPlayInteractionViewController\s*$', xm, re.M)) == 1 and
+      interaction_layout is not None,
+      'AWEPlayInteractionViewController 保留唯一 viewDidLayoutSubviews 入口')
+check(use_home_feed_fullscreen is not None and home_feed_gate is not None and
+      interaction_layout_body.count('usesHomeFeedLayoutForController:self') == 1 and
+      home_feed_gate_body.count(layout_call) == 1 and
+      interaction_layout_body.count(layout_call) == 1 and xm.count(layout_call) == 1,
+      '仅全屏开启时首页 hot/follow 共用现有 layoutInteraction 调用')
+check(fallback_after_gate and home_video_state,
+      '关注视频由协调器铺满并跳过通用扣底栏，其它路径保留 fallback')
+check(hot_video_early_return and image_comment_guard and post_layout_refresh,
+      '推荐原早退保留，关注视频仍刷新 AI 和悬浮控件')
 runner = (ROOT / 'Tests/Media/run_media_tests.sh').read_text()
 detail_table = re.search(r'^%hook AWEAwemeDetailTableView\s*$(.*?)^%end\s*$', xm, re.M | re.S)
 check(detail_table is not None and len(re.findall(r'^%hook AWEAwemeDetailTableView\s*$', xm, re.M)) == 1 and

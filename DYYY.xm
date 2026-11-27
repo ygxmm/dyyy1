@@ -14570,45 +14570,58 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
         if ([parent isKindOfClass:%c(AFDPlayRemoteFeedTableViewController)]) return;
     }
 
+    BOOL useHomeFeedFullscreen = DYYYGetBoolCached(@"DYYYEnableFullScreen") &&
+        [DYYYFullscreenCoordinator usesHomeFeedLayoutForController:self];
+    BOOL homeFeedVideoLayoutApplied = NO;
     if (![DYYYFullscreenCoordinator isInsideNearbyPage:self] &&
         ![DYYYFullscreenCoordinator layoutNativeInteraction:self]) {
 
-    if ([DYYYFullscreenCoordinator usesRecommendedLayoutForController:self]) {
+    if (useHomeFeedFullscreen) {
         [DYYYFullscreenCoordinator layoutInteraction:self];
-        if (![DYYYFullscreenCoordinator isImageContentController:self]) return;
-        if ([DYYYFullscreenCoordinator hasCommentInWindow:self.viewIfLoaded.window]) return;
-    }
-
-    if (!DYYYGetBool(@"DYYYEnableFullScreen")) {
-        return;
-    }
-
-    if (!self.view.superview) {
-        return;
-    }
-
-    CGRect frame = self.view.frame;
-    UIView *container = self.view.superview;
-    CGFloat superviewHeight = MAX(0, CGRectGetMaxY(container.bounds) - frame.origin.y);
-    if (fabs(frame.size.width - container.bounds.size.width) > 1 || superviewHeight <= 0) {
-        return;
-    }
-
-    CGFloat occupied = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:self.view];
-    if (occupied <= 0.5) {
-        CGFloat safeBottom = 0;
-        if (@available(iOS 11.0, *)) {
-            safeBottom = self.view.window.safeAreaInsets.bottom;
+        BOOL isImageContent = [DYYYFullscreenCoordinator isImageContentController:self];
+        if (!isImageContent && self.view.superview && self.view.window &&
+            fabs(self.view.frame.size.width - self.view.superview.bounds.size.width) <= 1.0) {
+            // 协调器已接管首页视频几何；仍继续执行下方的 AI/悬浮按钮状态刷新。
+            homeFeedVideoLayoutApplied = YES;
         }
-        occupied = 49.0 + safeBottom;
+        // 推荐视频仍按原路径早退；关注视频跳过重复高度兜底，但继续刷新悬浮控件。
+        if (!isImageContent && [DYYYFullscreenCoordinator usesRecommendedLayoutForController:self]) return;
+        if (isImageContent && [DYYYFullscreenCoordinator hasCommentInWindow:self.viewIfLoaded.window]) return;
     }
-    frame.size.height = MAX(0, superviewHeight - occupied);
 
-    if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
-        self.view.frame = frame;
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) {
+        return;
     }
-    [DYYYFullscreenCoordinator rememberInteractionGuide:self];
+
+    if (!homeFeedVideoLayoutApplied) {
+        if (!self.view.superview) {
+            return;
+        }
+
+        CGRect frame = self.view.frame;
+        UIView *container = self.view.superview;
+        CGFloat superviewHeight = MAX(0, CGRectGetMaxY(container.bounds) - frame.origin.y);
+        if (fabs(frame.size.width - container.bounds.size.width) > 1 || superviewHeight <= 0) {
+            return;
+        }
+
+        CGFloat occupied = [DYYYFullscreenCoordinator bottomOccupiedHeightForView:self.view];
+        if (occupied <= 0.5) {
+            CGFloat safeBottom = 0;
+            if (@available(iOS 11.0, *)) {
+                safeBottom = self.view.window.safeAreaInsets.bottom;
+            }
+            occupied = 49.0 + safeBottom;
+        }
+        frame.size.height = MAX(0, superviewHeight - occupied);
+
+        if (fabs(frame.size.height - self.view.frame.size.height) > 0.5) {
+            self.view.frame = frame;
+        }
+        [DYYYFullscreenCoordinator rememberInteractionGuide:self];
     }
+    }
+
     }
 
 

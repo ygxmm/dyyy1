@@ -4,6 +4,7 @@
 @interface DYYYFullscreenCoordinator : NSObject
 + (NSString *)buildIdentifier;
 + (BOOL)usesRecommendedLayoutForController:(UIViewController *)controller;
++ (BOOL)usesHomeFeedLayoutForController:(UIViewController *)controller;
 + (BOOL)usesDetailLayoutForController:(UIViewController *)controller;
 + (BOOL)usesFullscreenLayoutForController:(UIViewController *)controller;
 + (CGRect)frameForPureModeContainer:(UIViewController *)controller proposed:(CGRect)frame;

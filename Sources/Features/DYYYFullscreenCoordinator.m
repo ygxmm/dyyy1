@@ -129,6 +129,10 @@
 + (BOOL)usesRecommendedLayoutForController:(UIViewController *)controller {
     return [[self contentSourceForController:controller] isEqualToString:@"homepage_hot"];
 }
++ (BOOL)usesHomeFeedLayoutForController:(UIViewController *)controller {
+    NSString *source = [self contentSourceForController:controller];
+    return [source isEqualToString:@"homepage_hot"] || [source isEqualToString:@"homepage_follow"];
+}
 + (BOOL)usesDetailLayoutForController:(UIViewController *)controller {
     Class detailClass = NSClassFromString(@"AWEAwemeDetailTableViewController");
     Class remoteClass = NSClassFromString(@"AFDPlayRemoteFeedTableViewController");
@@ -155,7 +159,7 @@
         if (remoteClass && [parent isKindOfClass:remoteClass]) return NO;
         if ([parent respondsToSelector:@selector(getPureModeContainerFrame)]) pureMode = YES;
     }
-    if (pureMode || [self usesRecommendedLayoutForController:controller] || [self usesDetailLayoutForController:controller]) return YES;
+    if (pureMode || [self usesHomeFeedLayoutForController:controller] || [self usesDetailLayoutForController:controller]) return YES;
     UIView *view = controller.viewIfLoaded;
     if (!view.window) return NO;
     UIView *cell = [self cellForPlayer:view owner:controller];
@@ -448,10 +452,9 @@
 }
 
 + (void)layoutInteraction:(UIViewController *)controller {
-    // v757: 原来只认首页推荐（contentSource == homepage_hot），从搜索点开的详情页
-    // 会被直接 return，互动层保持「屏高 − 83（底栏 49 + 安全区 34）」= 769，
-    // 贴着它底边的进度条就整体上移 83。详情页同样需要撑满，这里一并放行。
-    BOOL supported = [self usesRecommendedLayoutForController:controller] ||
+    // 首页推荐和关注频道共用全屏互动布局；搜索等详情页另经详情分类放行。
+    // 同城仍保持原生布局，避免与真实底栏占位策略冲突。
+    BOOL supported = [self usesHomeFeedLayoutForController:controller] ||
                      [self usesDetailLayoutForController:controller];
     if (![NSThread isMainThread] || !supported) return;
     if ([self isInsideNearbyPage:controller]) return;   // v776: 同城保持原生 792
@@ -517,7 +520,7 @@
 + (void)layoutInformationLabel:(UIView *)label {
     if (![NSThread isMainThread] || !label.window || !label.superview) return;
     UIViewController *owner = [DYYYUtils firstAvailableViewControllerFromView:label];
-    if (![self usesRecommendedLayoutForController:owner]) return;
+    if (![self usesHomeFeedLayoutForController:owner]) return;
     DYYYFullscreenPlayerState *state = [self state:label];
     [[self informationLabels] addObject:label];
     BOOL active = DYYYGetBool(@"DYYYEnableFullScreen") && [self hasCommentInWindow:label.window];
@@ -546,7 +549,7 @@
 }
 + (void)rememberInteractionGuide:(UIViewController *)controller {
     UIView *view = controller.viewIfLoaded;
-    if (![NSThread isMainThread] || ![self usesRecommendedLayoutForController:controller] || !view.window || !DYYYGetBool(@"DYYYEnableFullScreen") || [self hasCommentInWindow:view.window]) return;
+    if (![NSThread isMainThread] || ![self usesHomeFeedLayoutForController:controller] || !view.window || !DYYYGetBool(@"DYYYEnableFullScreen") || [self hasCommentInWindow:view.window]) return;
     DYYYFullscreenPlayerState *state = [self state:view];
     state.owner = controller;
     state.closedInteractionSize = view.frame.size;
@@ -582,7 +585,7 @@
         state.nativeHostFrame = frame;
         return state.fullscreenHostFrame;
     }
-    if (state.closedInteractionSize.height > 0 && [self usesRecommendedLayoutForController:state.owner] && state.normalWindow == view.window &&
+    if (state.closedInteractionSize.height > 0 && [self usesHomeFeedLayoutForController:state.owner] && state.normalWindow == view.window &&
         fabs(frame.size.width - state.closedInteractionSize.width) <= 1 &&
         DYYYGetBool(@"DYYYEnableFullScreen") && [self hasCommentForInteractionController:state.owner]) {
         frame.size.height = state.closedInteractionSize.height;
