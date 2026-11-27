@@ -151,12 +151,23 @@ check(comment_bar is not None and len(re.findall(r'^%hook AWECommentInputBackgro
       hide_helper is not None and 'OBJC_ASSOCIATION_RETAIN_NONATOMIC' in hide_helper.group(0) and
       'NSMutableOrderedSet<UIView *> *targets' in hide_helper.group(0) and
       'for (UIView *sibling in bar.superview.subviews)' in hide_helper.group(0) and
-      'DYYYCommentInputMatchesDarkReserve(sibling, bar)' in hide_helper.group(0) and
+      'DYYYCommentInputMatchesDarkReserve(sibling, bar, NO)' in hide_helper.group(0) and
       comment_backdrop_match is not None and 'candidate.superview != bar.superview' in comment_backdrop_match.group(0) and
       'fabs(candidateFrame.origin.y - barFrame.origin.y) > 0.5' in comment_backdrop_match.group(0) and
       'white < 0.25' in comment_backdrop_match.group(0) and
       'subview.hidden = [state[@"hidden"] boolValue];' in hide_helper.group(0),
       '隐藏底栏评论还接管41.3同尺寸深色兄弟背景并可恢复')
+view_hook = re.search(r'^%hook UIView\s*$(.*?)^%end\s*$', xm, re.M | re.S)
+reserve_sibling = re.search(r'static BOOL DYYYIsCommentInputDarkReserveSibling\(.*?\n\}', xm, re.S)
+check(view_hook is not None and len(re.findall(r'^%hook UIView\s*$', xm, re.M)) == 1 and
+      view_hook.group(1).count('- (void)setHidden:(BOOL)hidden') == 1 and
+      'if (!hidden && DYYYIsCommentInputDarkReserveSibling(self)) {' in view_hook.group(1) and
+      view_hook.group(1).index('DYYYIsCommentInputDarkReserveSibling(self)') < view_hook.group(1).index('DYYYViewHideGate()') and
+      '%orig(YES);' in view_hook.group(1) and
+      reserve_sibling is not None and 'DYYYGetBoolCached(@"DYYYHideComment")' in reserve_sibling.group(0) and
+      'DYYYCommentInputMatchesDarkReserve(candidate, sibling, YES)' in reserve_sibling.group(0) and
+      'allowPreUnhideState' in comment_backdrop_match.group(0),
+      '翻页后只阻止隐藏评论时 41.3 深色兄弟背景重新显示')
 check('DYYYFullscreenGeometryTests.m' in runner and 'DYYYFullscreenGeometry.m' in runner and
       'check_fullscreen_frame_stability.py' in runner,
       '集成结构与原生 geometry 断言都加入现有 CI runner')

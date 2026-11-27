@@ -13812,10 +13812,10 @@ static Class tabBarButtonClass = nil;
 %end
 
 static char kDYYYCommentInputHiddenSubviewsKey;
-static BOOL DYYYCommentInputMatchesDarkReserve(UIView *candidate, UIView *bar) {
+static BOOL DYYYCommentInputMatchesDarkReserve(UIView *candidate, UIView *bar, BOOL allowPreUnhideState) {
     if (!candidate || !bar || candidate == bar || candidate.class != UIView.class ||
-        candidate.hidden || candidate.alpha <= 0.01 || !candidate.opaque || !candidate.backgroundColor ||
-        candidate.superview != bar.superview) return NO;
+        (!allowPreUnhideState && (candidate.hidden || candidate.alpha <= 0.01)) ||
+        !candidate.opaque || !candidate.backgroundColor || candidate.superview != bar.superview) return NO;
     CGRect candidateFrame = candidate.frame;
     CGRect barFrame = bar.frame;
     if (fabs(candidateFrame.origin.x - barFrame.origin.x) > 0.5 ||
@@ -13832,6 +13832,17 @@ static BOOL DYYYCommentInputMatchesDarkReserve(UIView *candidate, UIView *bar) {
     return alpha > 0.5 && white < 0.25;
 }
 
+static BOOL DYYYIsCommentInputDarkReserveSibling(UIView *candidate) {
+    if (!DYYYGetBoolCached(@"DYYYHideComment") || !candidate || candidate.class != UIView.class) return NO;
+    UIView *parent = candidate.superview;
+    if (!parent) return NO;
+    for (UIView *sibling in parent.subviews) {
+        if ([sibling isKindOfClass:%c(AWECommentInputBackgroundView)] &&
+            DYYYCommentInputMatchesDarkReserve(candidate, sibling, YES)) return YES;
+    }
+    return NO;
+}
+
 static void DYYYSetCommentInputSubviewsHidden(UIView *bar, BOOL hidden) {
     if (![NSThread isMainThread] || !bar) return;
     NSMutableArray<NSDictionary *> *saved = objc_getAssociatedObject(bar, &kDYYYCommentInputHiddenSubviewsKey);
@@ -13844,7 +13855,7 @@ static void DYYYSetCommentInputSubviewsHidden(UIView *bar, BOOL hidden) {
         // 41.3 在评论入口旁新增同 frame 的独立深色 UIView；隐藏入口子视图并不会隐藏这个兄弟背景。
         // 只接管与 AWECommentInputBackgroundView 同父、同 frame、原生深色不透明的裸 UIView。
         for (UIView *sibling in bar.superview.subviews) {
-            if (DYYYCommentInputMatchesDarkReserve(sibling, bar)) [targets addObject:sibling];
+            if (DYYYCommentInputMatchesDarkReserve(sibling, bar, NO)) [targets addObject:sibling];
         }
         for (UIView *subview in targets) {
             BOOL recorded = NO;
@@ -14093,6 +14104,12 @@ static BOOL DYYYViewHideGate(void) {
 %hook UIView
 
 - (void)setHidden:(BOOL)hidden {
+    // 41.3 在作者详情分页后会重新显示评论栏的同尺寸深色兄弟背景；隐藏评论期间只拦这个精确对象。
+    if (!hidden && DYYYIsCommentInputDarkReserveSibling(self)) {
+        %orig(YES);
+        return;
+    }
+
     if (__builtin_expect(!DYYYViewHideGate(), 1)) {
         %orig(hidden);
         return;
