@@ -13812,6 +13812,18 @@ static Class tabBarButtonClass = nil;
 %end
 
 static char kDYYYCommentInputHiddenSubviewsKey;
+static char kDYYYCommentInputDarkReserveBarsKey;
+static void DYYYRegisterCommentInputBar(UIView *bar) {
+    if (![NSThread isMainThread] || !bar) return;
+    UIView *parent = bar.superview;
+    if (!parent) return;
+    NSHashTable<UIView *> *bars = objc_getAssociatedObject(parent, &kDYYYCommentInputDarkReserveBarsKey);
+    if (!bars) {
+        bars = [NSHashTable weakObjectsHashTable];
+        objc_setAssociatedObject(parent, &kDYYYCommentInputDarkReserveBarsKey, bars, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (![bars containsObject:bar]) [bars addObject:bar];
+}
 static BOOL DYYYCommentInputMatchesDarkReserve(UIView *candidate, UIView *bar, BOOL allowPreUnhideState) {
     if (!candidate || !bar || candidate == bar || candidate.class != UIView.class ||
         (!allowPreUnhideState && (candidate.hidden || candidate.alpha <= 0.01)) ||
@@ -13833,18 +13845,22 @@ static BOOL DYYYCommentInputMatchesDarkReserve(UIView *candidate, UIView *bar, B
 }
 
 static BOOL DYYYIsCommentInputDarkReserveSibling(UIView *candidate) {
-    if (!DYYYGetBoolCached(@"DYYYHideComment") || !candidate || candidate.class != UIView.class) return NO;
+    if (!DYYYGetBoolCached(@"DYYYHideComment") || ![NSThread isMainThread] ||
+        !candidate || candidate.class != UIView.class) return NO;
     UIView *parent = candidate.superview;
     if (!parent) return NO;
-    for (UIView *sibling in parent.subviews) {
-        if ([sibling isKindOfClass:%c(AWECommentInputBackgroundView)] &&
-            DYYYCommentInputMatchesDarkReserve(candidate, sibling, YES)) return YES;
+    NSHashTable<UIView *> *bars = objc_getAssociatedObject(parent, &kDYYYCommentInputDarkReserveBarsKey);
+    if (!bars) return NO;
+    for (UIView *bar in bars) {
+        if ([bar isKindOfClass:%c(AWECommentInputBackgroundView)] &&
+            DYYYCommentInputMatchesDarkReserve(candidate, bar, YES)) return YES;
     }
     return NO;
 }
 
 static void DYYYSetCommentInputSubviewsHidden(UIView *bar, BOOL hidden) {
     if (![NSThread isMainThread] || !bar) return;
+    DYYYRegisterCommentInputBar(bar);
     NSMutableArray<NSDictionary *> *saved = objc_getAssociatedObject(bar, &kDYYYCommentInputHiddenSubviewsKey);
     if (hidden) {
         if (!saved) {
@@ -13882,6 +13898,8 @@ static void DYYYSetCommentInputSubviewsHidden(UIView *bar, BOOL hidden) {
 
 %hook AWECommentInputBackgroundView
 - (void)layoutSubviews {
+    // 先登记当前父级，再让原生布局可能触发的 setHidden: 使用缓存匹配。
+    DYYYRegisterCommentInputBar(self);
     %orig;
 
     // 隐藏评论入口时保留原生 60pt 占位与全屏变换，避免删除背景视图后露出黑色 cell 底色。

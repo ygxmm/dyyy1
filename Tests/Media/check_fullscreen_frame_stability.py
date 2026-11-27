@@ -143,12 +143,33 @@ check(detail_table is not None and len(re.findall(r'^%hook AWEAwemeDetailTableVi
 comment_bar = re.search(r'^%hook AWECommentInputBackgroundView\s*$(.*?)^%end\s*$', xm, re.M | re.S)
 hide_helper = re.search(r'static void DYYYSetCommentInputSubviewsHidden\(.*?\n\}', xm, re.S)
 comment_backdrop_match = re.search(r'static BOOL DYYYCommentInputMatchesDarkReserve\(.*?\n\}', xm, re.S)
+reserve_sibling = re.search(r'static BOOL DYYYIsCommentInputDarkReserveSibling\(.*?\n\}', xm, re.S)
+registry_helper = re.search(r'static void DYYYRegisterCommentInputBar\(.*?\n\}', xm, re.S)
+
+# The bar remains registered during the existing hide/restore pass; its parent owns
+# only a weak table, so this bookkeeping cannot keep reused comment views alive.
+registry_weak = bool(re.search(r'NSHashTable(?:\s*<[^>]+>)?\s*\*?\s*\w+\s*=.*?weakObjectsHashTable', xm, re.S) or
+                     ('NSHashTable' in xm and 'NSPointerFunctionsWeakMemory' in xm))
+registry_associated = ('objc_setAssociatedObject' in xm and 'objc_getAssociatedObject' in xm and
+                       bool(re.search(r'objc_(?:set|get)AssociatedObject\s*\(\s*(?:bar\.superview|candidate\.superview|parent\w*|\w*superview\w*|\w*owner\w*)', xm, re.I)))
+registration_direct = hide_helper is not None and bool(re.search(r'addObject\s*:\s*bar\b', hide_helper.group(0)))
+registration_calls = (re.findall(r'\b(DYYY\w+)\s*\([^)]*\bbar\b[^)]*\)', hide_helper.group(0))
+                      if hide_helper else [])
+registration_via_helper = any(re.search(r'\b' + re.escape(name) + r'\s*\([^)]*\)\s*\{.*?addObject\s*:\s*bar\b', xm, re.S)
+                              for name in registration_calls)
 check(comment_bar is not None and len(re.findall(r'^%hook AWECommentInputBackgroundView\s*$', xm, re.M)) == 1 and
       comment_bar.group(1).count('- (void)layoutSubviews') == 1 and
       'removeFromSuperview' not in comment_bar.group(1) and
       'DYYYSetCommentInputSubviewsHidden(self, DYYYGetBool(@"DYYYHideComment"));' in comment_bar.group(1) and
+      'DYYYRegisterCommentInputBar(self);' in comment_bar.group(1) and
+      comment_bar.group(1).index('DYYYRegisterCommentInputBar(self);') < comment_bar.group(1).index('%orig;') and
       'self.transform = newTransform;' in comment_bar.group(1) and
-      hide_helper is not None and 'OBJC_ASSOCIATION_RETAIN_NONATOMIC' in hide_helper.group(0) and
+      registry_helper is not None and '[NSThread isMainThread]' in registry_helper.group(0) and
+      'bar.superview' in registry_helper.group(0) and 'weakObjectsHashTable' in registry_helper.group(0) and
+      'objc_setAssociatedObject(parent, &kDYYYCommentInputDarkReserveBarsKey, bars, OBJC_ASSOCIATION_RETAIN_NONATOMIC)' in registry_helper.group(0) and
+      'if (![bars containsObject:bar]) [bars addObject:bar];' in registry_helper.group(0) and
+      hide_helper is not None and 'DYYYRegisterCommentInputBar(bar);' in hide_helper.group(0) and
+      'OBJC_ASSOCIATION_RETAIN_NONATOMIC' in hide_helper.group(0) and
       'NSMutableOrderedSet<UIView *> *targets' in hide_helper.group(0) and
       'for (UIView *sibling in bar.superview.subviews)' in hide_helper.group(0) and
       'DYYYCommentInputMatchesDarkReserve(sibling, bar, NO)' in hide_helper.group(0) and
@@ -157,17 +178,46 @@ check(comment_bar is not None and len(re.findall(r'^%hook AWECommentInputBackgro
       'white < 0.25' in comment_backdrop_match.group(0) and
       'subview.hidden = [state[@"hidden"] boolValue];' in hide_helper.group(0),
       '隐藏底栏评论还接管41.3同尺寸深色兄弟背景并可恢复')
+
 view_hook = re.search(r'^%hook UIView\s*$(.*?)^%end\s*$', xm, re.M | re.S)
-reserve_sibling = re.search(r'static BOOL DYYYIsCommentInputDarkReserveSibling\(.*?\n\}', xm, re.S)
+preunhide_path = (re.search(r'if\s*\(\s*!hidden\s*&&\s*DYYYIsCommentInputDarkReserveSibling\(self\)\s*\)\s*\{\s*%orig\(YES\);\s*return;\s*\}',
+                           view_hook.group(1)) if view_hook else None)
+association_getters = re.findall(
+    r'static\s+([^;{}]+?)\b(DYYY\w+)\s*\([^;{}]*\)\s*\{(.*?)\n\}', xm, re.S)
+association_getter_names = [name for return_type, name, body in association_getters
+                             if 'objc_getAssociatedObject' in body and
+                             ('NSHashTable' in return_type or 'NSHashTable' in body)]
+predicate_queries_association = (reserve_sibling is not None and
+    ('objc_getAssociatedObject' in reserve_sibling.group(0) or
+     any(re.search(r'\b' + re.escape(name) + r'\s*\(', reserve_sibling.group(0))
+         for name in association_getter_names)))
+predicate_loops_registry = (reserve_sibling is not None and
+    bool(re.search(r'\bfor\s*\(\s*UIView\s*\*\s*bar\s+in\s+bars\s*\)', reserve_sibling.group(0))))
 check(view_hook is not None and len(re.findall(r'^%hook UIView\s*$', xm, re.M)) == 1 and
       view_hook.group(1).count('- (void)setHidden:(BOOL)hidden') == 1 and
-      'if (!hidden && DYYYIsCommentInputDarkReserveSibling(self)) {' in view_hook.group(1) and
+      preunhide_path is not None and
       view_hook.group(1).index('DYYYIsCommentInputDarkReserveSibling(self)') < view_hook.group(1).index('DYYYViewHideGate()') and
-      '%orig(YES);' in view_hook.group(1) and
-      reserve_sibling is not None and 'DYYYGetBoolCached(@"DYYYHideComment")' in reserve_sibling.group(0) and
-      'DYYYCommentInputMatchesDarkReserve(candidate, sibling, YES)' in reserve_sibling.group(0) and
-      'allowPreUnhideState' in comment_backdrop_match.group(0),
-      '翻页后只阻止隐藏评论时 41.3 深色兄弟背景重新显示')
+      '%orig(YES);' in preunhide_path.group(0),
+      'UIView 仅有一个 setHidden hook，预解隐藏保护先于通用隐藏闸门')
+check(reserve_sibling is not None and 'DYYYGetBoolCached(@"DYYYHideComment")' in reserve_sibling.group(0) and
+      reserve_sibling.group(0).index('DYYYGetBoolCached(@"DYYYHideComment")') < reserve_sibling.group(0).index('[NSThread isMainThread]') and
+      'isMainThread' in reserve_sibling.group(0) and
+      re.search(r'!\s*candidate\b|\bcandidate\s*(?:==|!=)\s*nil|\bnil\s*(?:==|!=)\s*candidate\b', reserve_sibling.group(0)) and
+      re.search(r'candidate\.class\s*!=\s*UIView\.class', reserve_sibling.group(0)),
+      '热路径要求主线程、非空 UIView 候选及缓存 HideComment 开关')
+check(registry_weak and registry_associated and
+      (registration_direct or registration_via_helper),
+      '父视图关联弱 NSHashTable，评论隐藏 helper 注册 bar')
+check(predicate_queries_association and predicate_loops_registry and
+      not re.search(r'\bfor\s*\([^)]*\bin\s*(?:candidate\.superview|parent|superview)\.subviews\s*\)', reserve_sibling.group(0)),
+      '热路径只枚举父视图关联的注册栏，不扫描 parent.subviews')
+check('DYYYCommentInputMatchesDarkReserve(candidate, bar, YES)' in reserve_sibling.group(0) and
+      comment_backdrop_match is not None and 'allowPreUnhideState' in comment_backdrop_match.group(0) and
+      re.search(r'candidate\.opaque|opaque', comment_backdrop_match.group(0)) and
+      'candidate.superview != bar.superview' in comment_backdrop_match.group(0) and
+      'fabs(candidateFrame.origin.y - barFrame.origin.y) > 0.5' in comment_backdrop_match.group(0) and
+      'white < 0.25' in comment_backdrop_match.group(0),
+      '预解隐藏仍复用同父、同框、opaque 且暗色的严格背景 matcher')
 check('DYYYFullscreenGeometryTests.m' in runner and 'DYYYFullscreenGeometry.m' in runner and
       'check_fullscreen_frame_stability.py' in runner,
       '集成结构与原生 geometry 断言都加入现有 CI runner')
