@@ -65,7 +65,8 @@
 //   1. 首页信息流
 //      AWEFeedTableViewController / AWEFeedModuleService
 //        -tableViewBottomInsetForAllPlatform       → 全屏时底部预留归零
-//      原生控制器统一计算表尺寸、行高与分页吸附。
+//        -applyTableViewLayoutForAllPlatform      → 仅 homepage_follow 解除 41.3 NodeTable 的 -safeBottom 锚
+//      其它来源仍由原生控制器计算表尺寸、行高与分页吸附。
 //   2. 详情页
 //      AWEAwemeDetailTableView -setFrame:          → 792 夹成屏高
 //      AWEAwemeDetailTableViewController            → 底栏约束归零 / tableViewBottomMargin=0 /
@@ -15204,11 +15205,16 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 %hook AWEFeedTableViewController
 
-// 41.2 的 applyTableViewLayoutForAllPlatform 使用此预留计算首页表尺寸。
-// 全屏只在这里归零，表布局、行高与分页吸附继续使用原生计算结果。
+// 首页 hot 继续通过底部预留值交给原生计算；41.3 关注页的 NodeTable 另有独立 safe-area 底锚，
+// inset 已归零仍会停在 792pt，因此只在原生 apply 完成后校正这条已验证的约束。
 - (double)tableViewBottomInsetForAllPlatform {
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
     return %orig;
+}
+
+- (void)applyTableViewLayoutForAllPlatform {
+    %orig;
+    [DYYYFullscreenCoordinator layoutFollowingFeedTable:self];
 }
 
 - (void)setCurrentPlayIndex:(NSInteger)index {

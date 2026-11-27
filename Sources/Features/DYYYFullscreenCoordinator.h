@@ -17,6 +17,7 @@
 + (void)invalidateGuides;
 + (CGFloat)bottomOccupiedHeightForView:(UIView *)view;
 + (void)layoutInteraction:(UIViewController *)controller;
++ (void)layoutFollowingFeedTable:(UIViewController *)controller;
 + (BOOL)isInsideNearbyPage:(UIViewController *)controller;
 + (void)layoutInformationLabel:(UIView *)label;
 + (void)rememberInteractionGuide:(UIViewController *)controller;

@@ -81,10 +81,10 @@ check(feed_inset is not None and
                    feed_inset.group(1)) is not None,
       '首页全屏底部预留归零，关闭后返回原生预留')
 check(all(selector not in feed.group(1) for selector in (
-      'heightForRowAtIndexPath:', 'smartSlidePageSnapCellHeightForIndex:',
-      'applyTableViewLayoutForAllPlatform {', 'scrollViewDidScroll:',
-      'scrollViewWillEndDragging:', 'setContentOffset:', 'setFrame:')),
-      '首页表尺寸、行高、滚动偏移与分页吸附统一使用原生布局')
+      'heightForRowAtIndexPath:', 'smartSlidePageSnapCellHeightForIndex:', 'scrollViewDidScroll:',
+      'scrollViewWillEndDragging:', 'setContentOffset:', 'setFrame:')) and
+      feed.group(1).count('- (void)applyTableViewLayoutForAllPlatform {') == 1,
+      '首页尺寸/行高/分页仍原生，关注只校正已验证的底部约束')
 comment_hook = re.search(r'^%hook AWECommentContainerViewController\s*$(.*?)^%end\s*$', xm, re.M | re.S)
 check(comment_hook is not None and comment_hook.group(1).count('commentController:self visible:YES') == 2 and
       comment_hook.group(1).count('commentController:self visible:NO') == 1 and
@@ -193,6 +193,34 @@ check(fallback_after_gate and home_video_state,
       '关注视频由协调器铺满并跳过通用扣底栏，其它路径保留 fallback')
 check(hot_video_early_return and image_comment_guard and post_layout_refresh,
       '推荐原早退保留，关注视频仍刷新 AI 和悬浮控件')
+
+feed_hook = re.search(r'^%hook AWEFeedTableViewController\s*$(.*?)^%end\s*$', xm, re.M | re.S)
+apply_table_layout = (re.search(r'-\s*\(void\)\s*applyTableViewLayoutForAllPlatform\s*\{(.*?)^\}',
+                                feed_hook.group(1), re.M | re.S)
+                      if feed_hook else None)
+apply_table_body = apply_table_layout.group(1) if apply_table_layout else ''
+follow_table_layout = re.search(
+    r'^\+ \(void\)layoutFollowingFeedTable:[^{]*\{(.*?)^\}', coordinator, re.M | re.S)
+follow_table_body = follow_table_layout.group(1) if follow_table_layout else None
+check(feed_hook is not None and len(re.findall(r'^%hook AWEFeedTableViewController\s*$', xm, re.M)) == 1 and
+      apply_table_layout is not None and apply_table_body.count('%orig;') == 1 and
+      apply_table_body.index('%orig;') < apply_table_body.index('layoutFollowingFeedTable:self') and
+      xm.count('- (void)applyTableViewLayoutForAllPlatform {') == 1 and
+      xm.count('[DYYYFullscreenCoordinator layoutFollowingFeedTable:self];') == 1,
+      '关注表仅在现有 Feed 控制器原生 apply 后校正一次')
+check(follow_table_layout is not None and
+      'homepage_follow' in follow_table_body and 'AWEFeedNodeTableView' in follow_table_body and
+      'candidate.firstItem != table' in follow_table_body and 'candidate.secondItem != parent' in follow_table_body and
+      'candidate.priority < UILayoutPriorityRequired' in follow_table_body and
+      'if (bottomConstraint)' in follow_table_body and 'bottomConstraint = nil;' in follow_table_body and
+      'bottomConstraint.constant + safeBottom' in follow_table_body and
+      'bottomConstraint.constant = 0.0;' in follow_table_body and
+      'state.nativeConstant' in follow_table_body and 'state.parent = parent' in follow_table_body and
+      'DYYYFullscreenFollowNativeBottomConstant(state)' in follow_table_body and
+      'parent.safeAreaInsets.bottom' in coordinator and
+      'DYYYEnableFullScreen' in follow_table_body and
+      not re.search(r'^%hook AWEFeedNodeTableView\s*$', xm, re.M),
+      '仅 homepage_follow 的 41.3 NodeTable 安全底锚可解除并可恢复')
 runner = (ROOT / 'Tests/Media/run_media_tests.sh').read_text()
 detail_table = re.search(r'^%hook AWEAwemeDetailTableView\s*$(.*?)^%end\s*$', xm, re.M | re.S)
 check(detail_table is not None and len(re.findall(r'^%hook AWEAwemeDetailTableView\s*$', xm, re.M)) == 1 and
