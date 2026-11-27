@@ -72,9 +72,10 @@ check('%hook TTMetalView' not in xm and 'gDYYYInRotation' not in xm,
 feed = re.search(r'^%hook AWEFeedTableViewController\s*$(.*?)^%end\s*$', xm, re.M | re.S)
 check(feed is not None and len(re.findall(r'^%hook AWEFeedTableViewController\s*$', xm, re.M)) == 1,
       '首页控制器维持唯一 Hook 入口')
-check(not re.search(r'^%hook AWEFeedTableView\s*$', xm, re.M) and
-      'DYYYStretchPagerTableToSuperview' not in xm,
-      '删除首页分页表布局后置写高与关闭时重复扣底栏的整段旧实现')
+check(not re.search(r'^%hook AWEFeed(?:Node)?TableView\s*$', xm, re.M) and
+      'DYYYStretchPagerTableToSuperview' not in xm and
+      'layoutFollowingFeedTable:' not in xm + coordinator and 'DYYYFullscreenFollowTableState' not in coordinator,
+      '移除旧首页后置写表高及 41.3 手改关注约束，未重加表级 Hook')
 feed_inset = re.search(r'- \(double\)tableViewBottomInsetForAllPlatform\s*\{(.*?)\n\}', feed.group(1), re.S)
 check(feed_inset is not None and
       re.fullmatch(r'\s*if \(DYYYGetBoolCached\(@"DYYYEnableFullScreen"\)\) return 0\.0;\s*return %orig;\s*',
@@ -82,9 +83,8 @@ check(feed_inset is not None and
       '首页全屏底部预留归零，关闭后返回原生预留')
 check(all(selector not in feed.group(1) for selector in (
       'heightForRowAtIndexPath:', 'smartSlidePageSnapCellHeightForIndex:', 'scrollViewDidScroll:',
-      'scrollViewWillEndDragging:', 'setContentOffset:', 'setFrame:')) and
-      feed.group(1).count('- (void)applyTableViewLayoutForAllPlatform {') == 1,
-      '首页尺寸/行高/分页仍原生，关注只校正已验证的底部约束')
+      'scrollViewWillEndDragging:', 'setContentOffset:', 'setFrame:', '- (void)applyTableViewLayoutForAllPlatform')),
+      '首页视口、行高和分页由原生布局计算，不再接管控制器 apply')
 comment_hook = re.search(r'^%hook AWECommentContainerViewController\s*$(.*?)^%end\s*$', xm, re.M | re.S)
 check(comment_hook is not None and comment_hook.group(1).count('commentController:self visible:YES') == 2 and
       comment_hook.group(1).count('commentController:self visible:NO') == 1 and
@@ -194,33 +194,21 @@ check(fallback_after_gate and home_video_state,
 check(hot_video_early_return and image_comment_guard and post_layout_refresh,
       '推荐原早退保留，关注视频仍刷新 AI 和悬浮控件')
 
-feed_hook = re.search(r'^%hook AWEFeedTableViewController\s*$(.*?)^%end\s*$', xm, re.M | re.S)
-apply_table_layout = (re.search(r'-\s*\(void\)\s*applyTableViewLayoutForAllPlatform\s*\{(.*?)^\}',
-                                feed_hook.group(1), re.M | re.S)
-                      if feed_hook else None)
-apply_table_body = apply_table_layout.group(1) if apply_table_layout else ''
-follow_table_layout = re.search(
-    r'^\+ \(void\)layoutFollowingFeedTable:[^{]*\{(.*?)^\}', coordinator, re.M | re.S)
-follow_table_body = follow_table_layout.group(1) if follow_table_layout else None
-check(feed_hook is not None and len(re.findall(r'^%hook AWEFeedTableViewController\s*$', xm, re.M)) == 1 and
-      apply_table_layout is not None and apply_table_body.count('%orig;') == 1 and
-      apply_table_body.index('%orig;') < apply_table_body.index('layoutFollowingFeedTable:self') and
-      xm.count('- (void)applyTableViewLayoutForAllPlatform {') == 1 and
-      xm.count('[DYYYFullscreenCoordinator layoutFollowingFeedTable:self];') == 1,
-      '关注表仅在现有 Feed 控制器原生 apply 后校正一次')
-check(follow_table_layout is not None and
-      'homepage_follow' in follow_table_body and 'AWEFeedNodeTableView' in follow_table_body and
-      'candidate.firstItem != table' in follow_table_body and 'candidate.secondItem != parent' in follow_table_body and
-      'candidate.priority < UILayoutPriorityRequired' in follow_table_body and
-      'if (bottomConstraint)' in follow_table_body and 'bottomConstraint = nil;' in follow_table_body and
-      'bottomConstraint.constant + safeBottom' in follow_table_body and
-      'bottomConstraint.constant = 0.0;' in follow_table_body and
-      'state.nativeConstant' in follow_table_body and 'state.parent = parent' in follow_table_body and
-      'DYYYFullscreenFollowNativeBottomConstant(state)' in follow_table_body and
-      'parent.safeAreaInsets.bottom' in coordinator and
-      'DYYYEnableFullScreen' in follow_table_body and
-      not re.search(r'^%hook AWEFeedNodeTableView\s*$', xm, re.M),
-      '仅 homepage_follow 的 41.3 NodeTable 安全底锚可解除并可恢复')
+layout_hooks = re.findall(r'^%hook AWEFeedLayoutContainer\s*$(.*?)^%end\s*$', xm, re.M | re.S)
+check(len(layout_hooks) == 1, '41.3 原生 Feed 布局模块仅有一个入口')
+layout_inset = layout_hooks[0]
+check(re.findall(r'^[-+]\s*\([^)]*\)\s*(\w+)', layout_inset, re.M) == ['tableViewBottomInsetForAllPlatform'] and
+      re.findall(r'@"(homepage_[^"]+)"', layout_inset) == ['homepage_follow'] and
+      'if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;' in layout_inset and
+      layout_inset.count('return 0.0;') == 1 and
+      'if ([source isEqualToString:@"homepage_follow"]) return 0.0;' in layout_inset and
+      re.search(r'return %orig;\s*}\s*$', layout_inset) is not None,
+      '只在全屏开启且确切关注来源时取消布局模块占位，其他频道原样')
+check('source = [(AWEFeedTableViewController *)host referString];' in layout_inset and
+      'source.length == 0 && [self respondsToSelector:@selector(pageInfo)]' in layout_inset and
+      'source = page.referString;' in layout_inset and
+      not any(x in layout_inset for x in ('tableView]', 'setFrame', 'setNeedsLayout', 'Constraint', 'layoutInteraction', 'layoutBottomBar')),
+      '以绑定宿主为准，未绑定才用页面配置，不写列表/互动/底栏几何')
 runner = (ROOT / 'Tests/Media/run_media_tests.sh').read_text()
 detail_table = re.search(r'^%hook AWEAwemeDetailTableView\s*$(.*?)^%end\s*$', xm, re.M | re.S)
 check(detail_table is not None and len(re.findall(r'^%hook AWEAwemeDetailTableView\s*$', xm, re.M)) == 1 and

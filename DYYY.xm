@@ -63,10 +63,9 @@
 // 关掉开关时，下面每一处都必须原样走 %orig，与抖音原生一致。
 //
 //   1. 首页信息流
-//      AWEFeedTableViewController / AWEFeedModuleService
-//        -tableViewBottomInsetForAllPlatform       → 全屏时底部预留归零
-//        -applyTableViewLayoutForAllPlatform      → 仅 homepage_follow 解除 41.3 NodeTable 的 -safeBottom 锚
-//      其它来源仍由原生控制器计算表尺寸、行高与分页吸附。
+//      AWEFeedTableViewController / AWEFeedModuleService：原有首页的底部预留
+//      AWEFeedLayoutContainer：41.3 关注流独立读取的底部预留
+//      全屏只调整对应的原生输入，行高和翻页继续由原生计算。
 //   2. 详情页
 //      AWEAwemeDetailTableView -setFrame:          → 792 夹成屏高
 //      AWEAwemeDetailTableViewController            → 底栏约束归零 / tableViewBottomMargin=0 /
@@ -15205,16 +15204,10 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 
 %hook AWEFeedTableViewController
 
-// 首页 hot 继续通过底部预留值交给原生计算；41.3 关注页的 NodeTable 另有独立 safe-area 底锚，
-// inset 已归零仍会停在 792pt，因此只在原生 apply 完成后校正这条已验证的约束。
+// 旧版首页与 41.3 推荐走控制器的原生预留；已拆出布局模块的关注流走下方模块入口。
 - (double)tableViewBottomInsetForAllPlatform {
     if (DYYYGetBoolCached(@"DYYYEnableFullScreen")) return 0.0;
     return %orig;
-}
-
-- (void)applyTableViewLayoutForAllPlatform {
-    %orig;
-    [DYYYFullscreenCoordinator layoutFollowingFeedTable:self];
 }
 
 - (void)setCurrentPlayIndex:(NSInteger)index {
@@ -15230,6 +15223,28 @@ static void DYYYHideVideoAIParseBar(UIView *view) {
 - (void)playVideoOnScrollDidEnd {
     %orig;
     DYYYHandleCommittedSpeedAwemeChanged([self currentAweme]);
+}
+
+%end
+
+// 41.3 关注流直接读取这个模块的预留，不经上方控制器方法。
+%hook AWEFeedLayoutContainer
+
+- (double)tableViewBottomInsetForAllPlatform {
+    if (!DYYYGetBoolCached(@"DYYYEnableFullScreen")) return %orig;
+
+    // 有宿主时以实际 Feed 来源为准；未绑定时只读页面配置，不触发表创建。
+    id host = [self respondsToSelector:@selector(hostAbility)] ? [self hostAbility] : nil;
+    NSString *source = nil;
+    if ([host isKindOfClass:%c(AWEFeedTableViewController)] && [host respondsToSelector:@selector(referString)]) {
+        source = [(AWEFeedTableViewController *)host referString];
+    }
+    if (source.length == 0 && [self respondsToSelector:@selector(pageInfo)]) {
+        AWEFeedPageInfo *page = [self pageInfo];
+        if ([page respondsToSelector:@selector(referString)]) source = page.referString;
+    }
+    if ([source isEqualToString:@"homepage_follow"]) return 0.0;
+    return %orig;
 }
 
 %end

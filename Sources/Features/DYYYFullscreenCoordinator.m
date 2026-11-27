@@ -16,25 +16,6 @@
 - (AWEAwemeModel *)model;
 @end
 
-// 41.3 关注页头文件：只读取当前 feed table 与来源，不调用会懒加载的内容控制器 getter。
-@interface AWEFeedTableViewController (DYYYFollowFeedFullscreen)
-- (UITableView *)tableView;
-- (NSString *)referString;
-@end
-
-@interface DYYYFullscreenFollowTableState : NSObject
-@property(nonatomic, weak) NSLayoutConstraint *constraint;
-@property(nonatomic, weak) UIView *parent;
-@property(nonatomic, assign) CGFloat nativeConstant;
-@end
-@implementation DYYYFullscreenFollowTableState
-@end
-
-static CGFloat DYYYFullscreenFollowNativeBottomConstant(DYYYFullscreenFollowTableState *state) {
-    UIView *parent = state.parent;
-    return parent ? -MAX(0.0, parent.safeAreaInsets.bottom) : state.nativeConstant;
-}
-
 @interface DYYYFullscreenCommentState : NSObject
 @property(nonatomic, weak) UIWindow *window;
 @property(nonatomic, weak) UIView *outerView;
@@ -529,85 +510,6 @@ static CGFloat DYYYFullscreenFollowNativeBottomConstant(DYYYFullscreenFollowTabl
         // 仅几何输入变化时更新播放器，不能每次 layout 都再次标记自身。
         for (UIView *player in [self players].allObjects) if (player.window == view.window) [player setNeedsLayout];
     }
-}
-+ (void)layoutFollowingFeedTable:(UIViewController *)controller {
-    Class feedClass = NSClassFromString(@"AWEFeedTableViewController");
-    if (![NSThread isMainThread] || !feedClass || ![controller isKindOfClass:feedClass] ||
-        ![controller respondsToSelector:@selector(tableView)] || ![controller respondsToSelector:@selector(referString)]) return;
-
-    AWEFeedTableViewController *feed = (AWEFeedTableViewController *)controller;
-    UITableView *table = feed.tableView;
-    Class nodeTableClass = NSClassFromString(@"AWEFeedNodeTableView");
-    if (![table isKindOfClass:UITableView.class] || !nodeTableClass) return;
-
-    UIView *parent = table.superview;
-    NSLayoutConstraint *bottomConstraint = nil;
-    if (parent) {
-        for (NSLayoutConstraint *candidate in parent.constraints) {
-            if (!candidate.active || candidate.relation != NSLayoutRelationEqual ||
-                fabs(candidate.multiplier - 1.0) > 0.001 || candidate.priority < UILayoutPriorityRequired ||
-                candidate.firstItem != table || candidate.firstAttribute != NSLayoutAttributeBottom ||
-                candidate.secondItem != parent || candidate.secondAttribute != NSLayoutAttributeBottom) continue;
-            if (bottomConstraint) {
-                bottomConstraint = nil;
-                break;
-            }
-            bottomConstraint = candidate;
-        }
-    }
-
-    DYYYFullscreenFollowTableState *state = objc_getAssociatedObject(table, @selector(layoutFollowingFeedTable:));
-    if (state && state.constraint != bottomConstraint) {
-        if (state.constraint && fabs(state.constraint.constant) <= 0.5) {
-            state.constraint.constant = DYYYFullscreenFollowNativeBottomConstant(state);
-            [state.parent setNeedsLayout];
-        }
-        objc_setAssociatedObject(table, @selector(layoutFollowingFeedTable:), nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        state = nil;
-    }
-
-    BOOL isFollowingFeed = [feed.referString isEqualToString:@"homepage_follow"] && [table isKindOfClass:nodeTableClass];
-    BOOL fullscreen = DYYYGetBool(@"DYYYEnableFullScreen");
-    if (!isFollowingFeed || !fullscreen || !parent || !bottomConstraint || parent.window != table.window) {
-        if (state && state.constraint && fabs(state.constraint.constant) <= 0.5) {
-            state.constraint.constant = DYYYFullscreenFollowNativeBottomConstant(state);
-            [parent setNeedsLayout];
-        }
-        if (state) objc_setAssociatedObject(table, @selector(layoutFollowingFeedTable:), nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return;
-    }
-
-    CGFloat safeBottom = parent.safeAreaInsets.bottom;
-    if (safeBottom <= 0.5 || parent.bounds.size.height <= safeBottom) return;
-    if (state) {
-        if (fabs(bottomConstraint.constant) <= 0.5) return;
-        if (fabs(bottomConstraint.constant + safeBottom) <= 1.0) {
-            state.nativeConstant = bottomConstraint.constant;
-            bottomConstraint.constant = 0.0;
-            [parent setNeedsLayout];
-            [table setNeedsLayout];
-        } else {
-            objc_setAssociatedObject(table, @selector(layoutFollowingFeedTable:), nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        return;
-    }
-
-    CGRect frame = table.frame;
-    CGFloat nativeBottom = CGRectGetMaxY(parent.bounds) - safeBottom;
-    BOOL matchesObservedNativeLayout = fabs(frame.origin.y) <= 1.0 &&
-        fabs(frame.size.width - parent.bounds.size.width) <= 1.0 &&
-        fabs(CGRectGetMaxY(frame) - nativeBottom) <= 1.0 &&
-        fabs(bottomConstraint.constant + safeBottom) <= 1.0;
-    if (!matchesObservedNativeLayout) return;
-
-    state = [DYYYFullscreenFollowTableState new];
-    state.constraint = bottomConstraint;
-    state.parent = parent;
-    state.nativeConstant = bottomConstraint.constant;
-    objc_setAssociatedObject(table, @selector(layoutFollowingFeedTable:), state, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    bottomConstraint.constant = 0.0;
-    [parent setNeedsLayout];
-    [table setNeedsLayout];
 }
 + (NSHashTable<UIView *> *)informationLabels {
     static NSHashTable *labels;

@@ -575,6 +575,7 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 
 @interface AWEFeedTableViewController : UIViewController
+@property(nonatomic, copy) NSString *referString;
 - (id)currentAweme;
 - (void)setCurrentPlayIndex:(NSInteger)index;
 - (void)playVideo:(id)video;
@@ -585,6 +586,17 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 - (double)tableViewBottomInsetForAllPlatform;
 - (double)smartSlidePageSnapCellHeightForIndex:(long long)index;
 - (void)applyTableViewLayoutForAllPlatform;
+@end
+
+// 41.3：AWEFeedLayoutContainer 继承的两个页面来源访问器。
+@interface AWEFeedPageInfo : NSObject
+@property(nonatomic, readonly, copy) NSString *referString;
+@end
+
+@interface AWEFeedLayoutContainer : NSObject
+- (id)hostAbility;
+- (AWEFeedPageInfo *)pageInfo;
+- (double)tableViewBottomInsetForAllPlatform;
 @end
 
 @interface AWEFeedModuleService : NSObject
